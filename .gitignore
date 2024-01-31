@@ -1,0 +1,23 @@
+##################
+### .gitignore ###
+##################
+
+*.o
+*.hdf5
+*.h5
+*.pdf
+*.png
+*.log
+*.out
+*.err
+*.pyc
+*.ipynb_checkpoints
+*.DS_Store
+*.swp
+*.yaml-full
+*.mp4
+*.fits
+*.zip
+.vscode
+*__*
+
