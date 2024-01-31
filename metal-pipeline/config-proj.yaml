@@ -1,0 +1,81 @@
+# COLT config file
+--- !projections              # Ray-based projections module
+
+init_dir: ics                 # Initial conditions directory (default: "ics")
+init_base: colt               # Initial conditions base name (optional)
+output_dir: output            # Output directory name (default: "output")
+output_base: proj             # Output file base name (default: "colt")
+abundances_base: states       # Output a separate abundances file
+
+cosmological: false           # Indicates whether the simulation is cosmological
+#adaptive: true                # Adaptive convergence projections
+#pixel_rtol: 1e-3              # Relative tolerence per pixel
+
+field_weight_pairs:
+#  - [rho, avg]
+  - [rho2, avg]
+  - [Z, mass]
+  - [D, mass]
+  - [T, mass]
+  - [x_HI, n_H]
+  - [x_HeI, n_He]
+  - [x_HeII, n_He]
+  - [x_CI, n_C]
+  - [x_CII, n_C]
+  - [x_CIII, n_C]
+  - [x_CIV, n_C]
+  - [x_NI, n_N]
+  - [x_NII, n_N]
+  - [x_NIII, n_N]
+  - [x_NIV, n_N]
+  - [x_NV, n_N]
+  - [x_OI, n_O]
+  - [x_OII, n_O]
+  - [x_OIII, n_O]
+  - [x_OIV, n_O]
+  - [x_NeI, n_Ne]
+  - [x_NeII, n_Ne]
+  - [x_NeIII, n_Ne]
+  - [x_NeIV, n_Ne]
+  - [x_MgI, n_Mg]
+  - [x_MgII, n_Mg]
+  - [x_MgIII, n_Mg]
+  - [x_SiI, n_Si]
+  - [x_SiII, n_Si]
+  - [x_SiIII, n_Si]
+  - [x_SiIV, n_Si]
+  - [x_SI, n_S]
+  - [x_SII, n_S]
+  - [x_SIII, n_S]
+  - [x_SIV, n_S]
+  - [x_SV, n_S]
+  - [x_SVI, n_S]
+  - [x_FeI, n_Fe]
+  - [x_FeII, n_Fe]
+  - [x_FeIII, n_Fe]
+  - [x_FeIV, n_Fe]
+  - [x_FeV, n_Fe]
+  - [x_FeVI, n_Fe]
+#  - [SFR, sum]
+#  - [T_dust, mass]
+#  - [v2, mass]
+#  - [v2_LOS, mass]
+#  - [v_LOS, mass]
+#  - [v_x, mass]
+#  - [v_y, mass]
+
+# Information about cameras
+image_radius_bbox: 0.5        # Image radius relative to the bbox (1 Rvir)
+n_pixels: 512                 # Number of image pixels
+# n_pixels: 1024                # Number of image pixels
+# n_exp: 0                      # Camera healpix directions exponent
+cameras:                      # Add camera directions manually
+  - [0,0,1]
+  - [0,0,-1]
+  - [0,1,0]
+  - [0,-1,0]
+  - [1,0,0]
+  - [-1,0,0]
+
+# verbose: true                 # Verbose output for tests and debugging
+

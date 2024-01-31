@@ -1,0 +1,59 @@
+# COLT config file
+--- !mcrt                     # Monte Carlo radiative transfer module
+
+init_dir: ics                 # Initial conditions directory (default: "ics")
+init_base: colt               # Initial conditions base name (optional)
+output_dir: output            # Output directory name (default: "output")
+output_base: Ha               # Output file base name (default: "colt")
+abundances_base: states       # Output a separate abundances file
+
+recombinations: true          # Include recombination emission
+T_floor_rec: 7000             # Apply a recombination temperature floor [K]
+
+collisions: true              # Include collisional excitation
+collisions_limiter: 10        # Limited by photoheating rate
+# output_collisions: true       # Output collisional excitation data
+
+cosmological: true            # Indicates whether the simulation is cosmological
+dust_model: SMC               # Dust model: SMC, MW, etc.
+line: Balmer-alpha            # Name of the line (default "Lyman-alpha")
+v_turb_kms: 10                # Microturbulent velocity [km/s]
+# output_mcrt_emission: true    # Output intrinsic emission without transport (mcrt)
+# output_mcrt_attenuation: true # Output attenuated emission without scattering (mcrt)
+output_proj_emission: true    # Output intrinsic emission without transport (proj)
+# output_proj_attenuation: true # Output attenuated emission without scattering (proj)
+# pixel_rtol: 1e-2              # Relative tolerence per pixel
+
+# Information about sources
+n_photons: 100000000          # Number of photon packets
+j_exp: 0.75                   # Luminosity boosting exponent
+# continuum: true               # Include UV continuum emission
+
+# Information about escape
+output_photons: false         # Output escaped photon packets
+#output_photons: true          # Output escaped photon packets
+#photon_file: photons          # Output a separate photon file
+spherical_escape: true        # Photons escape from a sphere
+escape_radius_bbox: 0.9       # Escape radius relative to the bbox
+emission_radius_bbox: 0.75    # Emission radius relative to the bbox
+
+# Information about cameras
+freq_min: -500                # Frequency minimum [km/s]
+freq_max: 500                 # Frequency maximum [km/s]
+n_bins: 500                   # Number of frequency bins
+image_radius_bbox: 0.5        # Image radius relative to the bbox (1 Rvir)
+n_pixels: 512                 # Number of image pixels
+# n_exp: 0                      # Camera healpix directions exponent
+cameras:                      # Add camera directions manually
+  - [0,0,1]
+  - [0,0,-1]
+  - [0,1,0]
+  - [0,-1,0]
+  - [1,0,0]
+  - [-1,0,0]
+#output_cubes: true            # Surface brightness cubes (defualt: false)
+output_freq_stds: true        # Output frequency standard deviations (default: false)
+output_freq2_images: true     # Frequency moment images (default: false)
+
+# verbose: true                 # Verbose output for tests and debugging
+

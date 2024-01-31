@@ -1,0 +1,40 @@
+# COLT config file
+--- !ionization               # MCRT ionization equilibrium module
+
+init_dir: ics                 # Initial conditions directory (default: "ics")
+init_base: colt               # Initial conditions base name (optional)
+output_dir: output            # Output directory name (default: "output")
+output_base: ion-eq-pre8      # Output file base name (default: "colt")
+abundances_base: states       # Output a separate abundances file
+
+# Information about sources
+source_file_Z_age: /home/arsmith/colt/tables/bpass-spectra-bin-imf_chab100.hdf5
+dust_model: /home/arsmith/colt/tables/Draine-SMC.hdf5
+# source_model: BPASS-CHAB-100  # Spectral source model
+# dust_model: SMC               # Dust model: SMC, MW, etc.
+j_exp: 0.75                   # Luminosity boosting exponent
+# ion_max_eV: 100               # Maximum ionization threshold to include [eV]
+metal_ions: true              # Include all metal ions
+ion_bins: true                # Include all active ion bins
+nu_exp: 2                     # Frequency boosting exponent
+min_HI_bin_cdf: 0.8           # Minimum CDF value for >= 13.6 eV bins
+max_bin_dex: 0.05             # Minimum frequency bin width in dex
+# use_internal_energy: true     # Set temperature from the internal energy
+
+n_photons: 100000000          # Number of photon packets (10^8)
+max_iter: 20                  # Maximum number of iterations
+max_error: 0.001              # Relative error for convergence
+
+# Information about escape
+output_photons: false         # Output escaped photon packets
+#photon_file: photons          # Output a separate photon file
+output_abundances: true       # Output abundances (x_HI etc)
+#spherical_escape: true        # Photons escape from a sphere
+#escape_radius_bbox: 0.9       # Escape radius relative to the bbox
+#emission_radius_bbox: 0.75    # Emission radius relative to the bbox
+
+UVB_model: FG11               # UV background (Faucher-Giguere 2011 model)
+self_shielding: true          # Self-shielding (Rahmati 2012 model)
+
+# verbose: true                 # Verbose output for tests and debugging
+
