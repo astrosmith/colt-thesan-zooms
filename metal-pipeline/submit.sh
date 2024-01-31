@@ -34,19 +34,7 @@ for run in "${runs[@]}"; do
     colt_dir=${base_dir}/${group}/${run}/colt
     ls ${colt_dir}/ics
 
-    cp config-ion-eq-pre7.yaml ${colt_dir}/.
-    cp config-ion-eq-pre8.yaml ${colt_dir}/.
-    cp config-ion-eq.yaml ${colt_dir}/.
-    cp config-ion-eq-MCRT.yaml ${colt_dir}/.
-    cp config-ion-eq-RHD.yaml ${colt_dir}/.
-    #cp config-M1500.yaml ${colt_dir}/.
-    cp config-proj.yaml ${colt_dir}/.
-    cp config-Ha.yaml ${colt_dir}/.
-    #cp config-OII-3727-3730.yaml ${colt_dir}/.
-    #cp config-OIII-5008.yaml ${colt_dir}/.
-    cp config-Lya.yaml ${colt_dir}/.
-    #cp config-Ha-RHD.yaml ${colt_dir}/.
-    #cp config-Lya-RHD.yaml ${colt_dir}/.
+    cp config*.yaml ${colt_dir}/.
     cp job.sh ${colt_dir}/.
 
     cd ${colt_dir}
