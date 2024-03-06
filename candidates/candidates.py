@@ -6,18 +6,23 @@ from multiprocessing import Pool
 from multiprocessing.shared_memory import SharedMemory
 from time import time
 from typing import Tuple
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+from scipy.spatial import cKDTree
 
 # Constants
 NUM_PART = 7 # Number of particle types
 GAS_HIGH_RES_THRESHOLD = 0.5 # Threshold deliniating high and low resolution gas particles
 SOLAR_MASS = 1.989e33  # Solar masses
 VERBOSITY = 1 # Level of print verbosity
+MAX_WORKERS = 16 # Maximum number of workers
 SERIAL = 1 # Run in serial
-MULTIPROCESSING = 2 # Run in parallel
+ASYNCIO = 2 # Run in parallel (asyncio)
+MULTIPROCESSING = 3 # Run in parallel (multiprocessing)
 NUMPY = 1 # Use NumPy
 NUMBA = 2 # Use Numba
-READ_DEFAULT = (SERIAL,) # Default read method
-# READ_DEFAULT = (SERIAL,MULTIPROCESSING) # Default read method
+READ_DEFAULT = (ASYNCIO,) # Default read method
+# READ_DEFAULT = (SERIAL,ASYNCIO,MULTIPROCESSING) # Default read method
 CALC_DEFAULT = (NUMPY,) # Calculate center of mass
 # CALC_DEFAULT = (NUMPY, NUMBA) # Calculate center of mass
 READ_COUNTS = READ_DEFAULT # Read counts methods
@@ -295,7 +300,6 @@ class Simulation:
 
     def build_trees(self):
         """Build the trees for the gas and star particles."""
-        from scipy.spatial import cKDTree
         self.tree_gas_lr = cKDTree(self.r_gas[self.m_gas_HR == 0.]) # Low-resolution gas particles
         self.tree_gas_hr = cKDTree(self.r_gas[self.m_gas_HR > 0.]) # High-resolution gas particles
         self.tree_dm = cKDTree(self.r_dm) # PartType1 particles
@@ -390,28 +394,39 @@ class Simulation:
             obj.close()
             obj.unlink()
 
+    def read_counts_single(self, i):
+        """Read the counts from a single FOF and snapshot file."""
+        with h5py.File(fof_pre + f'{i}.hdf5', 'r') as f:
+            header = f['Header'].attrs
+            self.n_groups[i] = header['Ngroups_ThisFile']
+            self.n_subhalos[i] = header['Nsubhalos_ThisFile']
+
+        with h5py.File(snap_pre + f'{i}.hdf5', 'r') as f:
+            header = f['Header'].attrs
+            nums = header['NumPart_ThisFile'] # Number of particles in this file by type
+            self.n_gas[i] = nums[0] # Number of gas particles in this file
+            self.n_dm[i] = nums[1] # Number of PartType1 particles in this file
+            self.n_p2[i] = nums[2] # Number of PartType2 particles in this file
+            self.n_p3[i] = nums[3] # Number of PartType3 particles in this file
+            self.n_stars[i] = nums[4] # Number of star particles in this file
+
     def read_counts(self):
         """Read the counts from the FOF and snapshot files."""
         for i in range(self.n_files):
-            with h5py.File(fof_pre + f'{i}.hdf5', 'r') as f:
-                header = f['Header'].attrs
-                self.n_groups[i] = header['Ngroups_ThisFile']
-                self.n_subhalos[i] = header['Nsubhalos_ThisFile']
+            self.read_counts_single(i)
 
-            with h5py.File(snap_pre + f'{i}.hdf5', 'r') as f:
-                header = f['Header'].attrs
-                nums = header['NumPart_ThisFile'] # Number of particles in this file by type
-                self.n_gas[i] = nums[0] # Number of gas particles in this file
-                self.n_dm[i] = nums[1] # Number of PartType1 particles in this file
-                self.n_p2[i] = nums[2] # Number of PartType2 particles in this file
-                self.n_p3[i] = nums[3] # Number of PartType3 particles in this file
-                self.n_stars[i] = nums[4] # Number of star particles in this file
+    def read_counts_asyncio(self):
+        """Read the counts from the FOF and snapshot files using asyncio."""
+        async def read_counts_async():
+            loop = asyncio.get_running_loop()
+            with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+                await asyncio.gather(*(loop.run_in_executor(executor, self.read_counts_single, i) for i in range(self.n_files)))
+        asyncio.run(read_counts_async())
 
-    def read_groups(self):
-        """Read the group data from the FOF files."""
-        for i in range(self.n_files):
-            with h5py.File(fof_pre + f'{i}.hdf5', 'r') as f:
-                if self.n_groups[i] == 0: continue # Skip empty files
+    def read_groups_single(self, i):
+        """Read the group data from a single FOF file."""
+        with h5py.File(fof_pre + f'{i}.hdf5', 'r') as f:
+            if self.n_groups[i] > 0: # Skip empty files
                 g = f['Group']
                 offset = self.first_group[i] # Offset to the first group
                 next_offset = offset + self.n_groups[i] # Offset beyond the last group
@@ -420,34 +435,59 @@ class Simulation:
                 self.Group_M_Crit200[offset:next_offset] = g['Group_M_Crit200'][:]
                 self.GroupMassType[offset:next_offset] = g['GroupMassType'][:]
 
+    def read_groups(self):
+        """Read the group data from the FOF files."""
+        for i in range(self.n_files):
+            self.read_groups_single(i)
+
+    def read_groups_asyncio(self):
+        """Read the group data from the FOF files using asyncio."""
+        async def read_groups_async():
+            loop = asyncio.get_running_loop()
+            with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+                await asyncio.gather(*(loop.run_in_executor(executor, self.read_groups_single, i) for i in range(self.n_files)))
+        asyncio.run(read_groups_async())
+
+    def read_snaps_single(self, i):
+        """Read the particle data from a single snapshot file."""
+        with h5py.File(snap_pre + f'{i}.hdf5', 'r') as f:
+            if self.n_gas[i] > 0:
+                offset = self.first_gas[i]
+                next_offset = offset + self.n_gas[i]
+                self.r_gas[offset:next_offset] = f['PartType0/Coordinates'][:]
+                self.m_gas[offset:next_offset] = f['PartType0/Masses'][:]
+                self.m_gas_HR[offset:next_offset] = f['PartType0/HighResGasMass'][:]
+            if self.n_dm[i] > 0:
+                offset = self.first_dm[i]
+                next_offset = offset + self.n_dm[i]
+                self.r_dm[offset:next_offset] = f['PartType1/Coordinates'][:]
+            if self.n_p2[i] > 0:
+                offset = self.first_p2[i]
+                next_offset = offset + self.n_p2[i]
+                self.r_p2[offset:next_offset] = f['PartType2/Coordinates'][:]
+            if self.n_p3[i] > 0:
+                offset = self.first_p3[i]
+                next_offset = offset + self.n_p3[i]
+                self.r_p3[offset:next_offset] = f['PartType3/Coordinates'][:]
+            if self.n_stars[i] > 0:
+                offset = self.first_star[i]
+                next_offset = offset + self.n_stars[i]
+                self.r_stars[offset:next_offset] = f['PartType4/Coordinates'][:]
+                self.m_stars[offset:next_offset] = f['PartType4/Masses'][:]
+                self.is_HR[offset:next_offset] = f['PartType4/IsHighRes'][:]
+
     def read_snaps(self):
         """Read the particle data from the snapshot files."""
         for i in range(self.n_files):
-            with h5py.File(snap_pre + f'{i}.hdf5', 'r') as f:
-                if self.n_gas[i] > 0:
-                    offset = self.first_gas[i]
-                    next_offset = offset + self.n_gas[i]
-                    self.r_gas[offset:next_offset] = f['PartType0/Coordinates'][:]
-                    self.m_gas[offset:next_offset] = f['PartType0/Masses'][:]
-                    self.m_gas_HR[offset:next_offset] = f['PartType0/HighResGasMass'][:]
-                if self.n_dm[i] > 0:
-                    offset = self.first_dm[i]
-                    next_offset = offset + self.n_dm[i]
-                    self.r_dm[offset:next_offset] = f['PartType1/Coordinates'][:]
-                if self.n_p2[i] > 0:
-                    offset = self.first_p2[i]
-                    next_offset = offset + self.n_p2[i]
-                    self.r_p2[offset:next_offset] = f['PartType2/Coordinates'][:]
-                if self.n_p3[i] > 0:
-                    offset = self.first_p3[i]
-                    next_offset = offset + self.n_p3[i]
-                    self.r_p3[offset:next_offset] = f['PartType3/Coordinates'][:]
-                if self.n_stars[i] > 0:
-                    offset = self.first_star[i]
-                    next_offset = offset + self.n_stars[i]
-                    self.r_stars[offset:next_offset] = f['PartType4/Coordinates'][:]
-                    self.m_stars[offset:next_offset] = f['PartType4/Masses'][:]
-                    self.is_HR[offset:next_offset] = f['PartType4/IsHighRes'][:]
+            self.read_snaps_single(i)
+
+    def read_snaps_asyncio(self):
+        """Read the particle data from the snapshot files using asyncio."""
+        async def read_snaps_async():
+            loop = asyncio.get_running_loop()
+            with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+                await asyncio.gather(*(loop.run_in_executor(executor, self.read_snaps_single, i) for i in range(self.n_files)))
+        asyncio.run(read_snaps_async())
 
 def read_counts(i):
     """Read the counts from the FOF and snapshot files."""
@@ -647,6 +687,9 @@ def main():
         if SERIAL in READ_COUNTS:
             sim.read_counts()
             if TIMERS: t2 = time(); print(f"Time to read counts from files: {t2 - t1:g} s [serial]"); t1 = t2
+        if ASYNCIO in READ_COUNTS:
+            sim.read_counts_asyncio()
+            if TIMERS: t2 = time(); print(f"Time to read counts from files: {t2 - t1:g} s [asyncio]"); t1 = t2
         if MULTIPROCESSING in READ_COUNTS:
             with Pool() as pool:
                 pool.map(read_counts, range(sim.n_files))
@@ -660,6 +703,9 @@ def main():
         if SERIAL in READ_GROUPS:
             sim.read_groups()
             if TIMERS: t2 = time(); print(f"Time to read group data from files: {t2 - t1:g} s [serial]"); t1 = t2
+        if ASYNCIO in READ_GROUPS:
+            sim.read_groups_asyncio()
+            if TIMERS: t2 = time(); print(f"Time to read group data from files: {t2 - t1:g} s [asyncio]"); t1 = t2
         if MULTIPROCESSING in READ_GROUPS:
             with Pool() as pool:
                 pool.map(read_groups, range(sim.n_files))
@@ -677,6 +723,9 @@ def main():
         if SERIAL in READ_SNAPS:
             sim.read_snaps()
             if TIMERS: t2 = time(); print(f"Time to read particle data from files: {t2 - t1:g} s [serial]"); t1 = t2
+        if ASYNCIO in READ_SNAPS:
+            sim.read_snaps_asyncio()
+            if TIMERS: t2 = time(); print(f"Time to read particle data from files: {t2 - t1:g} s [asyncio]"); t1 = t2
         if MULTIPROCESSING in READ_SNAPS:
             with Pool() as pool:
                 pool.map(read_snaps, range(sim.n_files))

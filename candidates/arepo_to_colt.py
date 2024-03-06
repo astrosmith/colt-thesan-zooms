@@ -5,8 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 # Global variables
-snap = 178 # Snapshot number
-# snap = 188 # Snapshot number
+snap = 188 # Snapshot number
 out_dir = '.'
 colt_dir = f'{out_dir}/colt'
 fof_pre = f'{out_dir}/groups_{snap:03d}/fof_subhalo_tab_{snap:03d}.'
