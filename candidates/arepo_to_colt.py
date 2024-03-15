@@ -2,32 +2,37 @@ import numpy as np
 from time import time
 import h5py, os, errno, asyncio
 from concurrent.futures import ThreadPoolExecutor
+from multiprocessing import cpu_count
 from dataclasses import dataclass, field
 
-# Global variables
-snap = 188 # Snapshot number
-out_dir = '.'
-colt_dir = f'{out_dir}/colt'
-fof_pre = f'{out_dir}/groups_{snap:03d}/fof_subhalo_tab_{snap:03d}.'
-snap_pre = f'{out_dir}/snapdir_{snap:03d}/snapshot_{snap:03d}.'
-dist_file = f'{out_dir}/distances_{snap:03d}.hdf5'
-# dist_file = f'{out_dir}/../postprocessing/distances/distances_{snap:03d}.hdf5'
-
-VERBOSITY = 2 # Level of print verbosity
-MAX_WORKERS = 16 # Maximum number of workers
+VERBOSITY = 3 # Level of print verbosity
+MAX_WORKERS = cpu_count() # Maximum number of workers
 SERIAL = 1 # Run in serial
 ASYNCIO = 2 # Run in parallel (asyncio)
-MULTIPROCESSING = 3 # Run in parallel (multiprocessing)
-NUMPY = 1 # Use NumPy
-NUMBA = 2 # Use Numba
 READ_DEFAULT = (ASYNCIO,) # Default read method
-# READ_DEFAULT = (SERIAL,ASYNCIO,MULTIPROCESSING) # Default read method
-# CALC_DEFAULT = (NUMPY,) # Calculate center of mass
-# CALC_DEFAULT = (NUMPY, NUMBA) # Calculate center of mass
+# READ_DEFAULT = (SERIAL,ASYNCIO) # Default read method
 READ_COUNTS = READ_DEFAULT # Read counts methods
 READ_SNAPS = READ_DEFAULT # Read snapshots methods
-# CALC_COM = CALC_DEFAULT # Calculate center of mass methods
 TIMERS = True # Print timers
+
+# Global variables
+sim = 'g5760/z4'
+snap = 188 # Snapshot number
+zoom_dir = '/net/hstor001.ib/data2/group/mvogelsb/004/Thesan-Zooms'
+out_dir = f'{zoom_dir}/{sim}/output'
+dist_dir = f'{zoom_dir}/{sim}/postprocessing/distances'
+colt_dir = f'{zoom_dir}-COLT/{sim}/ics'
+
+# Overwrite for local testing
+#out_dir = '.' # Overwrite for local testing
+#dist_dir = '.' # Overwrite for local testing
+#colt_dir = '.' # Overwrite for local testing
+
+# The following paths should not change
+fof_pre = f'{out_dir}/groups_{snap:03d}/fof_subhalo_tab_{snap:03d}.'
+snap_pre = f'{out_dir}/snapdir_{snap:03d}/snapshot_{snap:03d}.'
+dist_file = f'{dist_dir}/distances_{snap:03d}.hdf5'
+colt_file = f'{colt_dir}/colt_{snap:03d}.hdf5'
 
 # Extracted fields
 gas_fields = ['Coordinates', 'Masses', 'HighResGasMass', 'Velocities', 'InternalEnergy', 'DustTemperature',
@@ -97,7 +102,7 @@ def get_time_difference_in_Gyr(a0, a1, Omega0, h):
 
 @dataclass
 class Simulation:
-    """Simulation information and shared data."""
+    """Simulation information and data."""
     n_files: np.int32 = 0 # Number of files
     n_gas_tot: np.uint64 = None # Total number of gas particles
     n_stars_tot: np.uint64 = None # Total number of star particles
@@ -122,7 +127,7 @@ class Simulation:
     PosHR: np.ndarray = None # Center of mass of high-resolution particles
     RadiusHR: np.float64 = None # Radius of high-resolution region
 
-    # Shared file counts and offsets
+    # File counts and offsets
     n_gas: np.ndarray = None
     n_stars: np.ndarray = None
     first_gas: np.ndarray = None
@@ -134,47 +139,46 @@ class Simulation:
 
     def __post_init__(self):
         """Allocate memory for gas and star arrays."""
-        if self.n_files == 0:
-            # Read header info from the snapshot files
-            with h5py.File(snap_pre + '0.hdf5', 'r') as f:
-                header = f['Header'].attrs
-                self.n_files = header['NumFilesPerSnapshot']
-                self.n_gas = np.zeros(self.n_files, dtype=np.uint64)
-                self.n_stars = np.zeros(self.n_files, dtype=np.uint64)
-                n_tot = header['NumPart_Total']
-                self.n_gas_tot = n_tot[0]
-                self.n_stars_tot = n_tot[4]
-                self.a = header['Time']
-                params = f['Parameters'].attrs
-                self.BoxSize = params['BoxSize']
-                self.h = params['HubbleParam']
-                self.Omega0 = params['Omega0']
-                self.OmegaBaryon = params['OmegaBaryon']
-                self.OmegaLambda = params['OmegaLambda']
-                self.UnitLength_in_cm = params['UnitLength_in_cm']
-                self.UnitMass_in_g = params['UnitMass_in_g']
-                self.UnitVelocity_in_cm_per_s = params['UnitVelocity_in_cm_per_s']
-                # Gas data
-                g = f['PartType0']
-                for field in gas_fields:
-                    shape, dtype = g[field].shape, g[field].dtype
-                    shape = (self.n_gas_tot,) + shape[1:]
-                    self.gas[field] = np.empty(shape, dtype=dtype)
-                # Star data
-                g = f['PartType4']
-                for field in star_fields:
-                    shape, dtype = g[field].shape, g[field].dtype
-                    shape = (self.n_stars_tot,) + shape[1:]
-                    self.stars[field] = np.empty(shape, dtype=dtype)
+        # Read header info from the snapshot files
+        with h5py.File(snap_pre + '0.hdf5', 'r') as f:
+            header = f['Header'].attrs
+            self.n_files = header['NumFilesPerSnapshot']
+            self.n_gas = np.zeros(self.n_files, dtype=np.uint64)
+            self.n_stars = np.zeros(self.n_files, dtype=np.uint64)
+            n_tot = header['NumPart_Total']
+            self.n_gas_tot = n_tot[0]
+            self.n_stars_tot = n_tot[4]
+            self.a = header['Time']
+            params = f['Parameters'].attrs
+            self.BoxSize = params['BoxSize']
+            self.h = params['HubbleParam']
+            self.Omega0 = params['Omega0']
+            self.OmegaBaryon = params['OmegaBaryon']
+            self.OmegaLambda = params['OmegaLambda']
+            self.UnitLength_in_cm = params['UnitLength_in_cm']
+            self.UnitMass_in_g = params['UnitMass_in_g']
+            self.UnitVelocity_in_cm_per_s = params['UnitVelocity_in_cm_per_s']
+            # Gas data
+            g = f['PartType0']
+            for field in gas_fields:
+                shape, dtype = g[field].shape, g[field].dtype
+                shape = (self.n_gas_tot,) + shape[1:]
+                self.gas[field] = np.empty(shape, dtype=dtype)
+            # Star data
+            g = f['PartType4']
+            for field in star_fields:
+                shape, dtype = g[field].shape, g[field].dtype
+                shape = (self.n_stars_tot,) + shape[1:]
+                self.stars[field] = np.empty(shape, dtype=dtype)
 
-            # Derived quantities
-            self.BoxHalf = self.BoxSize / 2.
-            self.length_to_cgs = self.a * self.UnitLength_in_cm / self.h
-            self.volume_to_cgs = self.length_to_cgs**3
-            self.mass_to_cgs = self.UnitMass_in_g / self.h
-            self.mass_to_Msun = self.mass_to_cgs / SOLAR_MASS
-            self.velocity_to_cgs = np.sqrt(self.a) * self.UnitVelocity_in_cm_per_s
-            self.density_to_cgs = self.mass_to_cgs / self.volume_to_cgs
+        # Derived quantities
+        self.BoxHalf = self.BoxSize / 2.
+        self.length_to_cgs = self.a * self.UnitLength_in_cm / self.h
+        self.volume_to_cgs = self.length_to_cgs**3
+        self.mass_to_cgs = self.UnitMass_in_g / self.h
+        self.mass_to_Msun = self.mass_to_cgs / SOLAR_MASS
+        self.velocity_to_cgs = np.sqrt(self.a) * self.UnitVelocity_in_cm_per_s
+        self.density_to_cgs = self.mass_to_cgs / self.volume_to_cgs
 
     def convert_counts(self):
         """Convert the counts to file offsets."""
@@ -254,8 +258,9 @@ class Simulation:
                 await asyncio.gather(*(loop.run_in_executor(executor, self.read_snaps_single, i) for i in range(self.n_files)))
         asyncio.run(read_snaps_async())
 
-# def arepo_to_colt(snap=10, out_dir='.', include_metals=True):
 def arepo_to_colt(include_metals=True):
+    os.makedirs(colt_dir, exist_ok=True) # Ensure the colt directory exists
+    silentremove(colt_file)
     # Setup simulation parameters
     if TIMERS: t1 = time()
     sim = Simulation()
@@ -264,6 +269,7 @@ def arepo_to_colt(include_metals=True):
           '  |  |__| |__  /__`  /\\  |\\ |\n'
           '  |  |  | |___ .__/ /--\\ | \\|\n' +
           f'\nInput Directory: {out_dir}' +
+          f'\nOutput Directory: {colt_dir}' +
           f'\nSnap {snap}: NumGas = {sim.n_gas_tot}, NumStar = {sim.n_stars_tot}' +
           f'\nz = {1./sim.a - 1.:g}, a = {sim.a:g}, h = {sim.h:g}, BoxSize = {1e-3*sim.BoxSize:g} cMpc/h = {1e-3*sim.BoxSize/sim.h:g} cMpc' +
           f'\nRadiusHR = {sim.RadiusHR:g} ckpc/h, PosHR = {1e-3*sim.PosHR} cMpc/h\n')
@@ -281,7 +287,7 @@ def arepo_to_colt(include_metals=True):
     if TIMERS: t2 = time(); print(f"Time to convert counts to offsets: {t2 - t1:g} s"); t1 = t2
 
     # Read the particle data from the snapshot files
-    print("\nReading snapshot data into shared memory...")
+    print("\nReading snapshot data...")
     if SERIAL in READ_SNAPS:
         sim.read_snaps()
         if TIMERS: t2 = time(); print(f"Time to read particle data from files: {t2 - t1:g} s [serial]"); t1 = t2
@@ -336,10 +342,7 @@ def arepo_to_colt(include_metals=True):
         print(f'Extracted [gas, star] center of mass position = [{r_com/kpc}, {r_star_com/kpc}] kpc  =>  |r_com| = [{np.sqrt(np.sum(r_com**2))/kpc}, {np.sqrt(np.sum(r_star_com**2))/kpc}] kpc')
         print(f'Extracted [gas, star] center of mass velocity = [{v_com/km}, {v_star_com/km}] km/s  =>  |v_com| = [{np.sqrt(np.sum(v_com**2))/km}, {np.sqrt(np.sum(v_star_com**2))/km}] km/s')
 
-    os.makedirs(f'{colt_dir}/ics', exist_ok=True) # Ensure the colt directory exists
-    colt_filename = f'{colt_dir}/ics/colt_{snap:03d}.hdf5'
-    silentremove(colt_filename)
-    with h5py.File(colt_filename, 'w') as f:
+    with h5py.File(colt_file, 'w') as f:
         # Simulation properties
         f.attrs['n_cells'] = n_cells # Number of cells
         f.attrs['n_stars'] = n_stars # Number of star particles
@@ -399,6 +402,7 @@ def arepo_to_colt(include_metals=True):
         # f.create_dataset('B', data=magnetic_to_cgs*sim.gas['MagneticField'], dtype=np.float64) # Magnetic field [Gauss]
         # f['B'].attrs['units'] = b'G'
         f.create_dataset('id', data=sim.gas['ParticleIDs']) # Particle IDs
+        f.create_dataset('is_HR', data=sim.gas['HighResGasMass'] > GAS_HIGH_RES_THRESHOLD * sim.gas['Masses'], dtype=bool) # High-resolution gas mask
 
         # Star fields
         f.create_dataset('r_star', data=sim.length_to_cgs * sim.stars['Coordinates'], dtype=np.float64) # Star positions [cm]

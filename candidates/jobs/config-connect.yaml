@@ -1,0 +1,20 @@
+# COLT config file
+--- !projections              # Ray-based projections module
+
+init_dir: ics                 # Initial conditions directory (default: "ics")
+init_base: colt               # Initial conditions base name (optional)
+output_dir: output            # Output directory name (default: "output")
+output_base: proj             # Output file base name (default: "colt")
+save_circulators: false       # Do not save the Voronoi circulators
+
+field_weight_pairs:           # Projection field-weight pairs
+  - [rho, avg]
+
+# Information about cameras
+image_radius_bbox: 0.5        # Image radius relative to the bbox (1 Rvir)
+n_pixels: 128                 # Number of image pixels
+cameras:                      # Add camera directions manually
+  - [0,0,1]
+
+# verbose: true                 # Verbose output for tests and debugging
+
