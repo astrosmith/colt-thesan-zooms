@@ -19,9 +19,9 @@ colt_dir = f'{zoom_dir}-COLT/{sim}/ics'
 colt_file = f'{colt_dir}/colt_{snap:03d}.hdf5'
 
 # Extracted fields
-gas_fields = ['D', 'SFR', 'T_dust', 'V', 'X', 'Y', 'Z', 'Z_C', 'Z_Fe', 'Z_Mg', 'Z_N', 'Z_Ne', 'Z_O', 'Z_S', 'Z_Si',
-              'e_int', 'id', 'is_HR', 'r', 'rho', 'v', 'x_H2', 'x_HI', 'x_HeI', 'x_HeII', 'x_e']
-star_fields = ['Z_star', 'age_star', 'id_star', 'm_init_star', 'r_star', 'v_star']
+gas_fields = ['D', 'SFR', 'T_dust', 'X', 'Y', 'Z', 'Z_C', 'Z_Fe', 'Z_Mg', 'Z_N', 'Z_Ne', 'Z_O', 'Z_S', 'Z_Si',
+              'e_int', 'is_HR', 'r', 'rho', 'v', 'x_H2', 'x_HI', 'x_HeI', 'x_HeII', 'x_e', 'id', 'group_id', 'subhalo_id']
+star_fields = ['Z_star', 'age_star', 'm_init_star', 'r_star', 'v_star', 'id_star', 'group_id_star', 'subhalo_id_star']
 units = {'r': b'cm', 'v': b'cm/s', 'e_int': b'cm^2/s^2', 'T_dust': b'K', 'rho': b'g/cm^3', 'SFR': b'Msun/yr',
          'r_star': b'cm', 'v_star': b'cm/s', 'm_star': b'Msun', 'm_init_star': b'Msun', 'age_star': b'Gyr'}
 
