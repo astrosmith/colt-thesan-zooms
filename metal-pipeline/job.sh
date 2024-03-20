@@ -25,8 +25,8 @@ source ~/.colt
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 export HDF5_USE_FILE_LOCKING=FALSE
 
-call="mpirun --mca opal_warn_on_missing_libcuda 0 --mca btl '^openib' --mca psm2 ucx -np $SLURM_NTASKS --bind-to none"
-colt="~/colt/colt"
+call="mpirun --mca opal_warn_on_missing_libcuda 0 --mca btl ^openib --mca psm2 ucx -np $SLURM_NTASKS --bind-to none"
+colt="${HOME}/colt/colt"
 
 run() {
     for suffix in "$@"; do

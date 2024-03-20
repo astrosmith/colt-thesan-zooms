@@ -5,28 +5,42 @@ from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import cpu_count
 from dataclasses import dataclass, field
 
-VERBOSITY = 3 # Level of print verbosity
+VERBOSITY = 0 # Level of print verbosity
 MAX_WORKERS = cpu_count() # Maximum number of workers
 SERIAL = 1 # Run in serial
 ASYNCIO = 2 # Run in parallel (asyncio)
 READ_DEFAULT = (ASYNCIO,) # Default read method
 # READ_DEFAULT = (SERIAL,ASYNCIO) # Default read method
 READ_COUNTS = READ_DEFAULT # Read counts methods
+READ_GROUPS = READ_DEFAULT # Read groups methods
 READ_SNAPS = READ_DEFAULT # Read snapshots methods
-TIMERS = True # Print timers
+TIMERS = (VERBOSITY > 0) # Print timers
 
-# Global variables
+# Configurable global variables
 sim = 'g5760/z4'
 snap = 188 # Snapshot number
 zoom_dir = '/net/hstor001.ib/data2/group/mvogelsb/004/Thesan-Zooms'
+
+if __name__ == '__main__':
+    import sys
+    if len(sys.argv) == 2:
+        sim = sys.argv[1]
+    elif len(sys.argv) == 3:
+        sim, snap = sys.argv[1], int(sys.argv[2])
+    elif len(sys.argv) == 4:
+        sim, snap, zoom_dir = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+    elif len(sys.argv) != 1:
+        raise ValueError('Usage: python arepo_to_colt.py [sim] [snap] [zoom_dir]')
+
+# Derived global variables
 out_dir = f'{zoom_dir}/{sim}/output'
 dist_dir = f'{zoom_dir}/{sim}/postprocessing/distances'
 colt_dir = f'{zoom_dir}-COLT/{sim}/ics'
 
 # Overwrite for local testing
-#out_dir = '.' # Overwrite for local testing
-#dist_dir = '.' # Overwrite for local testing
-#colt_dir = '.' # Overwrite for local testing
+#out_dir = '.'
+#dist_dir = '.'
+#colt_dir = '.'
 
 # The following paths should not change
 fof_pre = f'{out_dir}/groups_{snap:03d}/fof_subhalo_tab_{snap:03d}.'
@@ -35,8 +49,10 @@ dist_file = f'{dist_dir}/distances_{snap:03d}.hdf5'
 colt_file = f'{colt_dir}/colt_{snap:03d}.hdf5'
 
 # Extracted fields
+group_fields = ['GroupNsubs', 'GroupLenType']
+subhalo_fields = ['SubhaloLenType']
 gas_fields = ['Coordinates', 'Masses', 'HighResGasMass', 'Velocities', 'InternalEnergy', 'DustTemperature',
-              'GFM_Metals', 'GFM_Metallicity', 'GFM_DustMetallicity', 'Density', 'H2_Fraction', 'HI_Fraction',
+              'GFM_Metallicity', 'GFM_DustMetallicity', 'Density', 'H2_Fraction', 'HI_Fraction',
               'HeI_Fraction', 'HeII_Fraction', 'ElectronAbundance', 'StarFormationRate', 'ParticleIDs']
 star_fields = ['Coordinates', 'Masses', 'IsHighRes', 'Velocities', 'GFM_StellarFormationTime', 'GFM_Metallicity', 'GFM_InitialMass', 'ParticleIDs']
 
@@ -104,6 +120,8 @@ def get_time_difference_in_Gyr(a0, a1, Omega0, h):
 class Simulation:
     """Simulation information and data."""
     n_files: np.int32 = 0 # Number of files
+    n_groups_tot: np.uint64 = None # Total number of groups
+    n_subhalos_tot: np.uint64 = None # Total number of subhalos
     n_gas_tot: np.uint64 = None # Total number of gas particles
     n_stars_tot: np.uint64 = None # Total number of star particles
     a: np.float64 = None # Scale factor
@@ -128,10 +146,18 @@ class Simulation:
     RadiusHR: np.float64 = None # Radius of high-resolution region
 
     # File counts and offsets
+    n_groups: np.ndarray = None
+    n_subhalos: np.ndarray = None
     n_gas: np.ndarray = None
     n_stars: np.ndarray = None
+    first_group: np.ndarray = None
+    first_subhalo: np.ndarray = None
     first_gas: np.ndarray = None
     first_star: np.ndarray = None
+
+    # FOF data
+    groups: dict = field(default_factory=dict)
+    subhalos: dict = field(default_factory=dict)
 
     # Particle data
     gas: dict = field(default_factory=dict)
@@ -140,6 +166,24 @@ class Simulation:
     def __post_init__(self):
         """Allocate memory for gas and star arrays."""
         # Read header info from the snapshot files
+        with h5py.File(fof_pre + '0.hdf5', 'r') as f:
+            header = f['Header'].attrs
+            self.n_groups_tot = header['Ngroups_Total']
+            self.n_subhalos_tot = header['Nsubhalos_Total']
+            self.n_files = header['NumFiles']
+            self.n_groups = np.zeros(self.n_files, dtype=np.uint64)
+            self.n_subhalos = np.zeros(self.n_files, dtype=np.uint64)
+            g = f['Group']
+            for field in group_fields:
+                shape, dtype = g[field].shape, g[field].dtype
+                shape = (self.n_groups_tot,) + shape[1:]
+                self.groups[field] = np.empty(shape, dtype=dtype)
+            g = f['Subhalo']
+            for field in subhalo_fields:
+                shape, dtype = g[field].shape, g[field].dtype
+                shape = (self.n_subhalos_tot,) + shape[1:]
+                self.subhalos[field] = np.empty(shape, dtype=dtype)
+
         with h5py.File(snap_pre + '0.hdf5', 'r') as f:
             header = f['Header'].attrs
             self.n_files = header['NumFilesPerSnapshot']
@@ -182,15 +226,31 @@ class Simulation:
 
     def convert_counts(self):
         """Convert the counts to file offsets."""
+        self.first_group = np.cumsum(self.n_groups) - self.n_groups
+        self.first_subhalo = np.cumsum(self.n_subhalos) - self.n_subhalos
         self.first_gas = np.cumsum(self.n_gas) - self.n_gas
         self.first_star = np.cumsum(self.n_stars) - self.n_stars
 
     def print_offsets(self):
         """Print the file counts and offsets."""
+        print(f'n_groups = {self.n_groups} (n_groups_tot = {self.n_groups_tot})')
+        print(f'n_subhalos = {self.n_subhalos} (n_subhalos_tot = {self.n_subhalos_tot})')
         print(f'n_gas = {self.n_gas} (n_gas_tot = {self.n_gas_tot})')
         print(f'n_stars = {self.n_stars} (n_stars_tot = {self.n_stars_tot})\n')
+        print(f'first_group = {self.first_group} (n_groups_tot = {self.n_groups_tot})')
+        print(f'first_subhalo = {self.first_subhalo} (n_subhalos_tot = {self.n_subhalos_tot})')
         print(f'first_gas = {self.first_gas} (n_gas_tot = {self.n_gas_tot})')
         print(f'first_star = {self.first_star} (n_stars_tot = {self.n_stars_tot})')
+
+    def print_groups(self):
+        """Print the group data."""
+        print('\nGroup data:')
+        print(f'GroupNsubs = {self.groups["GroupNsubs"]}')
+        # for field in self.groups:
+        #     print(f'{field} = {self.groups[field]}')
+        # print('\nSubhalo data:')
+        # for field in self.subhalos:
+        #     print(f'{field} = {self.subhalos[field]}')
 
     def print_particles(self):
         """Print the particle data."""
@@ -210,6 +270,11 @@ class Simulation:
 
     def read_counts_single(self, i):
         """Read the counts from a single snapshot file."""
+        with h5py.File(fof_pre + f'{i}.hdf5', 'r') as f:
+            header = f['Header'].attrs
+            self.n_groups[i] = header['Ngroups_ThisFile']
+            self.n_subhalos[i] = header['Nsubhalos_ThisFile']
+
         with h5py.File(snap_pre + f'{i}.hdf5', 'r') as f:
             header = f['Header'].attrs
             nums = header['NumPart_ThisFile'] # Number of particles in this file by type
@@ -228,6 +293,100 @@ class Simulation:
             with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
                 await asyncio.gather(*(loop.run_in_executor(executor, self.read_counts_single, i) for i in range(self.n_files)))
         asyncio.run(read_counts_async())
+
+    def read_groups_single(self, i):
+        """Read the group data from a single FOF file."""
+        with h5py.File(fof_pre + f'{i}.hdf5', 'r') as f:
+            if self.n_groups[i] > 0: # Skip empty files
+                g = f['Group']
+                offset = self.first_group[i] # Offset to the first group
+                next_offset = offset + self.n_groups[i] # Offset beyond the last group
+                for field in group_fields:
+                    self.groups[field][offset:next_offset] = g[field][:]
+            if self.n_subhalos[i] > 0: # Skip empty files
+                g = f['Subhalo']
+                offset = self.first_subhalo[i] # Offset to the first subhalo
+                next_offset = offset + self.n_subhalos[i] # Offset beyond the last subhalo
+                for field in subhalo_fields:
+                    self.subhalos[field][offset:next_offset] = g[field][:]
+
+    def read_groups(self):
+        """Read the group data from the FOF files."""
+        for i in range(self.n_files):
+            self.read_groups_single(i)
+
+    def read_groups_asyncio(self):
+        """Read the group data from the FOF files using asyncio."""
+        async def read_groups_async():
+            loop = asyncio.get_running_loop()
+            with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+                await asyncio.gather(*(loop.run_in_executor(executor, self.read_groups_single, i) for i in range(self.n_files)))
+        asyncio.run(read_groups_async())
+
+    def assign_groups(self):
+        """Assign group and subhalo ids to each particle."""
+        self.gas['GroupID'] = np.empty(self.n_gas_tot, dtype=np.int32)
+        self.gas['SubhaloID'] = np.empty(self.n_gas_tot, dtype=np.int32)
+        self.stars['GroupID'] = np.empty(self.n_stars_tot, dtype=np.int32)
+        self.stars['SubhaloID'] = np.empty(self.n_stars_tot, dtype=np.int32)
+        gas_gid, stars_gid = self.gas['GroupID'], self.stars['GroupID']
+        gas_sid, stars_sid = self.gas['SubhaloID'], self.stars['SubhaloID']
+        n_subs = self.groups['GroupNsubs'] # Number of subhalos in each group
+        end_sub = np.cumsum(n_subs) # End subhalo in each group (non-inclusive)
+        beg_sub = end_sub - n_subs # First subhalo in each group
+        gas_ng, stars_ng = self.groups['GroupLenType'][:,0], self.groups['GroupLenType'][:,4]
+        gas_ns, stars_ns = self.subhalos['SubhaloLenType'][:,0], self.subhalos['SubhaloLenType'][:,4]
+        end_gas = np.cumsum(gas_ng) # End particle in each group (non-inclusive)
+        end_stars = np.cumsum(stars_ng)
+        beg_gas = end_gas - gas_ng # First particle in each group
+        beg_stars = end_stars - stars_ng
+        gas_gid[end_gas[-1]:] = -2 # The outer fuzz is not part of any FoF group
+        stars_gid[end_stars[-1]:] = -2
+        gas_sid[end_gas[-1]:] = -2 # The outer fuzz is not part of any subhalo
+        stars_sid[end_stars[-1]:] = -2
+        gas_sid[:end_gas[-1]] = -1 # The inner fuzz is not part of any subhalo
+        stars_sid[:end_stars[-1]] = -1
+        for igrp in range(self.n_groups_tot):
+            beg_gas_grp = beg_gas[igrp] # First particle in this group
+            beg_stars_grp = beg_stars[igrp]
+            end_gas_grp = end_gas[igrp] # End particle in this group (non-inclusive)
+            end_stars_grp = end_stars[igrp]
+            beg_gas_sub = beg_gas[igrp] # First particle in this group's first subhalo
+            beg_stars_sub = beg_stars[igrp]
+            end_gas_sub = beg_gas[igrp] # End particle in this group's first subhalo (non-inclusive)
+            end_stars_sub = beg_stars[igrp]
+            gas_gid[beg_gas_grp:end_gas_grp] = igrp # Assign group id to particles
+            stars_gid[beg_stars_grp:end_stars_grp] = igrp
+            beg_sub_grp = beg_sub[igrp] # First subhalo in this group
+            end_sub_grp = end_sub[igrp] # End subhalo in this group (non-inclusive)
+            for isub in range(beg_sub_grp, end_sub_grp):
+                end_gas_sub += gas_ns[isub] # End particle in this subhalo (non-inclusive)
+                end_stars_sub += stars_ns[isub]
+                assert beg_gas_sub >= beg_gas_grp, "Subhalo extends before group (gas)"
+                assert beg_stars_sub >= beg_stars_grp, "Subhalo extends before group (stars)"
+                assert end_gas_sub <= end_gas_grp, "Subhalo extends beyond group (gas)"
+                assert end_stars_sub <= end_stars_grp, "Subhalo extends beyond group (stars)"
+                gas_sid[beg_gas_sub:end_gas_sub] = isub # Assign subhalo id to particles
+                stars_sid[beg_stars_sub:end_stars_sub] = isub
+                beg_gas_sub += gas_ns[isub] # Update first particle in next subhalo
+                beg_stars_sub += stars_ns[isub]
+        n_gas_outer = np.count_nonzero(gas_gid == -2) # Number of outer fuzz gas particles
+        n_stars_outer = np.count_nonzero(stars_gid == -2) # Number of outer fuzz star particles
+        assert n_gas_outer == np.count_nonzero(gas_sid == -2), "Number of group and subhalo outer fuzz gas particles does not match"
+        assert n_stars_outer == np.count_nonzero(stars_sid == -2), "Number of group and subhalo outer fuzz star particles does not match"
+        n_gas_inner = np.count_nonzero(gas_sid == -1) # Number of inner fuzz gas particles
+        n_stars_inner = np.count_nonzero(stars_sid == -1) # Number of inner fuzz star particles
+        n_gas_subhalos = np.count_nonzero(gas_sid >= 0) # Number of gas particles in subhalos
+        n_stars_subhalos = np.count_nonzero(stars_sid >= 0) # Number of star particles in subhalos
+        assert n_gas_subhalos + n_gas_outer + n_gas_inner == self.n_gas_tot
+        assert n_stars_subhalos + n_stars_outer + n_stars_inner == self.n_stars_tot
+        if VERBOSITY > 1:
+            print(f'\nn_gas_outer = {n_gas_outer} = {100.*float(n_gas_outer)/float(self.n_gas_tot):g}%')
+            print(f'n_stars_outer = {n_stars_outer} = {100.*float(n_stars_outer)/float(self.n_stars_tot):g}%')
+            print(f'n_gas_inner = {n_gas_inner} = {100.*float(n_gas_inner)/float(self.n_gas_tot):g}%')
+            print(f'n_stars_inner = {n_stars_inner} = {100.*float(n_stars_inner)/float(self.n_stars_tot):g}%')
+            print(f'n_gas_subhalos = {n_gas_subhalos} = {100.*float(n_gas_subhalos)/float(self.n_gas_tot):g}%')
+            print(f'n_stars_subhalos = {n_stars_subhalos} = {100.*float(n_stars_subhalos)/float(self.n_stars_tot):g}%')
 
     def read_snaps_single(self, i):
         """Read the particle data from a single snapshot file."""
@@ -263,6 +422,7 @@ def arepo_to_colt(include_metals=True):
     silentremove(colt_file)
     # Setup simulation parameters
     if TIMERS: t1 = time()
+    if include_metals: gas_fields.append('GFM_Metals') # Add metals to output
     sim = Simulation()
     sim.read_com() # Read extraction region information
     print(' ___       ___  __             \n'
@@ -270,7 +430,8 @@ def arepo_to_colt(include_metals=True):
           '  |  |  | |___ .__/ /--\\ | \\|\n' +
           f'\nInput Directory: {out_dir}' +
           f'\nOutput Directory: {colt_dir}' +
-          f'\nSnap {snap}: NumGas = {sim.n_gas_tot}, NumStar = {sim.n_stars_tot}' +
+          f'\nSnap {snap}: Ngroups = {sim.n_groups_tot}, Nsubhalos = {sim.n_subhalos_tot}' +
+          f', NumGas = {sim.n_gas_tot}, NumStar = {sim.n_stars_tot}' +
           f'\nz = {1./sim.a - 1.:g}, a = {sim.a:g}, h = {sim.h:g}, BoxSize = {1e-3*sim.BoxSize:g} cMpc/h = {1e-3*sim.BoxSize/sim.h:g} cMpc' +
           f'\nRadiusHR = {sim.RadiusHR:g} ckpc/h, PosHR = {1e-3*sim.PosHR} cMpc/h\n')
     if TIMERS: t2 = time(); print(f"Time to setup simulation: {t2 - t1:g} s"); t1 = t2
@@ -286,8 +447,22 @@ def arepo_to_colt(include_metals=True):
     if VERBOSITY > 1: sim.print_offsets()
     if TIMERS: t2 = time(); print(f"Time to convert counts to offsets: {t2 - t1:g} s"); t1 = t2
 
+    # Read the group data from the FOF files
+    if VERBOSITY > 0: print("\nReading fof data...")
+    if SERIAL in READ_GROUPS:
+        sim.read_groups()
+        if TIMERS: t2 = time(); print(f"Time to read group data from files: {t2 - t1:g} s [serial]"); t1 = t2
+    if ASYNCIO in READ_GROUPS:
+        sim.read_groups_asyncio()
+        if TIMERS: t2 = time(); print(f"Time to read group data from files: {t2 - t1:g} s [asyncio]"); t1 = t2
+    if VERBOSITY > 1: sim.print_groups()
+
+    # Assign group and subhalo ids to each gas and star particle
+    sim.assign_groups()
+    if TIMERS: t2 = time(); print(f"Time to assign groups and subhalos to particles: {t2 - t1:g} s"); t1 = t2
+
     # Read the particle data from the snapshot files
-    print("\nReading snapshot data...")
+    if VERBOSITY > 0: print("\nReading snapshot data...")
     if SERIAL in READ_SNAPS:
         sim.read_snaps()
         if TIMERS: t2 = time(); print(f"Time to read particle data from files: {t2 - t1:g} s [serial]"); t1 = t2
@@ -403,6 +578,8 @@ def arepo_to_colt(include_metals=True):
         # f['B'].attrs['units'] = b'G'
         f.create_dataset('id', data=sim.gas['ParticleIDs']) # Particle IDs
         f.create_dataset('is_HR', data=sim.gas['HighResGasMass'] > GAS_HIGH_RES_THRESHOLD * sim.gas['Masses'], dtype=bool) # High-resolution gas mask
+        f.create_dataset('group_id', data=sim.gas['GroupID']) # Group ID
+        f.create_dataset('subhalo_id', data=sim.gas['SubhaloID']) # Subhalo ID
 
         # Star fields
         f.create_dataset('r_star', data=sim.length_to_cgs * sim.stars['Coordinates'], dtype=np.float64) # Star positions [cm]
@@ -418,13 +595,9 @@ def arepo_to_colt(include_metals=True):
         f.create_dataset('age_star', data=age_star) # Star age [Gyr]
         f['age_star'].attrs['units'] = b'Gyr'
         f.create_dataset('id_star', data=sim.stars['ParticleIDs']) # Particle IDs
+        f.create_dataset('group_id_star', data=sim.stars['GroupID']) # Group ID
+        f.create_dataset('subhalo_id_star', data=sim.stars['SubhaloID']) # Subhalo ID
 
 if __name__ == '__main__':
-    # import sys
-    # if len(sys.argv) == 3:
-    #     snap, out_dir = int(sys.argv[1]), sys.argv[2]
-    # else:
-    #     raise ValueError('Usage: python arepo_to_colt.py snap out_dir')
-    # arepo_to_colt(snap=snap, out_dir=out_dir)
     arepo_to_colt()
 
