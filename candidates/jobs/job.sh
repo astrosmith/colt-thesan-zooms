@@ -2,8 +2,8 @@
 
 # SBATCH --job-name=colt
 #SBATCH --output=colt-%a-%A.out
-# SBATCH --array=0-188
-#SBATCH --array=188
+#SBATCH --array=0-188
+# SBATCH --array=188
 #SBATCH --partition=sched_mit_mvogelsb,sched_mit_mki,sched_mit_mki_preempt
 # SBATCH --partition=sched_mit_mki_r8
 #SBATCH --nodes=1
@@ -14,7 +14,7 @@
 # SBATCH --mem-per-cpu=3000 # 3GB of memory per CPU
 #SBATCH --export=ALL
 # SBATCH --time=48:00:00
-#SBATCH --time=1:00:00
+#SBATCH --time=12:00:00
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=arsmith@mit.edu
 # SBATCH --exclude=node1412,node1413,node1415,node1421,node1426,node1454,node1455,node1447

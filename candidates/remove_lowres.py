@@ -43,13 +43,6 @@ pc = 3.085677581467192e18  # Units: 1 pc  = 3e18 cm
 kpc = 1e3 * pc             # Units: 1 kpc = 3e21 cm
 Mpc = 1e6 * pc             # Units: 1 Mpc = 3e24 cm
 
-def silentremove(filename):
-    try:
-        os.remove(filename)
-    except OSError as e: # this would be "except OSError, e:" before Python 2.6
-        if e.errno != errno.ENOENT: # errno.ENOENT = no such file or directory
-            raise # re-raise exception if a different error occurred
-
 @dataclass
 class Simulation:
     """Simulation information and data."""
@@ -171,6 +164,10 @@ def remove_lowres():
         for field in star_fields:
             f.create_dataset(field, data=sim.stars[field])
             if field in units: f[field].attrs['units'] = units[field]
+    try:
+        os.rename(colt_file + '-tmp', colt_file)
+    except OSError as e:
+        raise OSError(f"Error renaming file: {e}")
 
 if __name__ == '__main__':
     remove_lowres()
