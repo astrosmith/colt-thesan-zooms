@@ -19,7 +19,7 @@ TIMERS = (VERBOSITY > 0) # Print timers
 # Configurable global variables
 sim = 'g5760/z4'
 snap = 188 # Snapshot number
-zoom_dir = '/net/hstor001.ib/data2/group/mvogelsb/004/Thesan-Zooms'
+zoom_dir = '/orcd/data/mvogelsb/004/Thesan-Zooms'
 
 if __name__ == '__main__':
     import sys

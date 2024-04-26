@@ -6,10 +6,22 @@ from dataclasses import dataclass, field
 VERBOSITY = 2 # Level of print verbosity
 TIMERS = True # Print timers
 
-# Global variables
+# Configurable global variables
 sim = 'g5760/z4'
 snap = 188 # Snapshot number
-zoom_dir = '/net/hstor001.ib/data2/group/mvogelsb/004/Thesan-Zooms'
+zoom_dir = '/orcd/data/mvogelsb/004/Thesan-Zooms'
+
+if __name__ == '__main__':
+    import sys
+    if len(sys.argv) == 2:
+        sim = sys.argv[1]
+    elif len(sys.argv) == 3:
+        sim, snap = sys.argv[1], int(sys.argv[2])
+    elif len(sys.argv) == 4:
+        sim, snap, zoom_dir = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+    elif len(sys.argv) != 1:
+        raise ValueError('Usage: python remove_lowres.py [sim] [snap] [zoom_dir]')
+
 colt_dir = f'{zoom_dir}-COLT/{sim}/ics'
 
 # Overwrite for local testing
@@ -25,40 +37,11 @@ star_fields = ['Z_star', 'age_star', 'm_init_star', 'r_star', 'v_star', 'id_star
 units = {'r': b'cm', 'v': b'cm/s', 'e_int': b'cm^2/s^2', 'T_dust': b'K', 'rho': b'g/cm^3', 'SFR': b'Msun/yr',
          'r_star': b'cm', 'v_star': b'cm/s', 'm_star': b'Msun', 'm_init_star': b'Msun', 'age_star': b'Gyr'}
 
-# Universal constants
-# c = 2.99792458e10          # Speed of light [cm/s]
-# kB = 1.380648813e-16       # Boltzmann's constant [g cm^2/s^2/K]
-# h = 6.626069573e-27        # Planck's constant [erg/s]
-# mH = 1.6735327e-24         # Mass of hydrogen atom [g]
-# me = 9.109382917e-28       # Electron mass [g]
-# ee = 4.80320451e-10        # Electron charge [g^(1/2) cm^(3/2) / s]
 
 # Emperical unit definitions
-# Msun = 1.988435e33         # Solar mass [g]
-# Lsun = 3.839e33            # Solar luminosity [erg/s]
-# Zsun = 0.0134              # Solar metallicity (mass fraction)
-# arcsec = 648000. / np.pi   # arseconds per radian
 pc = 3.085677581467192e18  # Units: 1 pc  = 3e18 cm
 kpc = 1e3 * pc             # Units: 1 kpc = 3e21 cm
 Mpc = 1e6 * pc             # Units: 1 Mpc = 3e24 cm
-# km = 1e5                   # Units: 1 km  = 1e5  cm
-# angstrom = 1e-8            # Units: 1 angstrom = 1e-8 cm
-# day = 86400.               # Units: 1 day = 24 * 3600 seconds
-# yr = 365.24 * day          # Units: 1 year = 365.24 days
-# kyr = 1e3 * yr             # Units: 1 Myr = 10^6 yr
-# Myr = 1e6 * yr             # Units: 1 Myr = 10^6 yr
-
-# GAS_HIGH_RES_THRESHOLD = 0.5  # Threshold deliniating high and low resolution gas particles
-# SOLAR_MASS = 1.989e33         # Solar masses
-# BOLTZMANN = 1.38065e-16       # Boltzmann's constant [g cm^2/sec^2/k]
-# PLANCK = 6.6260695e-27        # Planck's constant [erg sec]
-# PROTONMASS = 1.67262178e-24   # Mass of hydrogen atom [g]
-# HYDROGEN_MASSFRAC = 0.76      # Mass fraction of hydrogen
-# GAMMA = 5. / 3.               # Adiabatic index of simulated gas
-# GAMMA_MINUS1 = GAMMA - 1.     # For convenience
-# HUBBLE = 3.2407789e-18        # Hubble constant [h/sec]
-# SEC_PER_GIGAYEAR = 3.15576e16 # Seconds per gigayear
-# HE_ABUND = (1./HYDROGEN_MASSFRAC - 1.) / 4. # Helium abundance = n_He / n_H
 
 def silentremove(filename):
     try:
@@ -190,11 +173,5 @@ def remove_lowres():
             if field in units: f[field].attrs['units'] = units[field]
 
 if __name__ == '__main__':
-    # import sys
-    # if len(sys.argv) == 3:
-    #     snap, out_dir = int(sys.argv[1]), sys.argv[2]
-    # else:
-    #     raise ValueError('Usage: python arepo_to_colt.py snap out_dir')
-    # arepo_to_colt(snap=snap, out_dir=out_dir)
     remove_lowres()
 

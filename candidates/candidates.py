@@ -2,7 +2,6 @@ import h5py
 import numpy as np
 from dataclasses import dataclass, field
 from time import time
-from typing import Tuple
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import cpu_count
@@ -22,10 +21,22 @@ READ_COUNTS = READ_DEFAULT # Read counts methods
 READ_GROUPS = READ_DEFAULT # Read groups methods
 TIMERS = True # Print timers
 
-# Global variables
+# Configurable global variables
 sim = 'g5760/z4'
 snap = 188 # Snapshot number
-zoom_dir = '/net/hstor001.ib/data2/group/mvogelsb/004/Thesan-Zooms'
+zoom_dir = '/orcd/data/mvogelsb/004/Thesan-Zooms'
+
+if __name__ == '__main__':
+    import sys
+    if len(sys.argv) == 2:
+        sim = sys.argv[1]
+    elif len(sys.argv) == 3:
+        sim, snap = sys.argv[1], int(sys.argv[2])
+    elif len(sys.argv) == 4:
+        sim, snap, zoom_dir = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+    elif len(sys.argv) != 1:
+        raise ValueError('Usage: python candidates.py [sim] [snap] [zoom_dir]')
+
 out_dir = f'{zoom_dir}/{sim}/output'
 dist_dir = f'{zoom_dir}/{sim}/postprocessing/distances'
 cand_dir = f'{zoom_dir}/{sim}/postprocessing/candidates'
