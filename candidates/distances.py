@@ -147,11 +147,12 @@ class Simulation:
             self.n_subhalos_tot = header['Nsubhalos_Total']
             self.n_groups = np.zeros(self.n_files, dtype=np.uint64)
             self.n_subhalos = np.zeros(self.n_files, dtype=np.uint64)
-            g = f['Group']
-            for field in ['GroupPos', 'Group_R_Crit200', 'Group_M_Crit200', 'GroupMassType']:
-                shape, dtype = g[field].shape, g[field].dtype
-                shape = (self.n_groups_tot,) + shape[1:]
-                self.groups[field] = np.empty(shape, dtype=dtype)
+            if self.n_groups_tot > 0:
+                g = f['Group']
+                for field in ['GroupPos', 'Group_R_Crit200', 'Group_M_Crit200', 'GroupMassType']:
+                    shape, dtype = g[field].shape, g[field].dtype
+                    shape = (self.n_groups_tot,) + shape[1:]
+                    self.groups[field] = np.empty(shape, dtype=dtype)
 
         with h5py.File(snap_pre + '0.hdf5', 'r') as f:
             header = f['Header'].attrs
@@ -177,36 +178,62 @@ class Simulation:
             self.UnitLength_in_cm = params['UnitLength_in_cm']
             self.UnitMass_in_g = params['UnitMass_in_g']
             self.UnitVelocity_in_cm_per_s = params['UnitVelocity_in_cm_per_s']
-            # Gas data
-            g = f['PartType0']
-            for field in ['Coordinates', 'Masses', 'HighResGasMass']:
-                shape, dtype = g[field].shape, g[field].dtype
-                shape = (self.n_gas_tot,) + shape[1:]
-                self.gas[field] = np.empty(shape, dtype=dtype)
-            # PartType1 data
-            g = f['PartType1']
-            for field in ['Coordinates']:
-                shape, dtype = g[field].shape, g[field].dtype
-                shape = (self.n_dm_tot,) + shape[1:]
-                self.dm[field] = np.empty(shape, dtype=dtype)
-            # PartType2 data
-            g = f['PartType2']
-            for field in ['Coordinates']:
-                shape, dtype = g[field].shape, g[field].dtype
-                shape = (self.n_p2_tot,) + shape[1:]
-                self.p2[field] = np.empty(shape, dtype=dtype)
-            # PartType3 data
-            g = f['PartType3']
-            for field in ['Coordinates']:
-                shape, dtype = g[field].shape, g[field].dtype
-                shape = (self.n_p3_tot,) + shape[1:]
-                self.p3[field] = np.empty(shape, dtype=dtype)
-            # Star data
-            g = f['PartType4']
-            for field in ['Coordinates', 'Masses', 'IsHighRes']:
-                shape, dtype = g[field].shape, g[field].dtype
-                shape = (self.n_stars_tot,) + shape[1:]
-                self.stars[field] = np.empty(shape, dtype=dtype)
+
+        # Gas data
+        for i in range(self.n_files):
+            with h5py.File(snap_pre + f'{i}.hdf5', 'r') as f:
+                if 'PartType0' in f:
+                    g = f['PartType0']
+                    for field in ['Coordinates', 'Masses', 'HighResGasMass']:
+                        shape, dtype = g[field].shape, g[field].dtype
+                        shape = (self.n_gas_tot,) + shape[1:]
+                        self.gas[field] = np.empty(shape, dtype=dtype)
+                    break # Found gas data
+
+        # PartType1 data
+        for i in range(self.n_files):
+            with h5py.File(snap_pre + f'{i}.hdf5', 'r') as f:
+                if 'PartType1' in f:
+                    g = f['PartType1']
+                    for field in ['Coordinates']:
+                        shape, dtype = g[field].shape, g[field].dtype
+                        shape = (self.n_dm_tot,) + shape[1:]
+                        self.dm[field] = np.empty(shape, dtype=dtype)
+                    break # Found PartType1 data
+
+        # PartType2 data
+        for i in range(self.n_files):
+            with h5py.File(snap_pre + f'{i}.hdf5', 'r') as f:
+                if 'PartType2' in f:
+                    g = f['PartType2']
+                    for field in ['Coordinates']:
+                        shape, dtype = g[field].shape, g[field].dtype
+                        shape = (self.n_p2_tot,) + shape[1:]
+                        self.p2[field] = np.empty(shape, dtype=dtype)
+                    break # Found PartType2 data
+
+        # PartType3 data
+        for i in range(self.n_files):
+            with h5py.File(snap_pre + f'{i}.hdf5', 'r') as f:
+                if 'PartType0' in f:
+                    g = f['PartType3']
+                    for field in ['Coordinates']:
+                        shape, dtype = g[field].shape, g[field].dtype
+                        shape = (self.n_p3_tot,) + shape[1:]
+                        self.p3[field] = np.empty(shape, dtype=dtype)
+                    break # Found PartType3 data
+
+        # Star data
+        if self.n_stars_tot > 0:
+            for i in range(self.n_files):
+                with h5py.File(snap_pre + f'{i}.hdf5', 'r') as f:
+                    if 'PartType4' in f:
+                        g = f['PartType4']
+                        for field in ['Coordinates', 'Masses', 'IsHighRes']:
+                            shape, dtype = g[field].shape, g[field].dtype
+                            shape = (self.n_stars_tot,) + shape[1:]
+                            self.stars[field] = np.empty(shape, dtype=dtype)
+                        break # Found star data
 
         # Derived quantities
         self.BoxHalf = self.BoxSize / 2.
@@ -217,10 +244,11 @@ class Simulation:
         self.velocity_to_cgs = np.sqrt(self.a) * self.UnitVelocity_in_cm_per_s
 
         # Group data
-        self.GroupPos = self.groups["GroupPos"]
-        self.Group_R_Crit200 = self.groups["Group_R_Crit200"]
-        self.Group_M_Crit200 = self.groups["Group_M_Crit200"]
-        self.GroupMassType = self.groups["GroupMassType"]
+        if self.n_groups_tot > 0:
+            self.GroupPos = self.groups["GroupPos"]
+            self.Group_R_Crit200 = self.groups["Group_R_Crit200"]
+            self.Group_M_Crit200 = self.groups["Group_M_Crit200"]
+            self.GroupMassType = self.groups["GroupMassType"]
 
         # Gas data
         self.r_gas = self.gas["Coordinates"]
@@ -237,9 +265,10 @@ class Simulation:
         self.r_p3 = self.p3["Coordinates"]
 
         # Star data
-        self.r_stars = self.stars["Coordinates"]
-        self.m_stars = self.stars["Masses"]
-        self.is_HR = self.stars["IsHighRes"]
+        if self.n_stars_tot > 0:
+            self.r_stars = self.stars["Coordinates"]
+            self.m_stars = self.stars["Masses"]
+            self.is_HR = self.stars["IsHighRes"]
 
     def convert_counts(self):
         """Convert the counts to file offsets."""
@@ -257,7 +286,10 @@ class Simulation:
         self.n_dm_com = len(self.r_dm)
         self.m_dm_com = float(self.n_dm_com) * self.m_dm
         self.r_dm_com = center_of_mass_dm_numpy(self.r_dm)
-        self.n_stars_com, self.m_stars_com, self.r_stars_com = center_of_mass_stars_numpy(self.m_stars, self.r_stars, self.is_HR)
+        if self.n_stars_tot > 0:
+            self.n_stars_com, self.m_stars_com, self.r_stars_com = center_of_mass_stars_numpy(self.m_stars, self.r_stars, self.is_HR)
+        else:
+            self.n_stars_com, self.m_stars_com, self.r_stars_com = 0, 0., np.zeros(3)
         self.m_com = self.m_gas_com + self.m_dm_com + self.m_stars_com
         self.r_com = (self.m_gas_com * self.r_gas_com + self.m_dm_com * self.r_dm_com + self.m_stars_com * self.r_stars_com) / self.m_com
 
@@ -267,7 +299,10 @@ class Simulation:
         self.n_dm_com = len(self.r_dm)
         self.m_dm_com = float(self.n_dm_com) * self.m_dm
         self.r_dm_com = center_of_mass_dm_numba(self.r_dm)
-        self.n_stars_com, self.m_stars_com, self.r_stars_com = center_of_mass_stars_numba(self.m_stars, self.r_stars, self.is_HR)
+        if self.n_stars_tot > 0:
+            self.n_stars_com, self.m_stars_com, self.r_stars_com = center_of_mass_stars_numba(self.m_stars, self.r_stars, self.is_HR)
+        else:
+            self.n_stars_com, self.m_stars_com, self.r_stars_com = 0, 0., np.zeros(3)
         self.m_com = self.m_gas_com + self.m_dm_com + self.m_stars_com
         self.r_com = (self.m_gas_com * self.r_gas_com + self.m_dm_com * self.r_dm_com + self.m_stars_com * self.r_stars_com) / self.m_com
 
@@ -290,17 +325,29 @@ class Simulation:
         r = np.vstack([self.r_p2, self.r_p3])
         for i in range(3): r[:,i] -= r_com[i]
         dr2_dm_lr = np.min(np.sum(r**2, axis=1))
-        # High-resolution star particles
-        r = self.r_stars[self.is_HR > 0]
-        for i in range(3): r[:,i] -= r_com[i]
-        dr2_star_hr = np.max(np.sum(r**2, axis=1))
-        # Low-resolution star particles
-        r = self.r_stars[self.is_HR == 0]
-        for i in range(3): r[:,i] -= r_com[i]
-        dr2_star_lr = np.min(np.sum(r**2, axis=1))
-        # Final high- and low-resolution radii
-        self.RadiusHR = np.sqrt(max(dr2_gas_hr, dr2_dm_hr, dr2_star_hr))
-        self.RadiusLR = np.sqrt(min(dr2_gas_lr, dr2_dm_lr, dr2_star_lr))
+        if self.n_stars_tot > 0:
+            # High-resolution star particles
+            r = self.r_stars[self.is_HR > 0]
+            if len(r) > 0:
+                for i in range(3): r[:,i] -= r_com[i]
+                dr2_star_hr = np.max(np.sum(r**2, axis=1))
+                self.RadiusHR = np.sqrt(max(dr2_gas_hr, dr2_dm_hr, dr2_star_hr))
+            else:
+                dr2_star_hr = 0.
+                self.RadiusHR = np.sqrt(max(dr2_gas_hr, dr2_dm_hr))
+            # Low-resolution star particles
+            r = self.r_stars[self.is_HR == 0]
+            if len(r) > 0:
+                for i in range(3): r[:,i] -= r_com[i]
+                dr2_star_lr = np.min(np.sum(r**2, axis=1))
+                self.RadiusLR = np.sqrt(min(dr2_gas_lr, dr2_dm_lr, dr2_star_lr))
+            else:
+                dr2_star_lr = 0.
+                self.RadiusLR = np.sqrt(min(dr2_gas_lr, dr2_dm_lr))
+        else:
+            dr2_star_hr, dr2_star_lr = 0., 0.
+            self.RadiusHR = np.sqrt(max(dr2_gas_hr, dr2_dm_hr))
+            self.RadiusLR = np.sqrt(min(dr2_gas_lr, dr2_dm_lr))
         # Count the number of particles within these distances
         self.NumGasHR = np.count_nonzero(np.sum((self.r_gas - r_com)**2, axis=1) < self.RadiusHR**2)
         self.NumGasLR = np.count_nonzero(np.sum((self.r_gas - r_com)**2, axis=1) < self.RadiusLR**2)
@@ -315,8 +362,9 @@ class Simulation:
         self.tree_dm = cKDTree(self.r_dm) # PartType1 particles
         self.tree_p2 = cKDTree(self.r_p2) # PartType2 particles
         self.tree_p3 = cKDTree(self.r_p3) # PartType3 particles
-        self.tree_stars_lr = cKDTree(self.r_stars[self.is_HR == 0]) # Low-resolution star particles
-        self.tree_stars_hr = cKDTree(self.r_stars[self.is_HR > 0]) # High-resolution star particles
+        if self.n_stars_tot > 0:
+            self.tree_stars_lr = cKDTree(self.r_stars[self.is_HR == 0]) # Low-resolution star particles
+            self.tree_stars_hr = cKDTree(self.r_stars[self.is_HR > 0]) # High-resolution star particles
 
     def find_nearest(self):
         """Find the nearest distance to each group position."""
@@ -325,8 +373,9 @@ class Simulation:
         self.distances_dm, self.inices_dm = self.tree_dm.query(self.GroupPos)
         self.distances_p2, self.inices_p2 = self.tree_p2.query(self.GroupPos)
         self.distances_p3, self.inices_p3 = self.tree_p3.query(self.GroupPos)
-        self.distances_stars_lr, self.inices_stars_lr = self.tree_stars_lr.query(self.GroupPos) # Low-resolution star particles
-        self.distances_stars_hr, self.inices_stars_hr = self.tree_stars_hr.query(self.GroupPos) # High-resolution star particles
+        if self.n_stars_tot > 0:
+            self.distances_stars_lr, self.inices_stars_lr = self.tree_stars_lr.query(self.GroupPos) # Low-resolution star particles
+            self.distances_stars_hr, self.inices_stars_hr = self.tree_stars_hr.query(self.GroupPos) # High-resolution star particles
 
     def print_offsets(self):
         """Print the file counts and offsets."""
@@ -347,10 +396,11 @@ class Simulation:
 
     def print_groups(self):
         """Print the group data."""
-        print(f'GroupPos = {self.GroupPos}')
-        print(f'Group_R_Crit200 = {self.Group_R_Crit200}')
-        print(f'Group_M_Crit200 = {self.Group_M_Crit200}')
-        print(f'GroupMassType = {self.GroupMassType}')
+        if self.n_groups_tot > 0:
+            print(f'GroupPos = {self.GroupPos}')
+            print(f'Group_R_Crit200 = {self.Group_R_Crit200}')
+            print(f'Group_M_Crit200 = {self.Group_M_Crit200}')
+            print(f'GroupMassType = {self.GroupMassType}')
 
     def print_particles(self):
         """Print the particle data."""
@@ -360,9 +410,10 @@ class Simulation:
         print(f'r_dm = {self.r_dm}')
         print(f'r_p2 = {self.r_p2}')
         print(f'r_p3 = {self.r_p3}')
-        print(f'r_stars = {self.r_stars}')
-        print(f'm_stars = {self.m_stars}')
-        print(f'is_HR = {self.is_HR}')
+        if self.n_stars_tot > 0:
+            print(f'r_stars = {self.r_stars}')
+            print(f'm_stars = {self.m_stars}')
+            print(f'is_HR = {self.is_HR}')
 
     def write(self):
         """Write the distance results to an HDF5 file."""
@@ -385,25 +436,28 @@ class Simulation:
             g.attrs['RadiusLR'] = self.RadiusLR
             g.attrs['NumGasHR'] = np.int32(self.NumGasHR)
             g.attrs['NumGasLR'] = np.int32(self.NumGasLR)
-            g = f.create_group(b'Group')
-            g.create_dataset(b'Pos', data=self.GroupPos)
-            g.create_dataset(b'R_Crit200', data=self.Group_R_Crit200)
-            g.create_dataset(b'M_Crit200', data=self.Group_M_Crit200)
-            # g.create_dataset(b'MassType', data=self.GroupMassType)
-            g.create_dataset(b'MinDistGasLR', data=self.distances_gas_lr, dtype=np.float32)
-            g.create_dataset(b'MinDistGasHR', data=self.distances_gas_hr, dtype=np.float32)
-            g.create_dataset(b'MinDistDM', data=self.distances_dm, dtype=np.float32)
-            g.create_dataset(b'MinDistP2', data=self.distances_p2, dtype=np.float32)
-            g.create_dataset(b'MinDistP3', data=self.distances_p3, dtype=np.float32)
-            g.create_dataset(b'MinDistStarsLR', data=self.distances_stars_lr, dtype=np.float32)
-            g.create_dataset(b'MinDistStarsHR', data=self.distances_stars_hr, dtype=np.float32)
+            if self.n_groups_tot > 0:
+                g = f.create_group(b'Group')
+                g.create_dataset(b'Pos', data=self.GroupPos)
+                g.create_dataset(b'R_Crit200', data=self.Group_R_Crit200)
+                g.create_dataset(b'M_Crit200', data=self.Group_M_Crit200)
+                # g.create_dataset(b'MassType', data=self.GroupMassType)
+                g.create_dataset(b'MinDistGasLR', data=self.distances_gas_lr, dtype=np.float32)
+                g.create_dataset(b'MinDistGasHR', data=self.distances_gas_hr, dtype=np.float32)
+                g.create_dataset(b'MinDistDM', data=self.distances_dm, dtype=np.float32)
+                g.create_dataset(b'MinDistP2', data=self.distances_p2, dtype=np.float32)
+                g.create_dataset(b'MinDistP3', data=self.distances_p3, dtype=np.float32)
+                if self.n_stars_tot > 0:
+                    g.create_dataset(b'MinDistStarsLR', data=self.distances_stars_lr, dtype=np.float32)
+                    g.create_dataset(b'MinDistStarsHR', data=self.distances_stars_hr, dtype=np.float32)
 
     def read_counts_single(self, i):
         """Read the counts from a single FOF and snapshot file."""
-        with h5py.File(fof_pre + f'{i}.hdf5', 'r') as f:
-            header = f['Header'].attrs
-            self.n_groups[i] = header['Ngroups_ThisFile']
-            self.n_subhalos[i] = header['Nsubhalos_ThisFile']
+        if self.n_groups_tot > 0:
+            with h5py.File(fof_pre + f'{i}.hdf5', 'r') as f:
+                header = f['Header'].attrs
+                self.n_groups[i] = header['Ngroups_ThisFile']
+                self.n_subhalos[i] = header['Nsubhalos_ThisFile']
 
         with h5py.File(snap_pre + f'{i}.hdf5', 'r') as f:
             header = f['Header'].attrs
@@ -429,8 +483,8 @@ class Simulation:
 
     def read_groups_single(self, i):
         """Read the group data from a single FOF file."""
-        with h5py.File(fof_pre + f'{i}.hdf5', 'r') as f:
-            if self.n_groups[i] > 0: # Skip empty files
+        if self.n_groups[i] > 0: # Skip empty files
+            with h5py.File(fof_pre + f'{i}.hdf5', 'r') as f:
                 g = f['Group']
                 offset = self.first_group[i] # Offset to the first group
                 next_offset = offset + self.n_groups[i] # Offset beyond the last group
@@ -606,10 +660,11 @@ def main():
     if VERBOSITY > 1: sim.print_groups()
 
     # Count the number of groups with low-resolution particles
-    sim.n_groups_LR = np.uint64(np.count_nonzero(sim.GroupMassType[:,2] + sim.GroupMassType[:,3] > 0))
-    sim.n_groups_HR = sim.n_groups_tot - sim.n_groups_LR
-    print(f"\nn_groups_LR = {sim.n_groups_LR}, n_groups_HR = {sim.n_groups_HR}")
-    if TIMERS: t2 = time(); print(f"Time to count low-resolution groups: {t2 - t1:g} s"); t1 = t2
+    if sim.n_groups_tot > 0:
+        sim.n_groups_LR = np.uint64(np.count_nonzero(sim.GroupMassType[:,2] + sim.GroupMassType[:,3] > 0))
+        sim.n_groups_HR = sim.n_groups_tot - sim.n_groups_LR
+        print(f"\nn_groups_LR = {sim.n_groups_LR}, n_groups_HR = {sim.n_groups_HR}")
+        if TIMERS: t2 = time(); print(f"Time to count low-resolution groups: {t2 - t1:g} s"); t1 = t2
 
     # Read the particle data from the snapshot files
     print("\nReading snapshot data...")
@@ -639,15 +694,16 @@ def main():
     sim.highres_radius()
     if TIMERS: t2 = time(); print(f"Time to calculate high-resolution radius: {t2 - t1:g} s"); t1 = t2
 
-    # Build trees for different particle types
-    print("\nBuilding trees for different particle types...")
-    sim.build_trees()
-    if TIMERS: t2 = time(); print(f"Time to build trees: {t2 - t1:g} s"); t1 = t2
+    if sim.n_groups_tot > 0:
+        # Build trees for different particle types
+        print("\nBuilding trees for different particle types...")
+        sim.build_trees()
+        if TIMERS: t2 = time(); print(f"Time to build trees: {t2 - t1:g} s"); t1 = t2
 
-    # Find the nearest distance from each group position
-    print("\nFinding the nearest distance from each group position...")
-    sim.find_nearest()
-    if TIMERS: t2 = time(); print(f"Time to find nearest distances: {t2 - t1:g} s"); t1 = t2
+        # Find the nearest distance from each group position
+        print("\nFinding the nearest distance from each group position...")
+        sim.find_nearest()
+        if TIMERS: t2 = time(); print(f"Time to find nearest distances: {t2 - t1:g} s"); t1 = t2
 
     # Write the results to a file
     print("\nWriting the results to a file...")

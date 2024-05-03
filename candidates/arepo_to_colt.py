@@ -173,16 +173,18 @@ class Simulation:
             self.n_files = header['NumFiles']
             self.n_groups = np.zeros(self.n_files, dtype=np.uint64)
             self.n_subhalos = np.zeros(self.n_files, dtype=np.uint64)
-            g = f['Group']
-            for field in group_fields:
-                shape, dtype = g[field].shape, g[field].dtype
-                shape = (self.n_groups_tot,) + shape[1:]
-                self.groups[field] = np.empty(shape, dtype=dtype)
-            g = f['Subhalo']
-            for field in subhalo_fields:
-                shape, dtype = g[field].shape, g[field].dtype
-                shape = (self.n_subhalos_tot,) + shape[1:]
-                self.subhalos[field] = np.empty(shape, dtype=dtype)
+            if self.n_groups_tot > 0:
+                g = f['Group']
+                for field in group_fields:
+                    shape, dtype = g[field].shape, g[field].dtype
+                    shape = (self.n_groups_tot,) + shape[1:]
+                    self.groups[field] = np.empty(shape, dtype=dtype)
+            if self.n_subhalos_tot > 0:
+                g = f['Subhalo']
+                for field in subhalo_fields:
+                    shape, dtype = g[field].shape, g[field].dtype
+                    shape = (self.n_subhalos_tot,) + shape[1:]
+                    self.subhalos[field] = np.empty(shape, dtype=dtype)
 
         with h5py.File(snap_pre + '0.hdf5', 'r') as f:
             header = f['Header'].attrs
@@ -202,18 +204,29 @@ class Simulation:
             self.UnitLength_in_cm = params['UnitLength_in_cm']
             self.UnitMass_in_g = params['UnitMass_in_g']
             self.UnitVelocity_in_cm_per_s = params['UnitVelocity_in_cm_per_s']
-            # Gas data
-            g = f['PartType0']
-            for field in gas_fields:
-                shape, dtype = g[field].shape, g[field].dtype
-                shape = (self.n_gas_tot,) + shape[1:]
-                self.gas[field] = np.empty(shape, dtype=dtype)
-            # Star data
-            g = f['PartType4']
-            for field in star_fields:
-                shape, dtype = g[field].shape, g[field].dtype
-                shape = (self.n_stars_tot,) + shape[1:]
-                self.stars[field] = np.empty(shape, dtype=dtype)
+
+        # Gas data
+        for i in range(self.n_files):
+            with h5py.File(snap_pre + f'{i}.hdf5', 'r') as f:
+                if 'PartType0' in f:
+                    g = f['PartType0']
+                    for field in gas_fields:
+                        shape, dtype = g[field].shape, g[field].dtype
+                        shape = (self.n_gas_tot,) + shape[1:]
+                        self.gas[field] = np.empty(shape, dtype=dtype)
+                    break # Found gas data
+
+        # Star data
+        if self.n_stars_tot > 0:
+            for i in range(self.n_files):
+                with h5py.File(snap_pre + f'{i}.hdf5', 'r') as f:
+                    if 'PartType4' in f:
+                        g = f['PartType4']
+                        for field in star_fields:
+                            shape, dtype = g[field].shape, g[field].dtype
+                            shape = (self.n_stars_tot,) + shape[1:]
+                            self.stars[field] = np.empty(shape, dtype=dtype)
+                        break # Found star data
 
         # Derived quantities
         self.BoxHalf = self.BoxSize / 2.
@@ -244,22 +257,25 @@ class Simulation:
 
     def print_groups(self):
         """Print the group data."""
-        print('\nGroup data:')
-        print(f'GroupNsubs = {self.groups["GroupNsubs"]}')
-        # for field in self.groups:
-        #     print(f'{field} = {self.groups[field]}')
-        # print('\nSubhalo data:')
-        # for field in self.subhalos:
-        #     print(f'{field} = {self.subhalos[field]}')
+        if self.n_groups_tot > 0:
+            print('\nGroup data:')
+            print(f'GroupNsubs = {self.groups["GroupNsubs"]}')
+            # for field in self.groups:
+            #     print(f'{field} = {self.groups[field]}')
+        # if self.n_subhalos_tot > 0:
+        #     print('\nSubhalo data:')
+        #     for field in self.subhalos:
+        #         print(f'{field} = {self.subhalos[field]}')
 
     def print_particles(self):
         """Print the particle data."""
         print('\nGas particle data:')
         for field in self.gas:
             print(f'{field} = {self.gas[field]}')
-        print('\nStar particle data:')
-        for field in self.stars:
-            print(f'{field} = {self.stars[field]}')
+        if self.n_stars_tot > 0:
+            print('\nStar particle data:')
+            for field in self.stars:
+                print(f'{field} = {self.stars[field]}')
 
     def read_com(self):
         """Read the high-resolution center of mass and radius from the distances file."""
@@ -270,10 +286,11 @@ class Simulation:
 
     def read_counts_single(self, i):
         """Read the counts from a single snapshot file."""
-        with h5py.File(fof_pre + f'{i}.hdf5', 'r') as f:
-            header = f['Header'].attrs
-            self.n_groups[i] = header['Ngroups_ThisFile']
-            self.n_subhalos[i] = header['Nsubhalos_ThisFile']
+        if self.n_groups_tot > 0:
+            with h5py.File(fof_pre + f'{i}.hdf5', 'r') as f:
+                header = f['Header'].attrs
+                self.n_groups[i] = header['Ngroups_ThisFile']
+                self.n_subhalos[i] = header['Nsubhalos_ThisFile']
 
         with h5py.File(snap_pre + f'{i}.hdf5', 'r') as f:
             header = f['Header'].attrs
@@ -296,19 +313,20 @@ class Simulation:
 
     def read_groups_single(self, i):
         """Read the group data from a single FOF file."""
-        with h5py.File(fof_pre + f'{i}.hdf5', 'r') as f:
-            if self.n_groups[i] > 0: # Skip empty files
-                g = f['Group']
-                offset = self.first_group[i] # Offset to the first group
-                next_offset = offset + self.n_groups[i] # Offset beyond the last group
-                for field in group_fields:
-                    self.groups[field][offset:next_offset] = g[field][:]
-            if self.n_subhalos[i] > 0: # Skip empty files
-                g = f['Subhalo']
-                offset = self.first_subhalo[i] # Offset to the first subhalo
-                next_offset = offset + self.n_subhalos[i] # Offset beyond the last subhalo
-                for field in subhalo_fields:
-                    self.subhalos[field][offset:next_offset] = g[field][:]
+        if self.n_groups_tot > 0:
+            with h5py.File(fof_pre + f'{i}.hdf5', 'r') as f:
+                if self.n_groups[i] > 0: # Skip empty files
+                    g = f['Group']
+                    offset = self.first_group[i] # Offset to the first group
+                    next_offset = offset + self.n_groups[i] # Offset beyond the last group
+                    for field in group_fields:
+                        self.groups[field][offset:next_offset] = g[field][:]
+                if self.n_subhalos[i] > 0: # Skip empty files
+                    g = f['Subhalo']
+                    offset = self.first_subhalo[i] # Offset to the first subhalo
+                    next_offset = offset + self.n_subhalos[i] # Offset beyond the last subhalo
+                    for field in subhalo_fields:
+                        self.subhalos[field][offset:next_offset] = g[field][:]
 
     def read_groups(self):
         """Read the group data from the FOF files."""
@@ -327,49 +345,60 @@ class Simulation:
         """Assign group and subhalo ids to each particle."""
         self.gas['GroupID'] = np.empty(self.n_gas_tot, dtype=np.int32)
         self.gas['SubhaloID'] = np.empty(self.n_gas_tot, dtype=np.int32)
-        self.stars['GroupID'] = np.empty(self.n_stars_tot, dtype=np.int32)
-        self.stars['SubhaloID'] = np.empty(self.n_stars_tot, dtype=np.int32)
-        gas_gid, stars_gid = self.gas['GroupID'], self.stars['GroupID']
-        gas_sid, stars_sid = self.gas['SubhaloID'], self.stars['SubhaloID']
-        n_subs = self.groups['GroupNsubs'] # Number of subhalos in each group
-        end_sub = np.cumsum(n_subs) # End subhalo in each group (non-inclusive)
-        beg_sub = end_sub - n_subs # First subhalo in each group
-        gas_ng, stars_ng = self.groups['GroupLenType'][:,0], self.groups['GroupLenType'][:,4]
-        gas_ns, stars_ns = self.subhalos['SubhaloLenType'][:,0], self.subhalos['SubhaloLenType'][:,4]
-        end_gas = np.cumsum(gas_ng) # End particle in each group (non-inclusive)
-        end_stars = np.cumsum(stars_ng)
-        beg_gas = end_gas - gas_ng # First particle in each group
-        beg_stars = end_stars - stars_ng
-        gas_gid[end_gas[-1]:] = -2 # The outer fuzz is not part of any FoF group
-        stars_gid[end_stars[-1]:] = -2
-        gas_sid[end_gas[-1]:] = -2 # The outer fuzz is not part of any subhalo
-        stars_sid[end_stars[-1]:] = -2
-        gas_sid[:end_gas[-1]] = -1 # The inner fuzz is not part of any subhalo
-        stars_sid[:end_stars[-1]] = -1
-        for igrp in range(self.n_groups_tot):
-            beg_gas_grp = beg_gas[igrp] # First particle in this group
-            beg_stars_grp = beg_stars[igrp]
-            end_gas_grp = end_gas[igrp] # End particle in this group (non-inclusive)
-            end_stars_grp = end_stars[igrp]
-            beg_gas_sub = beg_gas[igrp] # First particle in this group's first subhalo
-            beg_stars_sub = beg_stars[igrp]
-            end_gas_sub = beg_gas[igrp] # End particle in this group's first subhalo (non-inclusive)
-            end_stars_sub = beg_stars[igrp]
-            gas_gid[beg_gas_grp:end_gas_grp] = igrp # Assign group id to particles
-            stars_gid[beg_stars_grp:end_stars_grp] = igrp
-            beg_sub_grp = beg_sub[igrp] # First subhalo in this group
-            end_sub_grp = end_sub[igrp] # End subhalo in this group (non-inclusive)
-            for isub in range(beg_sub_grp, end_sub_grp):
-                end_gas_sub += gas_ns[isub] # End particle in this subhalo (non-inclusive)
-                end_stars_sub += stars_ns[isub]
-                assert beg_gas_sub >= beg_gas_grp, "Subhalo extends before group (gas)"
-                assert beg_stars_sub >= beg_stars_grp, "Subhalo extends before group (stars)"
-                assert end_gas_sub <= end_gas_grp, "Subhalo extends beyond group (gas)"
-                assert end_stars_sub <= end_stars_grp, "Subhalo extends beyond group (stars)"
-                gas_sid[beg_gas_sub:end_gas_sub] = isub # Assign subhalo id to particles
-                stars_sid[beg_stars_sub:end_stars_sub] = isub
-                beg_gas_sub += gas_ns[isub] # Update first particle in next subhalo
-                beg_stars_sub += stars_ns[isub]
+        gas_gid, gas_sid = self.gas['GroupID'], self.gas['SubhaloID']
+        if self.n_stars_tot > 0:
+            self.stars['GroupID'] = np.empty(self.n_stars_tot, dtype=np.int32)
+            self.stars['SubhaloID'] = np.empty(self.n_stars_tot, dtype=np.int32)
+            stars_gid, stars_sid = self.stars['GroupID'], self.stars['SubhaloID']
+        else:
+            stars_gid, stars_sid = -3 * np.ones(1, dtype=np.int32), -3 * np.ones(1, dtype=np.int32)
+        if self.n_groups_tot > 0:
+            n_subs = self.groups['GroupNsubs'] # Number of subhalos in each group
+            end_sub = np.cumsum(n_subs) # End subhalo in each group (non-inclusive)
+            beg_sub = end_sub - n_subs # First subhalo in each group
+            gas_ng, stars_ng = self.groups['GroupLenType'][:,0], self.groups['GroupLenType'][:,4]
+            gas_ns, stars_ns = self.subhalos['SubhaloLenType'][:,0], self.subhalos['SubhaloLenType'][:,4]
+            end_gas = np.cumsum(gas_ng) # End particle in each group (non-inclusive)
+            end_stars = np.cumsum(stars_ng)
+            beg_gas = end_gas - gas_ng # First particle in each group
+            beg_stars = end_stars - stars_ng
+            gas_gid[end_gas[-1]:] = -2 # The outer fuzz is not part of any FoF group
+            gas_sid[end_gas[-1]:] = -2 # The outer fuzz is not part of any subhalo
+            gas_sid[:end_gas[-1]] = -1 # The inner fuzz is not part of any subhalo
+            if self.n_stars_tot > 0:
+                stars_gid[end_stars[-1]:] = -2
+                stars_sid[end_stars[-1]:] = -2
+                stars_sid[:end_stars[-1]] = -1
+            for igrp in range(self.n_groups_tot):
+                beg_gas_grp = beg_gas[igrp] # First particle in this group
+                beg_stars_grp = beg_stars[igrp]
+                end_gas_grp = end_gas[igrp] # End particle in this group (non-inclusive)
+                end_stars_grp = end_stars[igrp]
+                beg_gas_sub = beg_gas[igrp] # First particle in this group's first subhalo
+                beg_stars_sub = beg_stars[igrp]
+                end_gas_sub = beg_gas[igrp] # End particle in this group's first subhalo (non-inclusive)
+                end_stars_sub = beg_stars[igrp]
+                gas_gid[beg_gas_grp:end_gas_grp] = igrp # Assign group id to particles
+                stars_gid[beg_stars_grp:end_stars_grp] = igrp
+                beg_sub_grp = beg_sub[igrp] # First subhalo in this group
+                end_sub_grp = end_sub[igrp] # End subhalo in this group (non-inclusive)
+                for isub in range(beg_sub_grp, end_sub_grp):
+                    end_gas_sub += gas_ns[isub] # End particle in this subhalo (non-inclusive)
+                    end_stars_sub += stars_ns[isub]
+                    assert beg_gas_sub >= beg_gas_grp, "Subhalo extends before group (gas)"
+                    assert beg_stars_sub >= beg_stars_grp, "Subhalo extends before group (stars)"
+                    assert end_gas_sub <= end_gas_grp, "Subhalo extends beyond group (gas)"
+                    assert end_stars_sub <= end_stars_grp, "Subhalo extends beyond group (stars)"
+                    gas_sid[beg_gas_sub:end_gas_sub] = isub # Assign subhalo id to particles
+                    stars_sid[beg_stars_sub:end_stars_sub] = isub
+                    beg_gas_sub += gas_ns[isub] # Update first particle in next subhalo
+                    beg_stars_sub += stars_ns[isub]
+        else:
+            gas_gid[:] = -2 # The outer fuzz is not part of any FoF group
+            gas_sid[:] = -2 # The outer fuzz is not part of any subhalo
+            if self.n_stars_tot > 0:
+                stars_gid[:] = -2
+                stars_sid[:] = -2
         n_gas_outer = np.count_nonzero(gas_gid == -2) # Number of outer fuzz gas particles
         n_stars_outer = np.count_nonzero(stars_gid == -2) # Number of outer fuzz star particles
         assert n_gas_outer == np.count_nonzero(gas_sid == -2), "Number of group and subhalo outer fuzz gas particles does not match"
@@ -471,51 +500,61 @@ def arepo_to_colt(include_metals=True):
         if TIMERS: t2 = time(); print(f"Time to read particle data from files: {t2 - t1:g} s [asyncio]"); t1 = t2
     if VERBOSITY > 1:
         n_gas_hr = np.sum(sim.gas['HighResGasMass'] > GAS_HIGH_RES_THRESHOLD * sim.gas['Masses']) # Number of high-resolution gas particles
-        n_stars_hr = np.sum(sim.stars['IsHighRes'] == 1) # Number of high-resolution star particles
-        print(f'NumGasHR = {n_gas_hr} = {100.*float(n_gas_hr)/float(sim.n_gas_tot):g}%, NumStarHR = {n_stars_hr} = {100.*float(n_stars_hr)/float(sim.n_stars_tot):g}%')
+        print(f'NumGasHR = {n_gas_hr} = {100.*float(n_gas_hr)/float(sim.n_gas_tot):g}%')
+        if sim.n_stars_tot > 0:
+            n_stars_hr = np.sum(sim.stars['IsHighRes'] == 1) # Number of high-resolution star particles
+            print(f'NumStarHR = {n_stars_hr} = {100.*float(n_stars_hr)/float(sim.n_stars_tot):g}%')
 
     # Recenter positions and define particle masks
     sim.gas['Coordinates'] -= sim.PosHR # Recenter gas particles
-    sim.stars['Coordinates'] -= sim.PosHR # Recenter star particles
     n_cells_old = np.shape(sim.gas['Coordinates'])[0] # Number of cells (saved for comparison)
-    n_stars_old = np.shape(sim.stars['Coordinates'])[0] # Number of star particles (saved for comparison)
     gas_mask = (np.sum(sim.gas['Coordinates']**2, axis=1) < 1.0001*sim.RadiusHR**2) # Sphere cut
-    stars_mask = (np.sum(sim.stars['Coordinates']**2, axis=1) < 1.0001*sim.RadiusHR**2) \
-               & (sim.stars['IsHighRes'] == 1) # & (sim.stars['GFM_StellarFormationTime'] > 0.) # Sphere cut
     for field in sim.gas: sim.gas[field] = sim.gas[field][gas_mask] # Apply gas mask
-    for field in sim.stars: sim.stars[field] = sim.stars[field][stars_mask] # Apply star mask
     n_cells = np.int32(np.shape(sim.gas['Coordinates'])[0]) # Number of cells
-    n_stars = np.int32(np.shape(sim.stars['Coordinates'])[0]) # Number of star particles
+    if sim.n_stars_tot > 0:
+        sim.stars['Coordinates'] -= sim.PosHR # Recenter star particles
+        n_stars_old = np.shape(sim.stars['Coordinates'])[0] # Number of star particles (saved for comparison)
+        stars_mask = (np.sum(sim.stars['Coordinates']**2, axis=1) < 1.0001*sim.RadiusHR**2) \
+                   & (sim.stars['IsHighRes'] == 1) # & (sim.stars['GFM_StellarFormationTime'] > 0.) # Sphere cut
+        for field in sim.stars: sim.stars[field] = sim.stars[field][stars_mask] # Apply star mask
+        n_stars = np.int32(np.shape(sim.stars['Coordinates'])[0]) # Number of star particles
+    else:
+        n_stars, n_stars_old = np.int32(0), np.int32(0)
     if TIMERS: t2 = time(); print(f"Time to recenter and mask particles: {t2 - t1:g} s"); t1 = t2
     if VERBOSITY > 1:
         print(f'\nAfter masking: NumGas = {n_cells} = {100.*float(n_cells)/float(n_cells_old):g}%, ' +
               f'NumStar = {n_stars} = {100.*float(n_stars)/float(n_stars_old):g}%')
     if VERBOSITY > 2:
         n_gas_hr = np.sum(sim.gas['HighResGasMass'] > GAS_HIGH_RES_THRESHOLD * sim.gas['Masses']) # Number of high-resolution gas particles
-        n_stars_hr = np.sum(sim.stars['IsHighRes'] == 1) # Number of high-resolution star particles
-        print(f'NumGasHR = {n_gas_hr} = {100.*float(n_gas_hr)/float(sim.n_gas_tot):g}%, ' +
-              f'NumStarHR = {n_stars_hr} = {100.*float(n_stars_hr)/float(sim.n_stars_tot):g}%')
-        print(f'Gas:   r_min = {np.min(sim.gas["Coordinates"], axis=0)} ckpc/h, r_max = {np.max(sim.gas["Coordinates"], axis=0)} ckpc/h\n' +
-              f'Stars: r_min = {np.min(sim.stars["Coordinates"], axis=0)} ckpc/h, r_max = {np.max(sim.stars["Coordinates"], axis=0)} ckpc/h')
-        print(f'Gas:   radius_min = {np.sqrt(np.min(np.sum(sim.gas["Coordinates"]**2, axis=1)))} ckpc/h, radius_max = {np.sqrt(np.max(np.sum(sim.gas["Coordinates"]**2, axis=1)))} ckpc/h\n' +
-              f'Stars: radius_min = {np.sqrt(np.min(np.sum(sim.stars["Coordinates"]**2, axis=1)))} ckpc/h, radius_max = {np.sqrt(np.max(np.sum(sim.stars["Coordinates"]**2, axis=1)))} ckpc/h')
+        print(f'NumGasHR = {n_gas_hr} = {100.*float(n_gas_hr)/float(sim.n_gas_tot):g}%')
+        print(f'Gas: r_min = {np.min(sim.gas["Coordinates"], axis=0)} ckpc/h, r_max = {np.max(sim.gas["Coordinates"], axis=0)} ckpc/h')
+        print(f'Gas: radius_min = {np.sqrt(np.min(np.sum(sim.gas["Coordinates"]**2, axis=1)))} ckpc/h, radius_max = {np.sqrt(np.max(np.sum(sim.gas["Coordinates"]**2, axis=1)))} ckpc/h')
+        if sim.n_stars_tot > 0:
+            n_stars_hr = np.sum(sim.stars['IsHighRes'] == 1) # Number of high-resolution star particles
+            print(f'NumStarHR = {n_stars_hr} = {100.*float(n_stars_hr)/float(sim.n_stars_tot):g}%')
+            print(f'Stars: r_min = {np.min(sim.stars["Coordinates"], axis=0)} ckpc/h, r_max = {np.max(sim.stars["Coordinates"], axis=0)} ckpc/h')
+            print(f'Stars: radius_min = {np.sqrt(np.min(np.sum(sim.stars["Coordinates"]**2, axis=1)))} ckpc/h, radius_max = {np.sqrt(np.max(np.sum(sim.stars["Coordinates"]**2, axis=1)))} ckpc/h')
         if VERBOSITY > 3: sim.print_particles() # Print the particle data
         # Print additional extraction properties
         m = sim.mass_to_cgs * sim.gas['HighResGasMass'] # Gas masses [g]
         m_tot = np.sum(m) # Total gas mass [g]
         r = sim.length_to_cgs * sim.gas['Coordinates'] # Gas positions [cm]
         v = sim.velocity_to_cgs * sim.gas['Velocities'] # Gas velocities [cm/s]
-        m_star = sim.mass_to_cgs * sim.stars['Masses'] # Star masses [g]
-        m_star_tot = np.sum(m_star) # Total star mass [g]
-        r_star = sim.length_to_cgs * sim.stars['Coordinates'] # Star positions [cm]
-        v_star = sim.velocity_to_cgs * sim.stars['Velocities'] # Star velocities [cm/s]
         r_com = np.sum(m[:,np.newaxis]*r, axis=0) / m_tot # Gas center of mass position [cm]
         v_com = np.sum(m[:,np.newaxis]*v, axis=0) / m_tot # Gas center of mass velocity [cm/s]
-        r_star_com = np.sum(m_star[:,np.newaxis]*r_star, axis=0) / m_star_tot # Star center of mass position [cm]
-        v_star_com = np.sum(m_star[:,np.newaxis]*v_star, axis=0) / m_star_tot # Star center of mass velocity [cm/s]
-        print(f'\nExtracted [gas, star] mass = [{m_tot/Msun/1e10:g}, {m_star_tot/Msun/1e10:g}] x 10^10 Msun')
-        print(f'Extracted [gas, star] center of mass position = [{r_com/kpc}, {r_star_com/kpc}] kpc  =>  |r_com| = [{np.sqrt(np.sum(r_com**2))/kpc}, {np.sqrt(np.sum(r_star_com**2))/kpc}] kpc')
-        print(f'Extracted [gas, star] center of mass velocity = [{v_com/km}, {v_star_com/km}] km/s  =>  |v_com| = [{np.sqrt(np.sum(v_com**2))/km}, {np.sqrt(np.sum(v_star_com**2))/km}] km/s')
+        print(f'\nExtracted gas mass = {m_tot/Msun/1e10:g} x 10^10 Msun')
+        print(f'Extracted gas center of mass position = {r_com/kpc} kpc  =>  |r_com| = {np.sqrt(np.sum(r_com**2))/kpc} kpc')
+        print(f'Extracted gas center of mass velocity = {v_com/km} km/s  =>  |v_com| = {np.sqrt(np.sum(v_com**2))/km} km/s')
+        if sim.n_stars_tot > 0:
+            m_star = sim.mass_to_cgs * sim.stars['Masses'] # Star masses [g]
+            m_star_tot = np.sum(m_star) # Total star mass [g]
+            r_star = sim.length_to_cgs * sim.stars['Coordinates'] # Star positions [cm]
+            v_star = sim.velocity_to_cgs * sim.stars['Velocities'] # Star velocities [cm/s]
+            r_star_com = np.sum(m_star[:,np.newaxis]*r_star, axis=0) / m_star_tot # Star center of mass position [cm]
+            v_star_com = np.sum(m_star[:,np.newaxis]*v_star, axis=0) / m_star_tot # Star center of mass velocity [cm/s]
+            print(f'\nExtracted star mass = {m_star_tot/Msun/1e10:g} x 10^10 Msun')
+            print(f'Extracted star center of mass position = {r_star_com/kpc} kpc  =>  |r_com| = {np.sqrt(np.sum(r_star_com**2))/kpc} kpc')
+            print(f'Extracted star center of mass velocity = {v_star_com/km} km/s  =>  |v_com| = {np.sqrt(np.sum(v_star_com**2))/km} km/s')
 
     with h5py.File(colt_file, 'w') as f:
         # Simulation properties
@@ -582,21 +621,22 @@ def arepo_to_colt(include_metals=True):
         f.create_dataset('subhalo_id', data=sim.gas['SubhaloID']) # Subhalo ID
 
         # Star fields
-        f.create_dataset('r_star', data=sim.length_to_cgs * sim.stars['Coordinates'], dtype=np.float64) # Star positions [cm]
-        f['r_star'].attrs['units'] = b'cm'
-        f.create_dataset('v_star', data=sim.velocity_to_cgs * sim.stars['Velocities'], dtype=np.float64) # Star velocities [cm/s]
-        f['v_star'].attrs['units'] = b'cm/s'
-        f.create_dataset('Z_star', data=sim.stars['GFM_Metallicity'], dtype=np.float64) # Stellar metallicity [mass fraction]
-        # f.create_dataset('m_star', data=mass_to_Msun * sim.stars['Masses'], dtype=np.float64) # Star mass [Msun]
-        # f['m_star'].attrs['units'] = b'Msun'
-        f.create_dataset('m_init_star', data=sim.mass_to_Msun * sim.stars['GFM_InitialMass'], dtype=np.float64) # Star initial mass [Msun]
-        f['m_init_star'].attrs['units'] = b'Msun'
-        age_star = get_time_difference_in_Gyr(sim.stars['GFM_StellarFormationTime'].astype(np.float64), sim.a, sim.Omega0, sim.h) # Age of the star [Gyr]
-        f.create_dataset('age_star', data=age_star) # Star age [Gyr]
-        f['age_star'].attrs['units'] = b'Gyr'
-        f.create_dataset('id_star', data=sim.stars['ParticleIDs']) # Particle IDs
-        f.create_dataset('group_id_star', data=sim.stars['GroupID']) # Group ID
-        f.create_dataset('subhalo_id_star', data=sim.stars['SubhaloID']) # Subhalo ID
+        if n_stars > 0:
+            f.create_dataset('r_star', data=sim.length_to_cgs * sim.stars['Coordinates'], dtype=np.float64) # Star positions [cm]
+            f['r_star'].attrs['units'] = b'cm'
+            f.create_dataset('v_star', data=sim.velocity_to_cgs * sim.stars['Velocities'], dtype=np.float64) # Star velocities [cm/s]
+            f['v_star'].attrs['units'] = b'cm/s'
+            f.create_dataset('Z_star', data=sim.stars['GFM_Metallicity'], dtype=np.float64) # Stellar metallicity [mass fraction]
+            # f.create_dataset('m_star', data=mass_to_Msun * sim.stars['Masses'], dtype=np.float64) # Star mass [Msun]
+            # f['m_star'].attrs['units'] = b'Msun'
+            f.create_dataset('m_init_star', data=sim.mass_to_Msun * sim.stars['GFM_InitialMass'], dtype=np.float64) # Star initial mass [Msun]
+            f['m_init_star'].attrs['units'] = b'Msun'
+            age_star = get_time_difference_in_Gyr(sim.stars['GFM_StellarFormationTime'].astype(np.float64), sim.a, sim.Omega0, sim.h) # Age of the star [Gyr]
+            f.create_dataset('age_star', data=age_star) # Star age [Gyr]
+            f['age_star'].attrs['units'] = b'Gyr'
+            f.create_dataset('id_star', data=sim.stars['ParticleIDs']) # Particle IDs
+            f.create_dataset('group_id_star', data=sim.stars['GroupID']) # Group ID
+            f.create_dataset('subhalo_id_star', data=sim.stars['SubhaloID']) # Subhalo ID
 
 if __name__ == '__main__':
     arepo_to_colt()

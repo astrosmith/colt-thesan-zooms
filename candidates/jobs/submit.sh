@@ -32,8 +32,6 @@
 # job='M'; group='g2274036'; runs=('z4' 'z8' 'uvb_z8')
 # job='N'; group='g5229300'; runs=('z4' 'z8' 'uvb_z8')
 
-job='N'; group='g5229300'; runs=('uvb_z8')
-
 # Fiducial test case
 # job='F'; group='g5760'; runs=('z4')
 
@@ -42,7 +40,7 @@ zoom_dir=/orcd/data/mvogelsb/004/Thesan-Zooms
 base_dir=${zoom_dir}-COLT
 
 for run in "${runs[@]}"; do
-    echo "Group ${group}, Run ${run}"
+    echo "Job ${job}, Group ${group}, Run ${run}"
     cd $copy_dir  # Reset path
     post_dir=${zoom_dir}/${group}/${run}/postprocessing
     mkdir -p ${post_dir}/distances

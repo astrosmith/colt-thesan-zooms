@@ -105,24 +105,26 @@ class Simulation:
             self.UnitLength_in_cm = params['UnitLength_in_cm']
             self.UnitMass_in_g = params['UnitMass_in_g']
             self.UnitVelocity_in_cm_per_s = params['UnitVelocity_in_cm_per_s']
-            g = f['Group']
-            for field in g.keys():
-                shape, dtype = g[field].shape, g[field].dtype
-                shape = (self.n_groups_tot,) + shape[1:]
-                self.groups[field] = np.empty(shape, dtype=dtype)
-                g_attrs = g[field].attrs
-                if len(g_attrs) > 0:
-                    self.group_units[field] = {key: val for key,val in g_attrs.items()}
-                    print(f'field: {self.group_units[field]}')
-            g = f['Subhalo']
-            for field in g.keys():
-                shape, dtype = g[field].shape, g[field].dtype
-                shape = (self.n_subhalos_tot,) + shape[1:]
-                self.subhalos[field] = np.empty(shape, dtype=dtype)
-                g_attrs = g[field].attrs
-                if len(g_attrs) > 0:
-                    self.subhalo_units[field] = {key: val for key,val in g_attrs.items()}
-                    print(f'field: {self.subhalo_units[field]}')
+            if self.n_groups_tot > 0:
+                g = f['Group']
+                for field in g.keys():
+                    shape, dtype = g[field].shape, g[field].dtype
+                    shape = (self.n_groups_tot,) + shape[1:]
+                    self.groups[field] = np.empty(shape, dtype=dtype)
+                    g_attrs = g[field].attrs
+                    if len(g_attrs) > 0:
+                        self.group_units[field] = {key: val for key,val in g_attrs.items()}
+                        print(f'field: {self.group_units[field]}')
+            if self.n_subhalos_tot > 0:
+                g = f['Subhalo']
+                for field in g.keys():
+                    shape, dtype = g[field].shape, g[field].dtype
+                    shape = (self.n_subhalos_tot,) + shape[1:]
+                    self.subhalos[field] = np.empty(shape, dtype=dtype)
+                    g_attrs = g[field].attrs
+                    if len(g_attrs) > 0:
+                        self.subhalo_units[field] = {key: val for key,val in g_attrs.items()}
+                        print(f'field: {self.subhalo_units[field]}')
 
         # Derived quantities
         self.BoxHalf = self.BoxSize / 2.
@@ -140,29 +142,41 @@ class Simulation:
             self.RadiusLR = header['RadiusLR']
             self.NumGasHR = header['NumGasHR']
             self.NumGasLR = header['NumGasLR']
-            g = f['Group']
-            self.distances_gas_lr = g['MinDistGasLR'][:]
-            self.distances_gas_hr = g['MinDistGasHR'][:]
-            self.distances_dm = g['MinDistDM'][:]
-            self.distances_p2 = g['MinDistP2'][:]
-            self.distances_p3 = g['MinDistP3'][:]
-            self.distances_stars_lr = g['MinDistStarsLR'][:]
-            self.distances_stars_hr = g['MinDistStarsHR'][:]
-            # self.GroupPos = g['GroupPos'][:]
-            self.Group_R_Crit200 = g['R_Crit200'][:]
-            # self.Group_M_Crit200 = g['M_Crit200'][:]
-            # Calculate the minimum distance to a low-resolution particle
-            self.distances_lr = np.minimum(self.distances_p2, self.distances_p3, self.distances_stars_lr) # P2,P3,StarsLR
+            if self.n_groups_tot > 0:
+                g = f['Group']
+                self.distances_gas_lr = g['MinDistGasLR'][:]
+                self.distances_gas_hr = g['MinDistGasHR'][:]
+                self.distances_dm = g['MinDistDM'][:]
+                self.distances_p2 = g['MinDistP2'][:]
+                self.distances_p3 = g['MinDistP3'][:]
+                # self.GroupPos = g['GroupPos'][:]
+                self.Group_R_Crit200 = g['R_Crit200'][:]
+                # self.Group_M_Crit200 = g['M_Crit200'][:]
+                if 'MinDistStarsLR' in g:
+                    self.distances_stars_lr = g['MinDistStarsLR'][:]
+                    # Calculate the minimum distance to a low-resolution particle
+                    self.distances_lr = np.minimum(self.distances_p2, self.distances_p3, self.distances_stars_lr) # P2,P3,StarsLR
+                else:
+                    self.distances_stars_lr = np.zeros_like(self.distances_gas_lr)
+                    # Calculate the minimum distance to a low-resolution particle
+                    self.distances_lr = np.minimum(self.distances_p2, self.distances_p3) # P2,P3
+                if 'MinDistStarsHR' in g:
+                    self.distances_stars_hr = g['MinDistStarsHR'][:]
+                else:
+                    self.distances_stars_hr = 2. * np.copy(self.Group_R_Crit200) # No HR in Rvir
 
-        # Mask out groups with R_Crit200 == 0 [R_Crit200 > 0]
-        # Require at least 1 high-resolution star particle [MinDist(StarsHR) < R_Crit200]
-        # Require at least 1 high-resolution gas particle [MinDist(GasHR) < R_Crit200]
-        # Mask out groups with MinDistP2 or MinDistP3 < R_Crit200 [MinDist(P2,P3,StarsLR) > R_Crit200]
-        self.group_mask = (self.Group_R_Crit200 > 0) \
-                        & (self.distances_stars_hr < self.Group_R_Crit200) \
-                        & (self.distances_gas_hr < self.Group_R_Crit200) \
-                        & (self.distances_lr > self.Group_R_Crit200)
-        self.n_groups_candidates = np.int32(np.count_nonzero(self.group_mask))
+        if self.n_groups_tot > 0:
+            # Mask out groups with R_Crit200 == 0 [R_Crit200 > 0]
+            # Require at least 1 high-resolution star particle [MinDist(StarsHR) < R_Crit200]
+            # Require at least 1 high-resolution gas particle [MinDist(GasHR) < R_Crit200]
+            # Mask out groups with MinDistP2 or MinDistP3 < R_Crit200 [MinDist(P2,P3,StarsLR) > R_Crit200]
+            self.group_mask = (self.Group_R_Crit200 > 0) \
+                            & (self.distances_stars_hr < self.Group_R_Crit200) \
+                            & (self.distances_gas_hr < self.Group_R_Crit200) \
+                            & (self.distances_lr > self.Group_R_Crit200)
+            self.n_groups_candidates = np.int32(np.count_nonzero(self.group_mask))
+        else:
+            self.n_groups_candidates = np.int32(0)  # No groups
 
     def convert_counts(self):
         """Convert the counts to file offsets."""
@@ -178,21 +192,25 @@ class Simulation:
 
     def print_groups(self):
         """Print the group data."""
-        print(f'Group_R_Crit200 = {self.Group_R_Crit200}')
+        if self.n_groups_tot > 0:
+            print(f'Group_R_Crit200 = {self.Group_R_Crit200}')
 
     def write(self):
         """Write the candidate results to an HDF5 file."""
-        GroupID = np.arange(self.n_groups_tot, dtype=np.int32)[self.group_mask]
-        self.subhalo_mask = np.zeros(self.n_subhalos_tot, dtype=bool)
-        self.subhalo_mask = np.array([self.subhalos['SubhaloGroupNr'][i] in GroupID for i in range(self.n_subhalos_tot)], dtype=bool)
-        self.n_subhalos_candidates = np.int32(np.count_nonzero(self.subhalo_mask))
-        SubhaloID = np.arange(self.n_subhalos_tot, dtype=np.int32)[self.subhalo_mask]
-        if VERBOSITY > 1:
-            print(f'GroupID = {GroupID}')
-            print(f'SubhaloID = {SubhaloID}')
-            print(f'n_groups_candidates = {self.n_groups_candidates}')
-            print(f'n_subhalos_candidates = {self.n_subhalos_candidates}')
-            print(f'GroupID of each Subhalo = {self.subhalos["SubhaloGroupNr"][SubhaloID]}')
+        if self.n_groups_tot > 0:
+            GroupID = np.arange(self.n_groups_tot, dtype=np.int32)[self.group_mask]
+            self.subhalo_mask = np.zeros(self.n_subhalos_tot, dtype=bool)
+            self.subhalo_mask = np.array([self.subhalos['SubhaloGroupNr'][i] in GroupID for i in range(self.n_subhalos_tot)], dtype=bool)
+            self.n_subhalos_candidates = np.int32(np.count_nonzero(self.subhalo_mask))
+            SubhaloID = np.arange(self.n_subhalos_tot, dtype=np.int32)[self.subhalo_mask]
+            if VERBOSITY > 1:
+                print(f'GroupID = {GroupID}')
+                print(f'SubhaloID = {SubhaloID}')
+                print(f'n_groups_candidates = {self.n_groups_candidates}')
+                print(f'n_subhalos_candidates = {self.n_subhalos_candidates}')
+                print(f'GroupID of each Subhalo = {self.subhalos["SubhaloGroupNr"][SubhaloID]}')
+        else:
+            self.n_subhalos_candidates = np.int32(0)  # No subhalos
         with h5py.File(cand_file, 'w') as f:
             g = f.create_group(b'Header')
             g.attrs['Ngroups_Total'] = self.n_groups_tot
@@ -214,34 +232,37 @@ class Simulation:
             g.attrs['RadiusLR'] = self.RadiusLR
             g.attrs['NumGasHR'] = self.NumGasHR
             g.attrs['NumGasLR'] = self.NumGasLR
-            g = f.create_group(b'Group')
-            g.create_dataset(b'GroupID', data=GroupID)
-            g.create_dataset(b'MinDistGasLR', data=self.distances_gas_lr[self.group_mask])
-            g.create_dataset(b'MinDistGasHR', data=self.distances_gas_hr[self.group_mask])
-            g.create_dataset(b'MinDistDM', data=self.distances_dm[self.group_mask])
-            g.create_dataset(b'MinDistP2', data=self.distances_p2[self.group_mask])
-            g.create_dataset(b'MinDistP3', data=self.distances_p3[self.group_mask])
-            g.create_dataset(b'MinDistStarsLR', data=self.distances_stars_lr[self.group_mask])
-            g.create_dataset(b'MinDistStarsHR', data=self.distances_stars_hr[self.group_mask])
-            for field in self.groups.keys():
-                g.create_dataset(field, data=self.groups[field][self.group_mask])
-                if field in self.group_units:
-                    for key,val in self.group_units[field].items():
-                        g[field].attrs[key] = val
-            g = f.create_group(b'Subhalo')
-            g.create_dataset(b'SubhaloID', data=SubhaloID)
-            for field in self.subhalos.keys():
-                g.create_dataset(field, data=self.subhalos[field][self.subhalo_mask])
-                if field in self.subhalo_units:
-                    for key,val in self.subhalo_units[field].items():
-                        g[field].attrs[key] = val
+            if self.n_groups_candidates > 0:
+                g = f.create_group(b'Group')
+                g.create_dataset(b'GroupID', data=GroupID)
+                g.create_dataset(b'MinDistGasLR', data=self.distances_gas_lr[self.group_mask])
+                g.create_dataset(b'MinDistGasHR', data=self.distances_gas_hr[self.group_mask])
+                g.create_dataset(b'MinDistDM', data=self.distances_dm[self.group_mask])
+                g.create_dataset(b'MinDistP2', data=self.distances_p2[self.group_mask])
+                g.create_dataset(b'MinDistP3', data=self.distances_p3[self.group_mask])
+                g.create_dataset(b'MinDistStarsLR', data=self.distances_stars_lr[self.group_mask])
+                g.create_dataset(b'MinDistStarsHR', data=self.distances_stars_hr[self.group_mask])
+                for field in self.groups.keys():
+                    g.create_dataset(field, data=self.groups[field][self.group_mask])
+                    if field in self.group_units:
+                        for key,val in self.group_units[field].items():
+                            g[field].attrs[key] = val
+            if self.n_subhalos_candidates > 0:
+                g = f.create_group(b'Subhalo')
+                g.create_dataset(b'SubhaloID', data=SubhaloID)
+                for field in self.subhalos.keys():
+                    g.create_dataset(field, data=self.subhalos[field][self.subhalo_mask])
+                    if field in self.subhalo_units:
+                        for key,val in self.subhalo_units[field].items():
+                            g[field].attrs[key] = val
 
     def read_counts_single(self, i):
         """Read the counts from a single FOF and snapshot file."""
-        with h5py.File(fof_pre + f'{i}.hdf5', 'r') as f:
-            header = f['Header'].attrs
-            self.n_groups[i] = header['Ngroups_ThisFile']
-            self.n_subhalos[i] = header['Nsubhalos_ThisFile']
+        if self.n_groups_tot > 0:
+            with h5py.File(fof_pre + f'{i}.hdf5', 'r') as f:
+                header = f['Header'].attrs
+                self.n_groups[i] = header['Ngroups_ThisFile']
+                self.n_subhalos[i] = header['Nsubhalos_ThisFile']
 
     def read_counts(self):
         """Read the counts from the FOF and snapshot files."""
@@ -258,19 +279,20 @@ class Simulation:
 
     def read_groups_single(self, i):
         """Read the group data from a single FOF file."""
-        with h5py.File(fof_pre + f'{i}.hdf5', 'r') as f:
-            if self.n_groups[i] > 0: # Skip empty files
-                g = f['Group']
-                offset = self.first_group[i] # Offset to the first group
-                next_offset = offset + self.n_groups[i] # Offset beyond the last group
-                for field in g.keys():
-                    self.groups[field][offset:next_offset] = g[field][:]
-            if self.n_subhalos[i] > 0: # Skip empty files
-                g = f['Subhalo']
-                offset = self.first_subhalo[i] # Offset to the first subhalo
-                next_offset = offset + self.n_subhalos[i] # Offset beyond the last subhalo
-                for field in g.keys():
-                    self.subhalos[field][offset:next_offset] = g[field][:]
+        if self.n_groups_tot > 0:
+            with h5py.File(fof_pre + f'{i}.hdf5', 'r') as f:
+                if self.n_groups[i] > 0: # Skip empty files
+                    g = f['Group']
+                    offset = self.first_group[i] # Offset to the first group
+                    next_offset = offset + self.n_groups[i] # Offset beyond the last group
+                    for field in g.keys():
+                        self.groups[field][offset:next_offset] = g[field][:]
+                if self.n_subhalos[i] > 0: # Skip empty files
+                    g = f['Subhalo']
+                    offset = self.first_subhalo[i] # Offset to the first subhalo
+                    next_offset = offset + self.n_subhalos[i] # Offset beyond the last subhalo
+                    for field in g.keys():
+                        self.subhalos[field][offset:next_offset] = g[field][:]
 
     def read_groups(self):
         """Read the group data from the FOF files."""

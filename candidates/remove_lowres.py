@@ -93,11 +93,12 @@ class Simulation:
             # Gas data
             for field in gas_fields:
                 self.gas[field] = f[field][:]
+            self.is_HR = self.gas['is_HR'] # High-resolution gas mask
 
             # Star data
-            for field in star_fields:
-                self.stars[field] = f[field][:]
-            self.is_HR = self.gas['is_HR'] # High-resolution gas mask
+            if self.n_stars > 0:
+                for field in star_fields:
+                    self.stars[field] = f[field][:]
 
 def remove_lowres():
     # Setup simulation parameters
@@ -161,9 +162,10 @@ def remove_lowres():
             if field in units: f[field].attrs['units'] = units[field]
 
         # Star fields
-        for field in star_fields:
-            f.create_dataset(field, data=sim.stars[field])
-            if field in units: f[field].attrs['units'] = units[field]
+        if sim.n_stars > 0:
+            for field in star_fields:
+                f.create_dataset(field, data=sim.stars[field])
+                if field in units: f[field].attrs['units'] = units[field]
     try:
         os.rename(colt_file + '-tmp', colt_file)
     except OSError as e:

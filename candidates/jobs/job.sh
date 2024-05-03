@@ -2,8 +2,7 @@
 
 # SBATCH --job-name=colt
 #SBATCH --output=colt-%a-%A.out
-#SBATCH --array=0-188
-# SBATCH --array=188
+#SBATCH --array=0-188%32
 #SBATCH --partition=sched_mit_mvogelsb,sched_mit_mki,sched_mit_mki_preempt
 # SBATCH --partition=sched_mit_mki_r8
 #SBATCH --nodes=1
