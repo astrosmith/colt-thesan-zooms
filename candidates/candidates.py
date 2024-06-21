@@ -168,11 +168,9 @@ class Simulation:
         if self.n_groups_tot > 0:
             # Mask out groups with R_Crit200 == 0 [R_Crit200 > 0]
             # Require at least 1 high-resolution star particle [MinDist(StarsHR) < R_Crit200]
-            # Require at least 1 high-resolution gas particle [MinDist(GasHR) < R_Crit200]
             # Mask out groups with MinDistP2 or MinDistP3 < R_Crit200 [MinDist(P2,P3,StarsLR) > R_Crit200]
             self.group_mask = (self.Group_R_Crit200 > 0) \
                             & (self.distances_stars_hr < self.Group_R_Crit200) \
-                            & (self.distances_gas_hr < self.Group_R_Crit200) \
                             & (self.distances_lr > self.Group_R_Crit200)
             self.n_groups_candidates = np.int32(np.count_nonzero(self.group_mask))
         else:

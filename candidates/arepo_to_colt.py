@@ -627,8 +627,8 @@ def arepo_to_colt(include_metals=True):
             f.create_dataset('v_star', data=sim.velocity_to_cgs * sim.stars['Velocities'], dtype=np.float64) # Star velocities [cm/s]
             f['v_star'].attrs['units'] = b'cm/s'
             f.create_dataset('Z_star', data=sim.stars['GFM_Metallicity'], dtype=np.float64) # Stellar metallicity [mass fraction]
-            # f.create_dataset('m_star', data=mass_to_Msun * sim.stars['Masses'], dtype=np.float64) # Star mass [Msun]
-            # f['m_star'].attrs['units'] = b'Msun'
+            f.create_dataset('m_star', data=sim.mass_to_Msun * sim.stars['Masses'], dtype=np.float64) # Star mass [Msun]
+            f['m_star'].attrs['units'] = b'Msun'
             f.create_dataset('m_init_star', data=sim.mass_to_Msun * sim.stars['GFM_InitialMass'], dtype=np.float64) # Star initial mass [Msun]
             f['m_init_star'].attrs['units'] = b'Msun'
             age_star = get_time_difference_in_Gyr(sim.stars['GFM_StellarFormationTime'].astype(np.float64), sim.a, sim.Omega0, sim.h) # Age of the star [Gyr]

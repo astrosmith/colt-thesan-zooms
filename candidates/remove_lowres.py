@@ -33,7 +33,7 @@ colt_file = f'{colt_dir}/colt_{snap:03d}.hdf5'
 # Extracted fields
 gas_fields = ['D', 'SFR', 'T_dust', 'X', 'Y', 'Z', 'Z_C', 'Z_Fe', 'Z_Mg', 'Z_N', 'Z_Ne', 'Z_O', 'Z_S', 'Z_Si',
               'e_int', 'is_HR', 'r', 'rho', 'v', 'x_H2', 'x_HI', 'x_HeI', 'x_HeII', 'x_e', 'id', 'group_id', 'subhalo_id']
-star_fields = ['Z_star', 'age_star', 'm_init_star', 'r_star', 'v_star', 'id_star', 'group_id_star', 'subhalo_id_star']
+star_fields = ['Z_star', 'age_star', 'm_star', 'm_init_star', 'r_star', 'v_star', 'id_star', 'group_id_star', 'subhalo_id_star']
 units = {'r': b'cm', 'v': b'cm/s', 'e_int': b'cm^2/s^2', 'T_dust': b'K', 'rho': b'g/cm^3', 'SFR': b'Msun/yr',
          'r_star': b'cm', 'v_star': b'cm/s', 'm_star': b'Msun', 'm_init_star': b'Msun', 'age_star': b'Gyr'}
 
@@ -142,6 +142,7 @@ def remove_lowres():
     mask = np.ones(sim.n_cells, dtype=bool) # Mask for cells to keep
     mask[list(known_LR)] = False # Remove outer low-resolution cells without high-resolution neighbors
     n_cells = np.int32(np.count_nonzero(mask)) # Number of cells
+    sim.n_cells = n_cells # Update number of cells
     for field in sim.gas: sim.gas[field] = sim.gas[field][mask] # Apply gas mask
     print(f'Number of cells = {n_cells} / {n_cells_old} = {100.*float(n_cells)/float(n_cells_old):g}%')
     if TIMERS: t2 = time(); print(f"Time to identify edge-connected low-resolution gas particles: {t2 - t1:g} s"); t1 = t2
