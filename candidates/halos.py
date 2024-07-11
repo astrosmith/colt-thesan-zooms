@@ -1,10 +1,12 @@
-import h5py
+import h5py, os, platform
 import numpy as np
 
 # Configurable global variables
-sim = 'g5760/z4'
 snap = 188 # Snapshot number
-zoom_dir = '/orcd/data/mvogelsb/004/Thesan-Zooms'
+if platform.system() == 'Darwin':
+    sim, zoom_dir = 'g500531/z4', os.path.expandvars('$HOME/Engaging/Thesan-Zooms')
+else:
+    sim, zoom_dir = 'g5760/z4', '/orcd/data/mvogelsb/004/Thesan-Zooms'
 
 if __name__ == '__main__':
     import sys

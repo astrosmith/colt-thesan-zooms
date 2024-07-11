@@ -1,10 +1,9 @@
-import h5py
+import h5py, os, platform, asyncio
 import numpy as np
 from numba import jit, prange
 from dataclasses import dataclass, field
 from time import time
 from typing import Tuple
-import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import cpu_count
 from scipy.spatial import cKDTree
@@ -30,9 +29,11 @@ CALC_COM = CALC_DEFAULT # Calculate center of mass methods
 TIMERS = True # Print timers
 
 # Configurable global variables
-sim = 'g5760/z4'
 snap = 188 # Snapshot number
-zoom_dir = '/orcd/data/mvogelsb/004/Thesan-Zooms'
+if platform.system() == 'Darwin':
+    sim, zoom_dir = 'g500531/z4', os.path.expandvars('$HOME/Engaging/Thesan-Zooms')
+else:
+    sim, zoom_dir = 'g5760/z4', '/orcd/data/mvogelsb/004/Thesan-Zooms'
 
 if __name__ == '__main__':
     import sys
@@ -119,6 +120,10 @@ class Simulation:
     Group_R_Crit200: np.ndarray = None
     Group_M_Crit200: np.ndarray = None
     GroupMassType: np.ndarray = None
+    subhalos: dict = field(default_factory=dict)
+    SubhaloPos: np.ndarray = None
+    SubhaloMass: np.ndarray = None
+    SubhaloGroupNr: np.ndarray = None
 
     # Particle data
     gas: dict = field(default_factory=dict)
@@ -132,7 +137,9 @@ class Simulation:
     r_dm: np.ndarray = None
     m_dm: np.float64 = None
     r_p2: np.ndarray = None
+    m_p2: np.ndarray = None
     r_p3: np.ndarray = None
+    m_p3: np.float64 = None
     r_stars: np.ndarray = None
     m_stars: np.ndarray = None
     is_HR: np.ndarray = None
@@ -153,10 +160,17 @@ class Simulation:
                     shape, dtype = g[field].shape, g[field].dtype
                     shape = (self.n_groups_tot,) + shape[1:]
                     self.groups[field] = np.empty(shape, dtype=dtype)
+            if self.n_subhalos_tot > 0:
+                g = f['Subhalo']
+                for field in ['SubhaloPos', 'SubhaloMass', 'SubhaloGroupNr']:
+                    shape, dtype = g[field].shape, g[field].dtype
+                    shape = (self.n_subhalos_tot,) + shape[1:]
+                    self.subhalos[field] = np.empty(shape, dtype=dtype)
 
         with h5py.File(snap_pre + '0.hdf5', 'r') as f:
             header = f['Header'].attrs
             self.m_dm = header['MassTable'][1] # Mass of dark matter particles
+            self.m_p3 = header['MassTable'][3] # Mass of PartType3 particles
             self.n_gas = np.zeros(self.n_files, dtype=np.uint64)
             self.n_dm = np.zeros(self.n_files, dtype=np.uint64)
             self.n_p2 = np.zeros(self.n_files, dtype=np.uint64)
@@ -206,7 +220,7 @@ class Simulation:
             with h5py.File(snap_pre + f'{i}.hdf5', 'r') as f:
                 if 'PartType2' in f:
                     g = f['PartType2']
-                    for field in ['Coordinates']:
+                    for field in ['Coordinates', 'Masses']:
                         shape, dtype = g[field].shape, g[field].dtype
                         shape = (self.n_p2_tot,) + shape[1:]
                         self.p2[field] = np.empty(shape, dtype=dtype)
@@ -241,6 +255,7 @@ class Simulation:
         self.volume_to_cgs = self.length_to_cgs**3
         self.mass_to_cgs = self.UnitMass_in_g / self.h
         self.mass_to_msun = self.mass_to_cgs / SOLAR_MASS
+        self.density_to_cgs = self.mass_to_cgs / self.volume_to_cgs
         self.velocity_to_cgs = np.sqrt(self.a) * self.UnitVelocity_in_cm_per_s
 
         # Group data
@@ -249,6 +264,12 @@ class Simulation:
             self.Group_R_Crit200 = self.groups["Group_R_Crit200"]
             self.Group_M_Crit200 = self.groups["Group_M_Crit200"]
             self.GroupMassType = self.groups["GroupMassType"]
+
+        # Subhalo data
+        if self.n_subhalos_tot > 0:
+            self.SubhaloPos = self.subhalos["SubhaloPos"]
+            self.SubhaloMass = self.subhalos["SubhaloMass"]
+            self.SubhaloGroupNr = self.subhalos["SubhaloGroupNr"]
 
         # Gas data
         self.r_gas = self.gas["Coordinates"]
@@ -260,6 +281,7 @@ class Simulation:
 
         # PartType2 data
         self.r_p2 = self.p2["Coordinates"]
+        self.m_p2 = self.p2["Masses"]
 
         # PartType3 data
         self.r_p3 = self.p3["Coordinates"]
@@ -366,16 +388,149 @@ class Simulation:
             self.tree_stars_lr = cKDTree(self.r_stars[self.is_HR == 0]) # Low-resolution star particles
             self.tree_stars_hr = cKDTree(self.r_stars[self.is_HR > 0]) # High-resolution star particles
 
-    def find_nearest(self):
+    def find_nearest_group(self):
         """Find the nearest distance to each group position."""
-        self.distances_gas_lr, self.inices_gas_lr = self.tree_gas_lr.query(self.GroupPos) # Low-resolution gas particles
-        self.distances_gas_hr, self.inices_gas_hr = self.tree_gas_hr.query(self.GroupPos) # High-resolution gas particles
-        self.distances_dm, self.inices_dm = self.tree_dm.query(self.GroupPos)
-        self.distances_p2, self.inices_p2 = self.tree_p2.query(self.GroupPos)
-        self.distances_p3, self.inices_p3 = self.tree_p3.query(self.GroupPos)
+        self.group_distances_gas_lr, self.group_inices_gas_lr = self.tree_gas_lr.query(self.GroupPos) # Low-resolution gas particles
+        self.group_distances_gas_hr, self.group_inices_gas_hr = self.tree_gas_hr.query(self.GroupPos) # High-resolution gas particles
+        self.group_distances_dm, self.group_inices_dm = self.tree_dm.query(self.GroupPos)
+        self.group_distances_p2, self.group_inices_p2 = self.tree_p2.query(self.GroupPos)
+        self.group_distances_p3, self.group_inices_p3 = self.tree_p3.query(self.GroupPos)
         if self.n_stars_tot > 0:
-            self.distances_stars_lr, self.inices_stars_lr = self.tree_stars_lr.query(self.GroupPos) # Low-resolution star particles
-            self.distances_stars_hr, self.inices_stars_hr = self.tree_stars_hr.query(self.GroupPos) # High-resolution star particles
+            self.group_distances_stars_lr, self.group_inices_stars_lr = self.tree_stars_lr.query(self.GroupPos) # Low-resolution star particles
+            self.group_distances_stars_hr, self.group_inices_stars_hr = self.tree_stars_hr.query(self.GroupPos) # High-resolution star particles
+
+    def find_nearest_subhalo(self):
+        """Find the nearest distance to each subhalo position."""
+        self.subhalo_distances_gas_lr, self.subhalo_inices_gas_lr = self.tree_gas_lr.query(self.SubhaloPos) # Low-resolution gas particles
+        self.subhalo_distances_gas_hr, self.subhalo_inices_gas_hr = self.tree_gas_hr.query(self.SubhaloPos) # High-resolution gas particles
+        self.subhalo_distances_dm, self.subhalo_inices_dm = self.tree_dm.query(self.SubhaloPos)
+        self.subhalo_distances_p2, self.subhalo_inices_p2 = self.tree_p2.query(self.SubhaloPos)
+        self.subhalo_distances_p3, self.subhalo_inices_p3 = self.tree_p3.query(self.SubhaloPos)
+        if self.n_stars_tot > 0:
+            self.subhalo_distances_stars_lr, self.subhalo_inices_stars_lr = self.tree_stars_lr.query(self.SubhaloPos) # Low-resolution star particles
+            self.subhalo_distances_stars_hr, self.subhalo_inices_stars_hr = self.tree_stars_hr.query(self.SubhaloPos) # High-resolution star particles
+
+    def calculate_average_density(self):
+        """Calculate the average density of the simulation."""
+        self.m_gas_tot = np.sum(self.m_gas) # Total gas mass
+        self.m_dm_tot = self.m_dm * float(self.n_dm_tot) # Total dark matter mass
+        self.m_p2_tot = np.sum(self.m_p2) # Total PartType2 mass
+        self.m_p3_tot = self.m_p3 * float(self.n_p3_tot) # Total dark matter mass
+        self.m_stars_tot = np.sum(self.m_stars) if self.n_stars_tot > 0 else 0. # Total stellar mass
+        self.m_tot = self.m_gas_tot + self.m_dm_tot + self.m_p2_tot + self.m_p3_tot + self.m_stars_tot # Total mass
+        self.rho_avg = self.m_tot / self.BoxSize**3 # Total density
+        km = 1e5                    # Units: 1 km = 1e5 cm
+        Mpc = 3.085677581467192e24  # Units: 1 Mpc = 3e24 cm
+        H0 = 100. * self.h * km / Mpc # Hubble constant [km/s/Mpc]
+        G = 6.6743015e-8 # Gravitational constant [cm^3/g/s^2]
+        H2 = H0**2 * (self.Omega0 / self.a**3 + self.OmegaLambda) # Hubble parameter squared
+        x_c = self.Omega0 - 1. # x_c = Omega0 - 1
+        self.Delta_c = 18. * np.pi**2 + 82. * x_c - 39. * x_c**2 # Critical overdensity factor
+        self.rho_crit0 = 3. * H0**2 / (8. * np.pi * G) # Critical density today [g/cm^3]
+        self.rho_crit = 3. * H2 / (8. * np.pi * G) # Critical density [g/cm^3]
+        self.rho_vir = self.Delta_c * self.rho_crit # Virial density [g/cm^3]
+        self.rho_vir_code = self.rho_vir / self.density_to_cgs # Virial density in code units
+        if VERBOSITY > 0:
+            print(f'sum(m_gas) = {self.m_gas_tot*self.mass_to_msun:g} Msun = {100.*self.m_gas_tot/self.m_tot:g}% [m_gas_res = {self.m_gas_tot*self.mass_to_msun/float(self.n_gas_tot):g} Msun]')
+            print(f'sum(m_dm) = {self.m_dm_tot*self.mass_to_msun:g} Msun = {100.*self.m_dm_tot/self.m_tot:g}% [m_dm_res = {self.m_dm*self.mass_to_msun:g} Msun]')
+            print(f'sum(m_p2) = {self.m_p2_tot*self.mass_to_msun:g} Msun = {100.*self.m_p2_tot/self.m_tot:g}% [m_p2_res = {self.m_p2_tot*self.mass_to_msun/float(self.n_p2_tot):g} Msun]')
+            print(f'sum(m_p3) = {self.m_p3_tot*self.mass_to_msun:g} Msun = {100.*self.m_p3_tot/self.m_tot:g}% [m_p3_res = {self.m_p3*self.mass_to_msun:g} Msun]')
+            print(f'sum(m_stars) = {self.m_stars_tot*self.mass_to_msun:g} Msun = {100.*self.m_stars_tot/self.m_tot:g}% [m_stars_res = {self.m_stars_tot*self.mass_to_msun/float(self.n_stars_tot):g} Msun]')
+            print(f'rho_crit0 = {self.rho_crit0:g} g/cm^3, rho_crit = {self.rho_crit:g} g/cm^3, Delta_c = {self.Delta_c:g}, rho_vir = {self.rho_vir:g} g/cm^3')
+
+    def calculate_R_vir(self):
+        """Calculate the virial radius of each subhalo."""
+        if self.n_subhalos_tot > 0:
+            self.Subhalo_R_vir = np.zeros(self.n_subhalos_tot, dtype=np.float32) # Virial radius
+            self.Subhalo_M_vir = np.zeros(self.n_subhalos_tot, dtype=np.float32) # Virial mass
+            self.Subhalo_M_gas = np.zeros(self.n_subhalos_tot, dtype=np.float32) # Gas mass (<R_vir)
+            self.Subhalo_M_stars = np.zeros(self.n_subhalos_tot, dtype=np.float32) # Stellar mass (<R_vir)
+            self.r_min = 1e-2 * self.h / self.a # 10 pc
+            self.r_max = 2. * self.BoxSize # 2 r_box
+            self.logr2_min = 2. * np.log10(self.r_min) # log(r_min^2)
+            self.logr2_max = 2. * np.log10(self.r_max) # log(r_max^2)
+            self.n_bins = 1000 # Number of bins
+            inv_dbin = float(self.n_bins) / (self.logr2_max - self.logr2_min) # n / (log(r_max^2) - log(r_min^2))
+            bins = np.logspace(self.logr2_min, self.logr2_max, self.n_bins+1) # r^2 bins
+            log_rbins = np.linspace(0.5*self.logr2_min, 0.5*self.logr2_max, self.n_bins+1) # log(r) bins
+            dlog_rbin = 0.5 * (self.logr2_max - self.logr2_min) / float(self.n_bins) # (log(r_max) - log(r_min)) / n
+            bins[0] = 0. # Extend first bin to zero
+            V_enc = 4. * np.pi / 3. * bins[1:]**1.5 # Enclosed volume
+            M_to_rho_vir = 1. / V_enc / self.rho_vir_code # Mass to virial density
+            m_dm_full = self.m_dm * np.ones(self.n_dm_tot) # Full dark matter mass array
+            m_p3_full = self.m_p3 * np.ones(self.n_p3_tot) # Full PartType3 mass array
+        for i in range(self.n_subhalos_tot):
+            if self.Group_R_Crit200[self.SubhaloGroupNr[i]] <= 0.:
+                continue # Skip groups without a valid R_Crit200
+            r_sub = self.SubhaloPos[i] # Subhalo center
+            M_sub = self.SubhaloMass[i] # Subhalo mass
+            M_sub_10 = 0.1 * M_sub # 10% of the subhalo mass
+            # Gas particles
+            r2 = (self.r_gas[:,0] - r_sub[0])**2 \
+               + (self.r_gas[:,1] - r_sub[1])**2 \
+               + (self.r_gas[:,2] - r_sub[2])**2 # Squared distances
+            ibin = np.floor((np.log10(r2) - self.logr2_min) * inv_dbin).astype(np.int32) # Bin indices
+            ibin[ibin < 0] = 0 # Clip to first bin
+            M_gas_enc = np.cumsum(np.bincount(ibin, weights=self.m_gas, minlength=self.n_bins)) # Enclosed gas mass
+            M_enc = np.copy(M_gas_enc) # Total enclosed mass
+            # Dark matter particles
+            r2 = (self.r_dm[:,0] - r_sub[0])**2 \
+               + (self.r_dm[:,1] - r_sub[1])**2 \
+               + (self.r_dm[:,2] - r_sub[2])**2 # Squared distances
+            ibin = np.floor((np.log10(r2) - self.logr2_min) * inv_dbin).astype(np.int32) # Bin indices
+            ibin[ibin < 0] = 0 # Clip to first bin
+            M_enc += np.cumsum(np.bincount(ibin, weights=m_dm_full, minlength=self.n_bins)) # Add enclosed dark matter mass
+            # PartType2 particles
+            r2 = (self.r_p2[:,0] - r_sub[0])**2 \
+               + (self.r_p2[:,1] - r_sub[1])**2 \
+               + (self.r_p2[:,2] - r_sub[2])**2 # Squared distances
+            ibin = np.floor((np.log10(r2) - self.logr2_min) * inv_dbin).astype(np.int32) # Bin indices
+            ibin[ibin < 0] = 0 # Clip to first bin
+            M_enc += np.cumsum(np.bincount(ibin, weights=self.m_p2, minlength=self.n_bins)) # Add enclosed PartType2 mass
+            # PartType3 particles
+            r2 = (self.r_p3[:,0] - r_sub[0])**2 \
+               + (self.r_p3[:,1] - r_sub[1])**2 \
+               + (self.r_p3[:,2] - r_sub[2])**2 # Squared distances
+            ibin = np.floor((np.log10(r2) - self.logr2_min) * inv_dbin).astype(np.int32)
+            ibin[ibin < 0] = 0
+            M_enc += np.cumsum(np.bincount(ibin, weights=m_p3_full, minlength=self.n_bins)) # Add enclosed PartType3 mass
+            # Star particles
+            if self.n_stars_tot > 0:
+                r2 = (self.r_stars[:,0] - r_sub[0])**2 \
+                   + (self.r_stars[:,1] - r_sub[1])**2 \
+                   + (self.r_stars[:,2] - r_sub[2])**2 # Squared distances
+                ibin = np.floor((np.log10(r2) - self.logr2_min) * inv_dbin).astype(np.int32) # Bin indices
+                ibin[ibin < 0] = 0 # Clip to first bin
+                M_stars_enc = np.cumsum(np.bincount(ibin, weights=self.m_stars, minlength=self.n_bins)) # Enclosed stellar mass
+            # Calculate the enclosed mass
+            i_10 = np.argmax(M_enc > M_sub_10) # Find the first bin with M_enc > 0.1 M_vir
+            rho_enc = M_enc * M_to_rho_vir # Enclosed density [rho_vir]
+            # Calculate the virial radius
+            i_vir = np.argmax(rho_enc[i_10:] < 1.) + i_10 # Find the first bin with rho_enc < rho_vir
+            if i_vir == 0:
+                self.Subhalo_R_vir[i] = -1. # Invalid R_vir
+                self.Subhalo_M_vir[i] = -1.
+                self.Subhalo_M_gas[i] = -1.
+                self.Subhalo_M_stars[i] = -1.
+            else:
+                # Log interpolation to find the virial radius and masses
+                frac = -np.log10(rho_enc[i_vir-1]) / np.log10(rho_enc[i_vir]/rho_enc[i_vir-1]) # Interpolation coordinate
+                self.Subhalo_R_vir[i] = 10.**(log_rbins[i_vir] + frac * dlog_rbin) # Virial radius
+                self.Subhalo_M_vir[i] = 10.**(np.log10(M_enc[i_vir-1]) + frac * np.log10(M_enc[i_vir]/M_enc[i_vir-1])) # Virial mass
+                if M_gas_enc[i_vir-1] <= 0.:
+                    self.Subhalo_M_gas[i] = M_gas_enc[i_vir-1] + frac * (M_gas_enc[i_vir] - M_gas_enc[i_vir-1]) # Gas mass (<R_vir)
+                else:
+                    self.Subhalo_M_gas[i] = 10.**(np.log10(M_gas_enc[i_vir-1]) + frac * np.log10(M_gas_enc[i_vir]/M_gas_enc[i_vir-1])) # Gas mass (<R_vir)
+                if M_stars_enc[i_vir-1] <= 0.:
+                    self.Subhalo_M_stars[i] = M_stars_enc[i_vir-1] + frac * (M_stars_enc[i_vir] - M_stars_enc[i_vir-1]) # Stellar mass (<R_vir)
+                else:
+                    self.Subhalo_M_stars[i] = 10.**(np.log10(M_stars_enc[i_vir-1]) + frac * np.log10(M_stars_enc[i_vir]/M_stars_enc[i_vir-1])) # Stellar mass (<R_vir)
+        if VERBOSITY > 0:
+            kpc = 3.085677581467192e21  # Units: 1 kpc = 3e21 cm
+            print(f'R_vir = {self.Subhalo_R_vir*self.length_to_cgs/kpc} kpc')
+            print(f'M_vir = {self.Subhalo_M_vir*self.mass_to_msun} Msun')
+            print(f'M_gas = {self.Subhalo_M_gas*self.mass_to_msun} Msun')
+            print(f'M_stars = {self.Subhalo_M_stars*self.mass_to_msun} Msun')
 
     def print_offsets(self):
         """Print the file counts and offsets."""
@@ -401,6 +556,10 @@ class Simulation:
             print(f'Group_R_Crit200 = {self.Group_R_Crit200}')
             print(f'Group_M_Crit200 = {self.Group_M_Crit200}')
             print(f'GroupMassType = {self.GroupMassType}')
+        if self.n_subhalos_tot > 0:
+            print(f'SubhaloPos = {self.SubhaloPos}')
+            print(f'SubhaloMass = {self.SubhaloMass}')
+            print(f'SubhaloGroupNr = {self.SubhaloGroupNr}')
 
     def print_particles(self):
         """Print the particle data."""
@@ -409,6 +568,7 @@ class Simulation:
         print(f'm_gas_HR = {self.m_gas_HR}')
         print(f'r_dm = {self.r_dm}')
         print(f'r_p2 = {self.r_p2}')
+        print(f'm_p2 = {self.m_p2}')
         print(f'r_p3 = {self.r_p3}')
         if self.n_stars_tot > 0:
             print(f'r_stars = {self.r_stars}')
@@ -438,18 +598,33 @@ class Simulation:
             g.attrs['NumGasLR'] = np.int32(self.NumGasLR)
             if self.n_groups_tot > 0:
                 g = f.create_group(b'Group')
-                g.create_dataset(b'Pos', data=self.GroupPos)
+                # g.create_dataset(b'Pos', data=self.GroupPos)
                 g.create_dataset(b'R_Crit200', data=self.Group_R_Crit200)
-                g.create_dataset(b'M_Crit200', data=self.Group_M_Crit200)
+                # g.create_dataset(b'M_Crit200', data=self.Group_M_Crit200)
                 # g.create_dataset(b'MassType', data=self.GroupMassType)
-                g.create_dataset(b'MinDistGasLR', data=self.distances_gas_lr, dtype=np.float32)
-                g.create_dataset(b'MinDistGasHR', data=self.distances_gas_hr, dtype=np.float32)
-                g.create_dataset(b'MinDistDM', data=self.distances_dm, dtype=np.float32)
-                g.create_dataset(b'MinDistP2', data=self.distances_p2, dtype=np.float32)
-                g.create_dataset(b'MinDistP3', data=self.distances_p3, dtype=np.float32)
+                g.create_dataset(b'MinDistGasLR', data=self.group_distances_gas_lr, dtype=np.float32)
+                g.create_dataset(b'MinDistGasHR', data=self.group_distances_gas_hr, dtype=np.float32)
+                g.create_dataset(b'MinDistDM', data=self.group_distances_dm, dtype=np.float32)
+                g.create_dataset(b'MinDistP2', data=self.group_distances_p2, dtype=np.float32)
+                g.create_dataset(b'MinDistP3', data=self.group_distances_p3, dtype=np.float32)
                 if self.n_stars_tot > 0:
-                    g.create_dataset(b'MinDistStarsLR', data=self.distances_stars_lr, dtype=np.float32)
-                    g.create_dataset(b'MinDistStarsHR', data=self.distances_stars_hr, dtype=np.float32)
+                    g.create_dataset(b'MinDistStarsLR', data=self.group_distances_stars_lr, dtype=np.float32)
+                    g.create_dataset(b'MinDistStarsHR', data=self.group_distances_stars_hr, dtype=np.float32)
+            if self.n_subhalos_tot > 0:
+                g = f.create_group(b'Subhalo')
+                # g.create_dataset(b'Pos', data=self.SubhaloPos)
+                g.create_dataset(b'R_vir', data=self.Subhalo_R_vir) # Virial radius
+                g.create_dataset(b'M_vir', data=self.Subhalo_M_vir) # Virial mass
+                g.create_dataset(b'M_gas', data=self.Subhalo_M_gas) # Gas mass (<R_vir)
+                g.create_dataset(b'M_stars', data=self.Subhalo_M_stars) # Stars mass (<R_vir)
+                g.create_dataset(b'MinDistGasLR', data=self.subhalo_distances_gas_lr, dtype=np.float32)
+                g.create_dataset(b'MinDistGasHR', data=self.subhalo_distances_gas_hr, dtype=np.float32)
+                g.create_dataset(b'MinDistDM', data=self.subhalo_distances_dm, dtype=np.float32)
+                g.create_dataset(b'MinDistP2', data=self.subhalo_distances_p2, dtype=np.float32)
+                g.create_dataset(b'MinDistP3', data=self.subhalo_distances_p3, dtype=np.float32)
+                if self.n_stars_tot > 0:
+                    g.create_dataset(b'MinDistStarsLR', data=self.subhalo_distances_stars_lr, dtype=np.float32)
+                    g.create_dataset(b'MinDistStarsHR', data=self.subhalo_distances_stars_hr, dtype=np.float32)
 
     def read_counts_single(self, i):
         """Read the counts from a single FOF and snapshot file."""
@@ -492,6 +667,14 @@ class Simulation:
                 self.Group_R_Crit200[offset:next_offset] = g['Group_R_Crit200'][:]
                 self.Group_M_Crit200[offset:next_offset] = g['Group_M_Crit200'][:]
                 self.GroupMassType[offset:next_offset] = g['GroupMassType'][:]
+        if self.n_subhalos[i] > 0: # Skip empty files
+            with h5py.File(fof_pre + f'{i}.hdf5', 'r') as f:
+                g = f['Subhalo']
+                offset = self.first_subhalo[i] # Offset to the first subhalo
+                next_offset = offset + self.n_subhalos[i] # Offset beyond the last subhalo
+                self.SubhaloPos[offset:next_offset] = g['SubhaloPos'][:]
+                self.SubhaloMass[offset:next_offset] = g['SubhaloMass'][:]
+                self.SubhaloGroupNr[offset:next_offset] = g['SubhaloGroupNr'][:]
 
     def read_groups(self):
         """Read the group data from the FOF files."""
@@ -523,6 +706,7 @@ class Simulation:
                 offset = self.first_p2[i]
                 next_offset = offset + self.n_p2[i]
                 self.r_p2[offset:next_offset] = f['PartType2/Coordinates'][:]
+                self.m_p2[offset:next_offset] = f['PartType2/Masses'][:]
             if self.n_p3[i] > 0:
                 offset = self.first_p3[i]
                 next_offset = offset + self.n_p3[i]
@@ -694,16 +878,34 @@ def main():
     sim.highres_radius()
     if TIMERS: t2 = time(); print(f"Time to calculate high-resolution radius: {t2 - t1:g} s"); t1 = t2
 
-    if sim.n_groups_tot > 0:
+    if sim.n_groups_tot > 0 or sim.n_subhalos_tot > 0:
         # Build trees for different particle types
         print("\nBuilding trees for different particle types...")
         sim.build_trees()
         if TIMERS: t2 = time(); print(f"Time to build trees: {t2 - t1:g} s"); t1 = t2
 
+    if sim.n_groups_tot > 0:
         # Find the nearest distance from each group position
         print("\nFinding the nearest distance from each group position...")
-        sim.find_nearest()
+        sim.find_nearest_group()
         if TIMERS: t2 = time(); print(f"Time to find nearest distances: {t2 - t1:g} s"); t1 = t2
+
+    if sim.n_subhalos_tot > 0:
+        # Find the nearest distance from each group position
+        print("\nFinding the nearest distance from each subhalo position...")
+        sim.find_nearest_subhalo()
+        if TIMERS: t2 = time(); print(f"Time to find nearest distances: {t2 - t1:g} s"); t1 = t2
+
+    # Calculate the average density
+    print("\nCalculating the average density...")
+    sim.calculate_average_density()
+    if TIMERS: t2 = time(); print(f"Time to calculate density: {t2 - t1:g} s"); t1 = t2
+
+    if sim.n_subhalos_tot > 0:
+        # Calculate the virial radius of each subhalo
+        print("\nCalculating the virial radius of each subhalo...")
+        sim.calculate_R_vir()
+        if TIMERS: t2 = time(); print(f"Time to calculate virial radii: {t2 - t1:g} s"); t1 = t2
 
     # Write the results to a file
     print("\nWriting the results to a file...")

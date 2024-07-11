@@ -1,6 +1,6 @@
 import numpy as np
 from time import time
-import h5py, os, errno, asyncio
+import h5py, os, errno, platform, asyncio
 from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import cpu_count
 from dataclasses import dataclass, field
@@ -17,9 +17,11 @@ READ_SNAPS = READ_DEFAULT # Read snapshots methods
 TIMERS = (VERBOSITY > 0) # Print timers
 
 # Configurable global variables
-sim = 'g5760/z4'
 snap = 188 # Snapshot number
-zoom_dir = '/orcd/data/mvogelsb/004/Thesan-Zooms'
+if platform.system() == 'Darwin':
+    sim, zoom_dir = 'g500531/z4', os.path.expandvars('$HOME/Engaging/Thesan-Zooms')
+else:
+    sim, zoom_dir = 'g5760/z4', '/orcd/data/mvogelsb/004/Thesan-Zooms'
 
 if __name__ == '__main__':
     import sys
