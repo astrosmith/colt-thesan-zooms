@@ -598,6 +598,16 @@ class Simulation:
                     first_subs[:,i_part] += self.GroupFirstType[i,i_part] # Add group offset
                 self.SubhaloFirstType[i_beg:i_end] = first_subs # First particle of each type in each subhalo
 
+    def query_neighbors(self, tree, point, R_max, n):
+        """Query the neighbors of a given point within a given radius."""
+        k = int(min(n, 64))  # Number of neighbors to query
+        while True:
+            distances, indices = tree.query(point, k=k)
+            if distances[-1] > R_max or k == n:
+                break  # Finished collecting particles
+            k = int(min(n, 2 * k))  # Double the number of neighbors to query
+        return distances, indices
+
     def calculate_R_vir_tree(self, n_groups_max=0):
         """Calculate the virial radius of each subhalo (local tree version)."""
         # Sanity checks on requested n_groups
@@ -617,42 +627,12 @@ class Simulation:
                 continue # Skip groups without a valid R_Crit200
             r_grp = self.GroupPos[i_grp] # Group center
             R_max = max(2. * self.Group_R_Crit200[i_grp], R_20kpc) # 2 R_200 (of the Group)
-            # Gas particles
-            k_gas = min(self.n_gas_tot, 64) # Number of neighbors to query
-            while True:
-                distances_gas, indices_gas = self.tree_gas.query(r_grp, k=k_gas)
-                if distances_gas[-1] > R_max or k_gas == self.n_gas_tot:
-                    break # Finished collecting particles
-                k_gas = min(self.n_gas_tot, 2 * k_gas) # Double the number of neighbors to query
-            # Dark matter particles
-            k_dm = min(self.n_dm_tot, 64) # Number of neighbors to query
-            while True:
-                distances_dm, indices_dm = self.tree_dm.query(r_grp, k=k_dm)
-                if distances_dm[-1] > R_max or k_dm == self.n_dm_tot:
-                    break # Finished collecting particles
-                k_dm = min(self.n_dm_tot, 2 * k_dm) # Double the number of neighbors to query
-            # PartType2 particles
-            k_p2 = min(self.n_p2_tot, 64) # Number of neighbors to query
-            while True:
-                distances_p2, indices_p2 = self.tree_p2.query(r_grp, k=k_p2)
-                if distances_p2[-1] > R_max or k_p2 == self.n_p2_tot:
-                    break # Finished collecting particles
-                k_p2 = min(self.n_p2_tot, 2 * k_p2) # Double the number of neighbors to query
-            # PartType3 particles
-            k_p3 = min(self.n_p3_tot, 64) # Number of neighbors to query
-            while True:
-                distances_p3, indices_p3 = self.tree_p3.query(r_grp, k=k_p3)
-                if distances_p3[-1] > R_max or k_p3 == self.n_p3_tot:
-                    break # Finished collecting particles
-                k_p3 = min(self.n_p3_tot, 2 * k_p3) # Double the number of neighbors to query
-            # Stars particles
+            distances_gas, indices_gas = self.query_neighbors(self.tree_gas, r_grp, R_max, self.n_gas_tot)  # Gas
+            distances_dm, indices_dm = self.query_neighbors(self.tree_dm, r_grp, R_max, self.n_dm_tot)  # Dark matter
+            distances_p2, indices_p2 = self.query_neighbors(self.tree_p2, r_grp, R_max, self.n_p2_tot)  # PartType2
+            distances_p3, indices_p3 = self.query_neighbors(self.tree_p3, r_grp, R_max, self.n_p3_tot)  # PartType3
             if self.n_stars_tot > 0:
-                k_stars = min(self.n_stars_tot, 64) # Number of neighbors to query
-                while True:
-                    distances_stars, indices_stars = self.tree_stars.query(r_grp, k=k_stars)
-                    if distances_stars[-1] > R_max or k_stars == self.n_stars_tot:
-                        break # Finished collecting particles
-                    k_stars = min(self.n_stars_tot, 2 * k_stars) # Double the number of neighbors to query
+                distances_stars, indices_stars = self.query_neighbors(self.tree_stars, r_grp, R_max, self.n_stars_tot)
             # Calculate the enclosed mass of each particle type in each subhalo
             i_beg, i_end = self.GroupFirstSub[i_grp], self.GroupFirstSub[i_grp] + self.GroupNsubs[i_grp] # Subhalo range
             if not USE_ALL_PARTICLES:
