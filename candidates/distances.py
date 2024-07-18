@@ -257,11 +257,6 @@ class Simulation:
                             shape = (self.n_stars_tot,) + shape[1:]
                             self.stars[field] = np.empty(shape, dtype=dtype)
                         break # Found star data
-            # Force the correct shapes if n_stars_tot == 1
-            if self.n_stars_tot == 1:
-                self.stars['Coordinates'] = self.stars['Coordinates'].reshape(1, -1)
-                self.stars['Masses'] = self.stars['Masses'].reshape(1)
-                self.stars['IsHighRes'] = self.stars['IsHighRes'].reshape(1)
 
         # Derived quantities
         self.BoxHalf = self.BoxSize / 2.
@@ -499,6 +494,7 @@ class Simulation:
 
     def calculate_M_enc(self, r_sub, r, m):
         """Calculate the enclosed mass within a given radius."""
+        r = np.atleast_2d(r)  # Ensure r is at least 2-dimensional
         dx = self.periodic_distance(r[:,0], r_sub[0])
         dy = self.periodic_distance(r[:,1], r_sub[1])
         dz = self.periodic_distance(r[:,2], r_sub[2])
