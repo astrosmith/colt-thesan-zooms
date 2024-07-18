@@ -621,14 +621,14 @@ class Simulation:
             print(f'GroupNsubs = {self.GroupNsubs[:n_groups_max]}')
             print(f'n_subhalos_max = {n_subhalos_max}')
             print(f'SubhaloGroupNr = {self.SubhaloGroupNr[:n_subhalos_max]}')
-        R_30kpc = 30. * self.h / self.a # 30 kpc
+        R_40kpc = 40. * self.h / self.a # 40 kpc
         if self.n_stars_tot == 0:
             M_stars_enc = np.zeros(self.n_bins)  # Enclosed stellar mass
         for i_grp in range(n_groups_max):
             if self.Group_R_Crit200[i_grp] <= 0.:
                 continue # Skip groups without a valid R_Crit200
             r_grp = self.GroupPos[i_grp] # Group center
-            R_max = max(2. * self.Group_R_Crit200[i_grp], R_30kpc) # 2 R_200 (of the Group)
+            R_max = max(3. * self.Group_R_Crit200[i_grp], R_40kpc) # 3 R_200 (of the Group)
             distances_gas, indices_gas = self.query_neighbors(self.tree_gas, r_grp, R_max, self.n_gas_tot)  # Gas
             distances_dm, indices_dm = self.query_neighbors(self.tree_dm, r_grp, R_max, self.n_dm_tot)  # Dark matter
             distances_p2, indices_p2 = self.query_neighbors(self.tree_p2, r_grp, R_max, self.n_p2_tot)  # PartType2
