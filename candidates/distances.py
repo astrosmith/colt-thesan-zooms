@@ -495,6 +495,7 @@ class Simulation:
     def calculate_M_enc(self, r_sub, r, m):
         """Calculate the enclosed mass within a given radius."""
         r = np.atleast_2d(r)  # Ensure r is at least 2-dimensional
+        m = np.atleast_1d(m)  # Ensure m is at least 1-dimensional
         dx = self.periodic_distance(r[:,0], r_sub[0])
         dy = self.periodic_distance(r[:,1], r_sub[1])
         dz = self.periodic_distance(r[:,2], r_sub[2])
