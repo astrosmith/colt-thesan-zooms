@@ -603,7 +603,7 @@ class Simulation:
         k = int(min(n, 64))  # Number of neighbors to query
         while True:
             distances, indices = tree.query(point, k=k)
-            if distances[-1] > R_max or k == n:
+            if k == n or distances[-1] > R_max:
                 break  # Finished collecting particles
             k = int(min(n, 2 * k))  # Double the number of neighbors to query
         return distances, indices
