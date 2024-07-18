@@ -257,6 +257,11 @@ class Simulation:
                             shape = (self.n_stars_tot,) + shape[1:]
                             self.stars[field] = np.empty(shape, dtype=dtype)
                         break # Found star data
+            # Force the correct shapes if n_stars_tot == 1
+            if self.n_stars_tot == 1:
+                self.stars['Coordinates'] = self.stars['Coordinates'].reshape(1, -1)
+                self.stars['Masses'] = self.stars['Masses'].reshape(1)
+                self.stars['IsHighRes'] = self.stars['IsHighRes'].reshape(1)
 
         # Derived quantities
         self.BoxHalf = self.BoxSize / 2.
@@ -494,14 +499,9 @@ class Simulation:
 
     def calculate_M_enc(self, r_sub, r, m):
         """Calculate the enclosed mass within a given radius."""
-        if r.ndim == 1:
-            dx = self.periodic_distance(r[0], r_sub[0])
-            dy = self.periodic_distance(r[1], r_sub[1])
-            dz = self.periodic_distance(r[2], r_sub[2])
-        else:
-            dx = self.periodic_distance(r[:,0], r_sub[0])
-            dy = self.periodic_distance(r[:,1], r_sub[1])
-            dz = self.periodic_distance(r[:,2], r_sub[2])
+        dx = self.periodic_distance(r[:,0], r_sub[0])
+        dy = self.periodic_distance(r[:,1], r_sub[1])
+        dz = self.periodic_distance(r[:,2], r_sub[2])
         r2 = dx**2 + dy**2 + dz**2  # Squared distances
         ibin = np.floor((np.log10(r2) - self.logr2_min) * self.inv_dbin).astype(np.int32)  # Bin indices
         ibin[ibin < 0] = 0  # Clip to first bin
