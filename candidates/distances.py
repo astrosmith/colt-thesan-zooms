@@ -515,22 +515,16 @@ class Simulation:
             if self.Group_R_Crit200[self.SubhaloGroupNr[i]] <= 0.:
                 continue # Skip groups without a valid R_Crit200
             r_sub = self.SubhaloPos[i] # Subhalo center
-            M_sub = self.SubhaloMass[i] # Subhalo mass
-            M_sub_20 = 0.2 * M_sub # 20% of the subhalo mass
             M_gas_enc = self.calculate_M_enc(r_sub, self.r_gas, self.m_gas)  # Enclosed gas mass
             M_dm_enc = self.calculate_M_enc(r_sub, self.r_dm, self.m_dm_full)  # Enclosed dark matter mass
             M_p2_enc = self.calculate_M_enc(r_sub, self.r_p2, self.m_p2)  # Enclosed PartType2 mass
             M_p3_enc = self.calculate_M_enc(r_sub, self.r_p3, self.m_p3_full)  # Enclosed PartType3 mass
             if self.n_stars_tot > 0:
                 M_stars_enc = self.calculate_M_enc(r_sub, self.r_stars, self.m_stars)
+            # Calculate the enclosed mass, density, and virial radius
             M_enc = M_gas_enc + M_dm_enc + M_p2_enc + M_p3_enc + M_stars_enc  # Total enclosed mass
-            # Calculate the enclosed mass
-            i_0 = np.argmax(M_enc > M_sub_20)  # Find the first bin with mass > 20% of the subhalo mass
-            # i_0 = np.argmax(M_enc > 0.) + 1 # Find the second bin with any mass
             rho_enc = M_enc * self.M_to_rho_vir # Enclosed density [rho_vir]
-            # Calculate the virial radius
-            i_vir = np.argmax(rho_enc[i_0:] < 1.) + i_0 # Find the first bin with rho_enc < rho_vir
-            if i_vir == 0: i_vir = 1 # Avoid zero index
+            i_vir = np.where(rho_enc > 1)[0][-1] + 1  # Find the last bin with rho_enc > 1
             # Log interpolation to find the virial radius and masses
             frac = -np.log10(rho_enc[i_vir-1]) / np.log10(rho_enc[i_vir]/rho_enc[i_vir-1]) # Interpolation coordinate
             self.Subhalo_R_vir[i] = 10.**(self.log_rbins[i_vir] + frac * self.dlog_rbin) # Virial radius
@@ -600,16 +594,6 @@ class Simulation:
                     first_subs[:,i_part] += self.GroupFirstType[i,i_part] # Add group offset
                 self.SubhaloFirstType[i_beg:i_end] = first_subs # First particle of each type in each subhalo
 
-    def query_neighbors(self, tree, point, R_max, n):
-        """Query the neighbors of a given point within a given radius."""
-        k = int(min(n, 64))  # Number of neighbors to query
-        while True:
-            distances, indices = tree.query(point, k=k)
-            if k == n or distances[-1] > R_max:
-                break  # Finished collecting particles
-            k = int(min(n, 2 * k))  # Double the number of neighbors to query
-        return distances, indices
-
     def calculate_R_vir_tree(self, n_groups_max=0):
         """Calculate the virial radius of each subhalo (local tree version)."""
         # Sanity checks on requested n_groups
@@ -629,12 +613,13 @@ class Simulation:
                 continue # Skip groups without a valid R_Crit200
             r_grp = self.GroupPos[i_grp] # Group center
             R_max = max(3. * self.Group_R_Crit200[i_grp], R_40kpc) # 3 R_200 (of the Group)
-            distances_gas, indices_gas = self.query_neighbors(self.tree_gas, r_grp, R_max, self.n_gas_tot)  # Gas
-            distances_dm, indices_dm = self.query_neighbors(self.tree_dm, r_grp, R_max, self.n_dm_tot)  # Dark matter
-            distances_p2, indices_p2 = self.query_neighbors(self.tree_p2, r_grp, R_max, self.n_p2_tot)  # PartType2
-            distances_p3, indices_p3 = self.query_neighbors(self.tree_p3, r_grp, R_max, self.n_p3_tot)  # PartType3
+            workers = -1  # Number of workers to use (-1 = all available)
+            indices_gas = self.tree_gas.query_ball_point(r_grp, R_max, workers=workers)  # Gas
+            indices_dm = self.tree_dm.query_ball_point(r_grp, R_max, workers=workers)  # Dark matter
+            indices_p2 = self.tree_p2.query_ball_point(r_grp, R_max, workers=workers)  # PartType2
+            indices_p3 = self.tree_p3.query_ball_point(r_grp, R_max, workers=workers)  # PartType3
             if self.n_stars_tot > 0:
-                distances_stars, indices_stars = self.query_neighbors(self.tree_stars, r_grp, R_max, self.n_stars_tot)
+                indices_stars = self.tree_stars.query_ball_point(r_grp, R_max, workers=workers)  # Stars
             # Calculate the enclosed mass of each particle type in each subhalo
             i_beg, i_end = self.GroupFirstSub[i_grp], self.GroupFirstSub[i_grp] + self.GroupNsubs[i_grp] # Subhalo range
             if not USE_ALL_PARTICLES:
@@ -645,8 +630,6 @@ class Simulation:
                 i_beg_stars, i_end_stars = self.GroupFirstType[i_grp,4], self.GroupFirstType[i_grp,4] + self.GroupLenType[i_grp,4] # Stars range
             for i_sub in range(i_beg, i_end):
                 r_sub = self.SubhaloPos[i_sub] # Subhalo center
-                M_sub = self.SubhaloMass[i_sub] # Subhalo mass
-                M_sub_20 = 0.2 * M_sub # 20% of the subhalo mass
                 if USE_ALL_PARTICLES:
                     M_gas_enc = self.calculate_M_enc(r_sub, self.r_gas[indices_gas], self.m_gas[indices_gas])  # Enclosed gas mass
                     M_dm_enc = self.calculate_M_enc(r_sub, self.r_dm[indices_dm], self.m_dm_full[indices_dm])  # Enclosed dark matter mass
@@ -661,14 +644,10 @@ class Simulation:
                     M_p3_enc = self.calculate_M_enc(r_sub, self.r_p3[i_beg_p3:i_end_p3], self.m_p3_full[i_beg_p3:i_end_p3])  # Enclosed PartType3 mass
                     if self.n_stars_tot > 0:
                         M_stars_enc = self.calculate_M_enc(r_sub, self.r_stars[i_beg_stars:i_end_stars], self.m_stars[i_beg_stars:i_end_stars])
+                # Calculate the enclosed mass, density, and virial radius
                 M_enc = M_gas_enc + M_dm_enc + M_p2_enc + M_p3_enc + M_stars_enc  # Total enclosed mass
-                # Calculate the enclosed mass
-                i_0 = np.argmax(M_enc > M_sub_20)  # Find the first bin with mass > 20% of the subhalo mass
-                # i_0 = np.argmax(M_enc > 0.) + 1 # Find the second bin with any mass
                 rho_enc = M_enc * self.M_to_rho_vir # Enclosed density [rho_vir]
-                # Calculate the virial radius
-                i_vir = np.argmax(rho_enc[i_0:] < 1.) + i_0 # Find the first bin with rho_enc < rho_vir
-                if i_vir == 0: i_vir = 1 # Avoid zero index
+                i_vir = np.where(rho_enc > 1)[0][-1] + 1  # Find the last bin with rho_enc > 1
                 # Log interpolation to find the virial radius and masses
                 frac = -np.log10(rho_enc[i_vir-1]) / np.log10(rho_enc[i_vir]/rho_enc[i_vir-1]) # Interpolation coordinate
                 self.Subhalo_R_vir[i_sub] = 10.**(self.log_rbins[i_vir] + frac * self.dlog_rbin) # Virial radius
@@ -729,7 +708,8 @@ class Simulation:
                         plt.xlabel('r [kpc]'); plt.ylabel('rho_enc [rho_vir]'); plt.xscale('log'); plt.yscale('log'); plt.legend()
                         plt.savefig(f'plots_radial/rho_enc_{i_grp}_{i_sub}_t.pdf'); plt.close()
                 if dr_sub + self.Subhalo_R_vir[i_sub] > R_max:
-                    print(f'rho_enc = {rho_enc}'); print(f'M_enc = {M_enc}')
+                    print(f'rho_enc = {rho_enc}, rho_enc[i_vir] = {rho_enc[i_vir]:g}')
+                    print(f'M_enc = {M_enc*self.mass_to_msun}, M_enc[i_vir] = {M_enc[i_vir]*self.mass_to_msun:g}')
                     print(f'i_grp = {i_grp}, i_sub = {i_sub}, R_200 = {self.Group_R_Crit200[i_grp]*self.length_to_cgs/kpc:g} kpc, ' +
                           f'R_vir = {self.Subhalo_R_vir[i_sub]*self.length_to_cgs/kpc:g} kpc, dr_sub = {dr_sub*self.length_to_cgs/kpc:g} kpc, ' +
                           f'dr_sub + R_vir = {(dr_sub + self.Subhalo_R_vir[i_sub])*self.length_to_cgs/kpc:g} kpc, R_max = {R_max*self.length_to_cgs/kpc:g} kpc, ' +
