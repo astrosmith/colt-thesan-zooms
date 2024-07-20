@@ -93,7 +93,7 @@ class Simulation:
             if self.n_subhalos_tot > 0:
                 g = f['Subhalo']
                 for field in ['SubhaloLenType']:
-                    shape = (self.n_groups_tot,) + g[field].shape[1:]
+                    shape = (self.n_subhalos_tot,) + g[field].shape[1:]
                     self.subhalos[field] = np.empty(shape, dtype=np.int64)
 
         with h5py.File(snap_pre + '0.hdf5', 'r') as f:
@@ -143,17 +143,17 @@ class Simulation:
         print(f'first_group = {self.first_group} (n_groups_tot = {self.n_groups_tot})')
         print(f'first_subhalo = {self.first_subhalo} (n_subhalos_tot = {self.n_subhalos_tot})')
         print(f'first_part = {self.first_part} (n_parts_tot = {self.n_parts_tot})')
-        print(f'GroupFirstSub = {self.GroupFirstSub}')
-        print(f'GroupFirstType = {self.GroupFirstType}')
-        print(f'SubhaloFirstType = {self.SubhaloFirstType}')
 
     def print_groups(self):
         """Print the group data."""
         if self.n_groups_tot > 0:
             print(f'GroupNsubs = {self.GroupNsubs}')
             print(f'GroupLenType = {self.GroupLenType}')
+            print(f'GroupFirstSub = {self.GroupFirstSub}')
+            print(f'GroupFirstType = {self.GroupFirstType}')
         if self.n_subhalos_tot > 0:
             print(f'SubhaloLenType = {self.SubhaloLenType}')
+            print(f'SubhaloFirstType = {self.SubhaloFirstType}')
 
     def write(self):
         """Write the distance results to an HDF5 file."""
@@ -227,23 +227,25 @@ def main():
     # Setup simulation parameters
     if TIMERS: t1 = time()
     sim = Simulation()
-    print(' ___       ___  __             \n'
-          '  |  |__| |__  /__`  /\\  |\\ |\n'
-          '  |  |  | |___ .__/ /--\\ | \\|\n' +
-          f'\nInput Directory: {out_dir}' +
-          f'\nSnap {snap}: Ngroups = {sim.n_groups_tot}, Nsubhalos = {sim.n_subhalos_tot}, Nparts = {sim.n_parts_tot}' +
-          f'\nz = {1./sim.a - 1.:g}, a = {sim.a:g}, h = {sim.h:g}, BoxSize = {1e-3*sim.BoxSize:g} cMpc/h = {1e-3*sim.BoxSize/sim.h:g} cMpc\n')
+    if VERBOSITY > 0:
+        print(' ___       ___  __             \n'
+              '  |  |__| |__  /__`  /\\  |\\ |\n'
+              '  |  |  | |___ .__/ /--\\ | \\|\n' +
+              f'\nInput Directory: {out_dir}' +
+              f'\nSnap {snap}: Ngroups = {sim.n_groups_tot}, Nsubhalos = {sim.n_subhalos_tot}, Nparts = {sim.n_parts_tot}' +
+              f'\nz = {1./sim.a - 1.:g}, a = {sim.a:g}, h = {sim.h:g}, BoxSize = {1e-3*sim.BoxSize:g} cMpc/h = {1e-3*sim.BoxSize/sim.h:g} cMpc\n')
 
     # Read the counts and data from the FOF and snapshot files
     sim.read_counts_asyncio()
     sim.convert_counts()
+    if VERBOSITY > 1:
+        sim.print_offsets()
     sim.read_groups_asyncio()
     sim.convert_groups()
     sim.write()
     if VERBOSITY > 1:
-        sim.print_offsets()
         sim.print_groups()
-    if TIMERS: t2 = time(); print(f'Time for offsets: {t2 - t1:g} s'); t1 = t2
+    if TIMERS: t2 = time(); print(f'Time: {t2 - t1:g} s'); t1 = t2
 
 if __name__ == '__main__':
     main()
