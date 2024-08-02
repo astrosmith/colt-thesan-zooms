@@ -369,9 +369,12 @@ class Simulation:
                 g.create_dataset(b'MinDistStarsLR', data=self.Group_distances_stars_lr[self.group_mask])
                 g.create_dataset(b'MinDistStarsHR', data=self.Group_distances_stars_hr[self.group_mask])
                 if MEMBER_STARS:
-                    d_grp = self.Group_member_distances_stars_hr[self.group_mask]  # Closest distance to a high-resolution star (group)
-                    group_star_flag = (d_grp >= 0.) & (d_grp <= self.Group_R_Crit200[self.group_mask])  # Star flag (group)
-                    self.n_groups_candidates_stars = np.count_nonzero(group_star_flag)
+                    try:
+                        d_grp = self.Group_member_distances_stars_hr[self.group_mask]  # Closest distance to a high-resolution star (group)
+                        group_star_flag = (d_grp >= 0.) & (d_grp <= self.Group_R_Crit200[self.group_mask])  # Star flag (group)
+                        self.n_groups_candidates_stars = np.count_nonzero(group_star_flag)
+                    except AttributeError:
+                        group_star_flag = np.zeros(self.n_groups_candidates, dtype=bool)
                     g.create_dataset(b'StarFlag', data=group_star_flag, dtype=bool)
                 if 'GroupPos' in self.group_units:
                     for key,val in self.group_units['GroupPos'].items():
