@@ -409,9 +409,12 @@ class Simulation:
                         for key,val in self.subhalo_units['SubhaloPos'].items():
                             g['R_vir'].attrs[key] = val
                 if MEMBER_STARS:
-                    d_sub = self.Subhalo_member_distances_stars_hr[self.subhalo_mask]  # Closest distance to a high-resolution star (subhalo)
-                    subhalo_star_flag = (d_sub >= 0.) & (d_sub <= self.Subhalo_R_vir[self.subhalo_mask])  # Star flag (subhalo)
-                    self.n_subhalos_candidates_stars = np.count_nonzero(subhalo_star_flag)
+                    try:
+                        d_sub = self.Subhalo_member_distances_stars_hr[self.subhalo_mask]  # Closest distance to a high-resolution star (subhalo)
+                        subhalo_star_flag = (d_sub >= 0.) & (d_sub <= self.Subhalo_R_vir[self.subhalo_mask])  # Star flag (subhalo)
+                        self.n_subhalos_candidates_stars = np.count_nonzero(subhalo_star_flag)
+                    except AttributeError:
+                        subhalo_star_flag = np.zeros(self.n_subhalos_candidates, dtype=bool)
                     g.create_dataset(b'StarFlag', data=subhalo_star_flag, dtype=bool)
                 if 'SubhaloPos' in self.subhalo_units:
                     for key,val in self.subhalo_units['SubhaloPos'].items():
