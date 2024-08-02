@@ -321,8 +321,11 @@ class Simulation:
                 # Mask out subhalos with R_vir == 0 [R_vir > 0]
                 # Mask out subhalos with MinDistP2 or MinDistP3 < R_vir [MinDist(P2,P3,StarsLR) > R_vir]
                 self.subhalo_mask = (self.Subhalo_R_vir > 0) & (self.Subhalo_distances_lr > self.Subhalo_R_vir)
-                centrals = self.GroupFirstSub[(self.GroupNsubs > 0) & self.group_mask]  # Central subhalos
-                self.subhalo_mask[centrals] = True  # Ensure central subhalos are included
+                try:
+                    centrals = self.GroupFirstSub[(self.GroupNsubs > 0) & self.group_mask]  # Central subhalos
+                    self.subhalo_mask[centrals] = True  # Ensure central subhalos are included
+                except AttributeError:
+                    pass
                 self.n_subhalos_candidates = np.int32(np.count_nonzero(self.subhalo_mask))
             else:
                 self.subhalo_mask = np.array([self.subhalos['SubhaloGroupNr'][i] in GroupID for i in range(self.n_subhalos_tot)], dtype=bool)
