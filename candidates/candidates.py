@@ -551,7 +551,11 @@ def main():
     if SUB_TIMERS: print("\nWriting the results to a file...")
     sim.write()
     print(f'Number of candidates = {sim.n_groups_candidates} groups, {sim.n_subhalos_candidates} subhalos')
-    if MEMBER_STARS: print(f'Number of candidates with stars in R_halo = {sim.n_groups_candidates_stars} groups, {sim.n_subhalos_candidates_stars} subhalos')
+    if MEMBER_STARS:
+        try:
+            print(f'Number of candidates with stars in R_halo = {sim.n_groups_candidates_stars} groups, {sim.n_subhalos_candidates_stars} subhalos')
+        except AttributeError:
+            pass
     if SUB_TIMERS: t2 = time(); print(f"Time to write results to a file: {t2 - t1:g} s"); t1 = t2
     else: t2 = time(); print(f'Total time: {t2 - t1:g} s')
 
