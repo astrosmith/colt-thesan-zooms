@@ -1008,9 +1008,8 @@ def center_of_mass_dm_numba(r: np.ndarray) -> np.ndarray:
 def center_of_mass_stars_numpy(m: np.ndarray, r: np.ndarray, is_hr: np.ndarray) -> Tuple[np.uint64, np.float64, np.ndarray]:
     """Calculate the center of mass of high-resolution particles."""
     # Calculate center of mass
-    mask = is_hr == 0 # Mask for low-resolution stars
-    n_lr = np.count_nonzero(mask) # Number of low-resolution particles
-    n_hr = len(m) - n_lr # Number of high-resolution particles
+    mask = is_hr == 1 # Mask for high-resolution stars
+    n_hr = np.count_nonzero(mask) # Number of high-resolution particles
     m_hr_tot = np.sum(m[mask]) # Total mass of high-resolution particles
     r_hr_tot = np.zeros(3) # High-resolution center of mass
     if m_hr_tot > 0.:
@@ -1026,7 +1025,7 @@ def center_of_mass_stars_numba(m: np.ndarray, r: np.ndarray, is_hr: np.ndarray) 
     m_hr_tot = 0. # Total mass of high-resolution particles
     r_hr_tot = np.zeros(3) # High-resolution center of mass
     for i in prange(n):
-        if is_hr[i] != 0:
+        if is_hr[i] == 1:
             r_hr_tot += m[i] * r[i] # Accumulate the high-resolution center of mass
             m_hr_tot += m[i] # Accumulate the high-resolution mass
             n_hr += 1 # Count the number of high-resolution particles
