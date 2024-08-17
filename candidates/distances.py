@@ -464,7 +464,7 @@ class Simulation:
             self.Subhalo_M_gas = np.zeros(self.n_subhalos_tot, dtype=np.float32) # Gas mass (<R_vir)
             self.Subhalo_M_stars = np.zeros(self.n_subhalos_tot, dtype=np.float32) # Stellar mass (<R_vir)
             self.r_min = 1e-2 * self.h / self.a # 10 pc
-            self.r_max = 2. * self.BoxSize # 2 r_box
+            self.r_max = self.BoxSize # r_box
             self.logr2_min = 2. * np.log10(self.r_min) # log(r_min^2)
             self.logr2_max = 2. * np.log10(self.r_max) # log(r_max^2)
             self.n_bins = 10000 # Number of bins
