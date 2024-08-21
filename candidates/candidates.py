@@ -173,8 +173,6 @@ class Simulation:
             self.r_com = header['PosHR']
             self.RadiusHR = header['RadiusHR']
             self.RadiusLR = header['RadiusLR']
-            self.NumGasHR = header['NumGasHR']
-            self.NumGasLR = header['NumGasLR']
             if self.n_groups_tot > 0:
                 g = f['Group']
                 self.Group_distances_gas_lr = g['MinDistGasLR'][:]
@@ -356,8 +354,6 @@ class Simulation:
             g.attrs['PosHR'] = self.r_com
             g.attrs['RadiusHR'] = self.RadiusHR
             g.attrs['RadiusLR'] = self.RadiusLR
-            g.attrs['NumGasHR'] = self.NumGasHR
-            g.attrs['NumGasLR'] = self.NumGasLR
             if self.n_groups_candidates > 0:
                 g = f.create_group(b'Group')
                 g.create_dataset(b'GroupID', data=GroupID)
