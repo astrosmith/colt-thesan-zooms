@@ -224,6 +224,7 @@ class Simulation:
         asyncio.run(read_groups_async())
 
 def main():
+    os.makedirs(off_dir, exist_ok=True) # Ensure the offsets directory exists
     # Setup simulation parameters
     if TIMERS: t1 = time()
     sim = Simulation()

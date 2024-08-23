@@ -10,12 +10,32 @@
 # job='F'; group='g5760'; runs=('z4' 'varEff_z4' 'noRlim_z4' 'noESF_z4')
 # job='G'; group='g10304'; runs=('z4' 'noESF_z4')
 # job='H'; group='g33206'; runs=('z4' 'varEff_z4' 'noRlim_z4' 'noESF_z4' 'z8' 'varEff_z8' 'noESF_z8' 'noRlim_z8' 'noExt_z8' 'uvb_z8')
-# job='I'; group='g37591'; runs=('z4' 'z8' 'uvb_z8')
-# job='J'; group='g137030'; runs=('z4' 'varEff_z4' 'noRlim_z4' 'noESF_z4' 'z8' 'varEff_z8' 'noESF_z8' 'noRlim_z8' 'uvb_z8')
-# job='K'; group='g500531'; runs=('z4' 'z8' 'uvb_z8')
-# job='L'; group='g519761'; runs=('z4' 'z8' 'uvb_z8')
-# job='M'; group='g2274036'; runs=('z4' 'z8' 'uvb_z8')
-# job='N'; group='g5229300'; runs=('z4' 'z8' 'uvb_z8')
+# job='I'; group='g37591'; runs=('z4' 'z8' 'noExt_z8' 'uvb_z8')
+# job='J'; group='g137030'; runs=('z4' 'varEff_z4' 'noRlim_z4' 'noESF_z4' 'z8' 'varEff_z8' 'noESF_z8' 'noRlim_z8' 'noExt_z8' 'uvb_z8')
+# job='K'; group='g500531'; runs=('z4' 'z8' 'noExt_z8' 'uvb_z8')
+# job='L'; group='g519761'; runs=('z4' 'z8' 'noExt_z8' 'uvb_z8')
+# job='M'; group='g2274036'; runs=('z4' 'z8' 'noExt_z8' 'uvb_z8')
+# job='N'; group='g5229300'; runs=('z4' 'z8' 'noExt_z8' 'uvb_z8')
+
+# Level 16
+# job='J'; group='g137030'; runs=('z16')
+# job='K'; group='g500531'; runs=('z16')
+# job='L'; group='g519761'; runs=('z16')
+# job='M'; group='g2274036'; runs=('z16')
+# job='N'; group='g5229300'; runs=('z16')
+
+# Snapshot 189
+# job='H'; group='g33206'; runs=('z4' 'varEff_z4' 'noRlim_z4')
+# job='J'; group='g137030'; runs=('noRlim_z4')
+# job='K'; group='g500531'; runs=('z4' 'uvb_z8')
+# job='L'; group='g519761'; runs=('z4' 'z8' 'uvb_z8' 'noExt_z8')
+# job='M'; group='g2274036'; runs=('z4' 'z8' 'z16' 'noExt_z8')
+# job='N'; group='g5229300'; runs=('z4' 'z8' 'noExt_z8' 'uvb_z8' 'z16')
+
+#job='A'; group='g2'; runs=('z4')
+#job='H'; group='g33206'; runs=('z16')
+#job='D'; group='g578'; runs=('noESF_z4')
+#job='D'; group='g578'; runs=('varEff_z4')
 
 copy_dir=$PWD
 zoom_dir=/orcd/data/mvogelsb/004/Thesan-Zooms
@@ -24,5 +44,6 @@ base_dir=${zoom_dir}-COLT
 for run in "${runs[@]}"; do
     echo "Job ${job}, Group ${group}, Run ${run}"
     export group run
-    sbatch --job-name=${job}_${run} --output=z_${job}_${run}_%A.out job.sh
+    # sbatch --job-name=${job}_${run} --output=x_${job}_${run}_%A.out job.sh
+    sbatch --job-name=${job}_${run} job.sh
 done

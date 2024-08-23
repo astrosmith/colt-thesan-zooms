@@ -15,7 +15,7 @@
 #SBATCH --constraint=centos7
 #SBATCH --mem-per-cpu=6000 # 6GB of memory per CPU
 #SBATCH --export=ALL
-#SBATCH --time=24:00:00
+#SBATCH --time=48:00:00
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=arsmith@mit.edu
 

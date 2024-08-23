@@ -1,4 +1,4 @@
-# COLT config filef
+# COLT config file
 --- !projections              # Ray-based projections module
 
 init_dir: ics                 # Initial conditions directory (default: "ics")

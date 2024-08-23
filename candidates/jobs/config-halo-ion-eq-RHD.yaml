@@ -1,0 +1,88 @@
+# COLT config file
+--- !ionization               # MCRT ionization equilibrium module
+
+init_dir: ics                 # Initial conditions directory (default: "ics")
+init_base: colt               # Initial conditions base name (optional)
+output_dir: output            # Output directory name (default: "output")
+output_base: halo-ion-eq-RHD  # Output file base name (default: "colt")
+# abundances_base: states       # Output a separate abundances file
+
+# Group information
+group_base: halo              # Group catalog base name (default: init_base)
+select_group: true            # Specified halo is a group
+use_all_groups: true          # Use all groups in the catalog file
+use_group_catalog: true       # Use group catalog file
+output_groups: true           # Output group statistics
+output_groups_obs: true       # Output group statistics for observations
+output_groups_vir: true       # Output group statistics for virial quantities
+output_groups_ism: true       # Output group statistics for ISM quantities
+output_map2_groups: true      # Output escape fraction maps (and statistics)
+n_side_groups: 5              # Healpix resolution for group maps
+# output_radial_map_groups: true # Output radial surface brightness group maps
+group_flows:                  # Group flow statistics
+  radial_logspace_Rvir: [-3, 2, 51] # Logarithmically spaced radial bins [Rvir]
+  freq_edge_names: [HI, HeI, HeII, max] # Coarse frequency bin edge names
+
+# Subhalo information
+subhalo_base: halo            # Subhalo catalog base name (default: init_base)
+# select_subhalo: true          # Specified halo is a subhalo
+use_all_subhalos: true        # Use all subhalos in the catalog file
+use_subhalo_catalog: true     # Use subhalo catalog file
+# filter_subhalo_catalog: true  # Filter subhalo catalog file
+output_subhalos: true         # Output subhalo statistics
+output_subhalos_obs: true     # Output subhalo statistics for observations
+output_subhalos_vir: true     # Output subhalo statistics for virial quantities
+output_subhalos_ism: true     # Output subhalo statistics for ISM quantities
+output_map2_subhalos: true    # Output escape fraction maps (and statistics)
+n_side_subhalos: 5            # Healpix resolution for subhalo maps
+# output_radial_map_subhalos: true # Output radial surface brightness subhalo maps
+subhalo_flows:                # Subhalo flow statistics
+  radial_logspace_Rvir: [-3, 2, 51] # Logarithmically spaced radial bins [Rvir]
+  freq_edge_names: [HI, HeI, HeII, max] # Coarse frequency bin edge names
+
+# focus_radial_on_emission: true
+# shift_radial_on_emission: true
+
+# Information about sources
+cosmological: true            # Indicates whether the simulation is cosmological
+source_file_Z_age: /home/arsmith/colt/tables/bpass-spectra-bin-imf_chab100.hdf5
+dust_model: /home/arsmith/colt/tables/Draine-SMC.hdf5
+# source_file_Z_age: /Users/aaron/Desktop/colt_runs/tables/bpass-spectra-bin-imf135_100.hdf5
+# dust_model: /Users/aaron/Desktop/colt_runs/tables/Draine-MW.hdf5
+j_exp: 0.75                   # Luminosity boosting exponent
+metal_ions: false             # Include all metal ions
+helium_ions: true             # Include all helium ions
+ion_bins: true                # Include all active ion bins
+# nu_exp: 2                     # Frequency boosting exponent
+# min_HI_bin_cdf: 0.8           # Minimum CDF value for >= 13.6 eV bins
+# max_bin_dex: 0.05             # Minimum frequency bin width in dex
+
+# n_photons: 1000000            # Number of photon packets (10^6)
+# n_photons: 10000000           # Number of photon packets (10^7)
+n_photons: 100000000          # Number of photon packets (10^8)
+max_iter: 1                   # Maximum number of iterations
+max_error: 0.001              # Relative error for convergence
+
+# Information about escape
+output_photons: false         # Output escaped photon packets
+# photon_file: photons          # Output a separate photon file
+output_abundances: false      # Output abundances (x_HI etc)
+# output_photoionization: true  # Output photoionization rates
+output_photoheating: false    # Output photoheating rates
+# photoheating_file: photoheating # Output a separate photoheating file
+#spherical_escape: true        # Photons escape from a sphere
+#escape_radius_Rvir: 1         # Escape radius relative to the virial radius
+#emission_radius_Rvir: 1       # Emission radius relative to the virial radius
+
+# Information about cameras
+#image_radius_Rvir: 1          # Image radius relative to the virial radius
+#n_pixels: 128                 # Number of image pixels
+#cameras:                      # Add camera directions manually
+#  - [0,0,1]
+
+# output_escape_fractions: false # Output camera escape fractions
+# output_bin_escape_fractions: false # Output bin escape fractions
+# output_images: false           # Output surface brightness images
+# output_bin_images: false       # Output bin SB images
+
+#verbose: true                 # Verbose output for tests and debugging

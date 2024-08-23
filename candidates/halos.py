@@ -52,18 +52,26 @@ def write_halos():
             group_mask = g['StarFlag'][:]
             n_groups = np.int32(np.count_nonzero(group_mask)) # Number of groups with high-resolution stars
             if n_groups > 0:
+                mg = mf['Group'] # M1500 data
                 group_id = g['GroupID'][:][group_mask] # Group IDs
                 r_group = g['GroupPos'][:][group_mask].astype(np.float64) * length_to_cgs # Halo positions [cm]
+                r_group_light = mg['1500Pos'][:][group_id].astype(np.float64) * length_to_cgs # Light-weighted positions [cm]
+                r_group_mass = mg['MstarPos'][:][group_id].astype(np.float64) * length_to_cgs # Mass-weighted positions [cm]
                 for i in range(3):
                     r_group[:,i] -= r_HR[i] # Relative halo positions [cm]
+                    r_group_light[:,i] -= r_HR[i]
+                    r_group_mass[:,i] -= r_HR[i]
                 R_group = g['Group_R_Crit200'][:][group_mask].astype(np.float64) * length_to_cgs # Halo radii [cm]
-                mg = mf['Group']
                 R_group_light = 2. * mg['1500Half'][:][group_id].astype(np.float64) * length_to_cgs # Half-light radii [cm]
                 R_group_mass = 2. * mg['MstarHalf'][:][group_id].astype(np.float64) * length_to_cgs # Half-mass radii [cm]
                 # Add the halo data to the COLT initial conditions file
                 hf.create_dataset(b'group_id', data=group_id)
                 hf.create_dataset(b'r_group', data=r_group)
                 hf['r_group'].attrs['units'] = b'cm'
+                hf.create_dataset(b'r_group_light', data=r_group_light)
+                hf['r_group_light'].attrs['units'] = b'cm'
+                hf.create_dataset(b'r_group_mass', data=r_group_mass)
+                hf['r_group_mass'].attrs['units'] = b'cm'
                 hf.create_dataset(b'R_group', data=R_group)
                 hf['R_group'].attrs['units'] = b'cm'
                 hf.create_dataset(b'R_group_light', data=R_group_light)
@@ -76,18 +84,26 @@ def write_halos():
             subhalo_mask = g['StarFlag'][:]
             n_subhalos = np.int32(np.count_nonzero(subhalo_mask)) # Number of subhalos with high-resolution stars
             if n_subhalos > 0:
+                mg = mf['Subhalo'] # M1500 data
                 subhalo_id = g['SubhaloID'][:][subhalo_mask] # Subhalo IDs
                 r_subhalo = g['SubhaloPos'][:][subhalo_mask].astype(np.float64) * length_to_cgs # Halo positions [cm]
+                r_subhalo_light = mg['1500Pos'][:][subhalo_id].astype(np.float64) * length_to_cgs # Light-weighted positions [cm]
+                r_subhalo_mass = mg['MstarPos'][:][subhalo_id].astype(np.float64) * length_to_cgs # Mass-weighted positions [cm]
                 for i in range(3):
                     r_subhalo[:,i] -= r_HR[i] # Relative halo positions [cm]
+                    r_subhalo_light[:,i] -= r_HR[i]
+                    r_subhalo_mass[:,i] -= r_HR[i]
                 R_subhalo = g['R_vir'][:][subhalo_mask].astype(np.float64) * length_to_cgs # Halo radii [cm]
-                mg = mf['Subhalo']
                 R_subhalo_light = 2. * mg['1500Half'][:][subhalo_id].astype(np.float64) * length_to_cgs # Half-light radii [cm]
                 R_subhalo_mass = 2. * mg['MstarHalf'][:][subhalo_id].astype(np.float64) * length_to_cgs # Half-mass radii [cm]
                 # Add the halo data to the COLT initial conditions file
                 hf.create_dataset(b'subhalo_id', data=subhalo_id)
                 hf.create_dataset(b'r_subhalo', data=r_subhalo)
                 hf['r_subhalo'].attrs['units'] = b'cm'
+                hf.create_dataset(b'r_subhalo_light', data=r_subhalo_light)
+                hf['r_subhalo_light'].attrs['units'] = b'cm'
+                hf.create_dataset(b'r_subhalo_mass', data=r_subhalo_mass)
+                hf['r_subhalo_mass'].attrs['units'] = b'cm'
                 hf.create_dataset(b'R_subhalo', data=R_subhalo)
                 hf['R_subhalo'].attrs['units'] = b'cm'
                 hf.create_dataset(b'R_subhalo_light', data=R_subhalo_light)

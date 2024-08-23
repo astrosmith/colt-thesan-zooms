@@ -1,35 +1,68 @@
-# COLT config filef
+# COLT config file
 --- !ionization               # MCRT ionization equilibrium module
 
 init_dir: ics                 # Initial conditions directory (default: "ics")
 init_base: colt               # Initial conditions base name (optional)
 output_dir: output            # Output directory name (default: "output")
-output_base: halo-ion-eq-RHD  # Output file base name (default: "colt")
+output_base: halo-M1500-RHD   # Output file base name (default: "colt")
 # abundances_base: states       # Output a separate abundances file
 
-# Information about sources
+# Group information
 group_base: halo              # Group catalog base name (default: init_base)
 select_group: true            # Specified halo is a group
 use_all_groups: true          # Use all groups in the catalog file
 use_group_catalog: true       # Use group catalog file
 output_groups: true           # Output group statistics
+output_groups_obs: true       # Output group statistics for observations
+output_groups_vir: true       # Output group statistics for virial quantities
+output_groups_ism: true       # Output group statistics for ISM quantities
+output_map2_groups: true      # Output escape fraction maps (and statistics)
+n_side_groups: 5              # Healpix resolution for group maps
+output_radial_map_groups: true # Output radial surface brightness group maps
+n_side_radial_groups: 3       # Healpix resolution for group radial maps
+map_radius_kpc_groups: 60     # Radial group maps radius [kpc]
+n_map_pixels_groups: 100      # Number of radial pixels for group radial maps
 group_flows:                  # Group flow statistics
-  radial_edges_Rvir: [0, 0.25, 0.5, 1, 2, 4] # Radial bin edges [Rvir]
-  freq_edge_names: [HI, HeI, HeII, max] # Coarse frequency bin edge names
+  radial_logspace_Rvir: [-3, 2, 51] # Logarithmically spaced radial bins [Rvir]
+  freq_edge_names: [min, max] # Coarse frequency bin edge names
+
+# Subhalo information
+subhalo_base: halo            # Subhalo catalog base name (default: init_base)
+# select_subhalo: true          # Specified halo is a subhalo
+use_all_subhalos: true        # Use all subhalos in the catalog file
+use_subhalo_catalog: true     # Use subhalo catalog file
+# filter_subhalo_catalog: true  # Filter subhalo catalog file
+output_subhalos: true         # Output subhalo statistics
+output_subhalos_obs: true     # Output subhalo statistics for observations
+output_subhalos_vir: true     # Output subhalo statistics for virial quantities
+output_subhalos_ism: true     # Output subhalo statistics for ISM quantities
+output_map2_subhalos: true    # Output escape fraction maps (and statistics)
+n_side_subhalos: 5            # Healpix resolution for subhalo maps
+output_radial_map_subhalos: true # Output radial surface brightness subhalo maps
+n_side_radial_subhalos: 3     # Healpix resolution for subhalo radial maps
+map_radius_kpc_subhalos: 60   # Radial subhalo maps radius [kpc]
+n_map_pixels_subhalos: 100    # Number of radial pixels for subhalo radial maps
+subhalo_flows:                # Subhalo flow statistics
+  radial_logspace_Rvir: [-3, 2, 51] # Logarithmically spaced radial bins [Rvir]
+  freq_edge_names: [min, max] # Coarse frequency bin edge names
+
+# focus_radial_on_emission: true
+# shift_radial_on_emission: true
 
 # Information about sources
+cosmological: true            # Indicates whether the simulation is cosmological
 source_file_Z_age: /home/arsmith/colt/tables/bpass-spectra-bin-imf_chab100.hdf5
 dust_model: /home/arsmith/colt/tables/Draine-SMC.hdf5
 # source_file_Z_age: /Users/aaron/Desktop/colt_runs/tables/bpass-spectra-bin-imf135_100.hdf5
 # dust_model: /Users/aaron/Desktop/colt_runs/tables/Draine-MW.hdf5
 j_exp: 0.75                   # Luminosity boosting exponent
 metal_ions: false             # Include all metal ions
-helium_ions: true             # Include all helium ions
-ion_bins: true                # Include all active ion bins
-# nu_exp: 2                     # Frequency boosting exponent
-# min_HI_bin_cdf: 0.8           # Minimum CDF value for >= 13.6 eV bins
-# max_bin_dex: 0.05             # Minimum frequency bin width in dex
-# use_internal_energy: true     # Set temperature from the internal energy
+helium_ions: false            # Include all helium ions
+HI_bin: false                 # Turn off HI
+HeI_bin: false                # Turn off HeI
+HeII_bin: false               # Turn off HeII
+min_bin_angstrom: 1525        # Lowest energy bin edge [angstrom]
+max_bin_angstrom: 1475        # Highest energy bin edge [angstrom]
 
 # n_photons: 1000000            # Number of photon packets (10^6)
 # n_photons: 10000000           # Number of photon packets (10^7)
