@@ -58,15 +58,10 @@ class Simulation:
 
     # Connection data
     n_edges: np.int32 = None # Total number of edge cells
-    # n_inner_edges: np.int32 = None # Total number of inner edge cells
     n_neighbors_tot: np.int32 = None # Total number of cell neighbors
-    # n_circulators_tot: np.int32 = None # Total number of face circulators
     edges: np.ndarray = None # Edge indices
-    # inner_edges: np.ndarray = None # Inner edge indices
-    neighbor_indices: np.ndarray = None # Neighbor indices
-    neighbor_indptr: np.ndarray = None # Neighbor index pointers
-    # circulator_indices: np.ndarray = None # Circulator indices
-    # circulator_indptr: np.ndarray = None # Circulator index pointers
+    neighbor_offsets: np.ndarray = None # Cumulative n_neighbor counts
+    neighbor_cells: np.ndarray = None # Neighbor cell indices (flat)
     is_HR: np.ndarray = None # High-resolution gas mask
 
     # Particle data
@@ -89,8 +84,8 @@ class Simulation:
             self.n_edges = f.attrs['n_edges'] # Number of edges
             self.n_neighbors_tot = f.attrs['n_neighbors_tot'] # Total number of cell neighbors
             self.edges = f['edges'][:] # Edge indices
-            self.neighbor_indices = f['neighbor_indices'][:] # Neighbor indices
-            self.neighbor_indptr = f['neighbor_indptr'][:] # Neighbor index pointers
+            self.neighbor_offsets = f['neighbor_indices'][:] # Cumulative n_neighbor counts
+            self.neighbor_cells = f['neighbor_indptr'][:] # Neighbor cell indices (flat)
 
             # Gas data
             for field in gas_fields:
@@ -118,7 +113,7 @@ def remove_lowres():
     n_cells_old = np.int32(sim.n_cells) # Number of cells (saved for comparison)
     has_HR_neighbor = np.zeros(sim.n_cells, dtype=bool) # Flag cells with high-resolution neighbors
     has_HR_neibneib = np.zeros(sim.n_cells, dtype=bool) # Flag cells with high-resolution neighbors of neighbors
-    print(f'Average number of neighbors = {np.mean(np.diff(sim.neighbor_indices)):g}')
+    print(f'Average number of neighbors = {np.mean(np.diff(sim.neighbor_offsets)):g}')
     known_LR = set() # Known low-resolution outer cells
     queue_LR = set(sim.edges[~sim.is_HR[sim.edges]]) # Queue low-resolution edges
     print(f'Number of low-resolution outer edges = {len(queue_LR)} / {len(sim.edges)} = {100.*float(len(queue_LR))/float(len(sim.edges)):g}%')
@@ -127,7 +122,7 @@ def remove_lowres():
         print(f' {len(queue_LR)}', end='', flush=True)
         added_LR = set() # Added low-resolution neighbors
         for cell in queue_LR:
-            neighbors = sim.neighbor_indptr[sim.neighbor_indices[cell]:sim.neighbor_indices[cell+1]] # Neighbors
+            neighbors = sim.neighbor_cells[sim.neighbor_offsets[cell]:sim.neighbor_offsets[cell+1]] # Neighbors
             neighbors_HR = neighbors[sim.is_HR[neighbors]] # High-resolution neighbors
             if len(neighbors_HR) > 0:
                 has_HR_neighbor[cell] = True # Flag cells with high-resolution neighbors
