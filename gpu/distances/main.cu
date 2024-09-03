@@ -25,12 +25,13 @@ typedef unsigned long long myint;
 // #define MPI
 // #define GPU
 
-#define CHECK_INT_OVERFLOW(value) \
-  if (3 * (value) > static_cast<unsigned long long>(INT_MAX)) { \
-    cerr << "Error: 3 * " #value " = " << 3 * (value) << " exceeds the maximum int value" << endl; \
-    MPI_Finalize(); \
-    exit(1); \
-  }
+// #define CHECK_INT_OVERFLOW(value) \
+//   if (3 * (value) > static_cast<unsigned long long>(INT_MAX)) { \
+//     cerr << "Error: 3 * " #value " = " << 3 * (value) << " exceeds the maximum int value" << endl; \
+//     MPI_Finalize(); \
+//     exit(1); \
+//   }
+#define CHECK_INT_OVERFLOW(value)
 
 static int ThisTask, NTask, NumFiles, SnapNum, NTYPES;
 static string file_dir, out_dir, outname = "distances";
@@ -41,8 +42,8 @@ static myint *FileCounts_DM, *FileOffsets_DM, NumDM_Total;
 static myint *FileCounts_P2, *FileOffsets_P2, NumP2_Total;
 static myint *FileCounts_P3, *FileOffsets_P3, NumP3_Total;
 static myint *FileCounts_Star, *FileOffsets_Star, NumStar_Total;
-static int n_grps, n_subs, n_gas, n_gas_hr, n_gas_lr, n_dm, n_p2, n_p3, n_stars, n_stars_hr, n_stars_lr;
-static int n3_grps, n3_subs, n3_gas, n3_gas_hr, n3_gas_lr, n3_dm, n3_p2, n3_p3, n3_stars, n3_stars_hr, n3_stars_lr;
+static myint n_grps, n_subs, n_gas, n_gas_hr, n_gas_lr, n_dm, n_p2, n_p3, n_stars, n_stars_hr, n_stars_lr;
+static myint n3_grps, n3_subs, n3_gas, n3_gas_hr, n3_gas_lr, n3_dm, n3_p2, n3_p3, n3_stars, n3_stars_hr, n3_stars_lr;
 static double MassDM, MassP3, MassHR, PosHR[3], RadiusHR, RadiusLR;
 // static double Mass_Total, MassGas_Total, MassDM_Total, MassP2_Total, MassP3_Total, MassStar_Total;
 #define n_bins 10000
@@ -99,14 +100,14 @@ static void calculate_distances();
 #endif
 #define __global__
 #endif
-__global__ void calculate_minimum_distance(int n_halo, float *r_halo, int n_part, float *r_part, float *r2_min, float BoxSizeF, float BoxHalfF);
-__global__ void calculate_maximum_distance(int n_halo, float *r_halo, int n_part, float *r_part, float *r2_max, float BoxSizeF, float BoxHalfF);
-static double single_minimum_distance(double r[3], int n_part, float *r_part, double BoxSize, double BoxHalf);
-static double single_maximum_distance(double r[3], int n_part, float *r_part, double BoxSize, double BoxHalf);
-__global__ void calculate_R_vir(int n_halo, float *r_halo, float *R_vir, float *M_vir, float *M_gas, float *M_stars, float M_to_rho_vir[n_bins],
-                                int n_gas, float *r_gas, float *m_gas, int n_dm, float *r_dm, float MassDM,
-                                int n_p2, float *r_p2, float *m_p2, int n_p3, float *r_p3, float MassP3,
-                                int n_stars, float *r_star, float *m_star,
+__global__ void calculate_minimum_distance(myint n_halo, float *r_halo, myint n_part, float *r_part, float *r2_min, float BoxSizeF, float BoxHalfF);
+__global__ void calculate_maximum_distance(myint n_halo, float *r_halo, myint n_part, float *r_part, float *r2_max, float BoxSizeF, float BoxHalfF);
+static double single_minimum_distance(double r[3], myint n_part, float *r_part, double BoxSize, double BoxHalf);
+static double single_maximum_distance(double r[3], myint n_part, float *r_part, double BoxSize, double BoxHalf);
+__global__ void calculate_R_vir(myint n_halo, float *r_halo, float *R_vir, float *M_vir, float *M_gas, float *M_stars, float M_to_rho_vir[n_bins],
+                                myint n_gas, float *r_gas, float *m_gas, myint n_dm, float *r_dm, float MassDM,
+                                myint n_p2, float *r_p2, float *m_p2, myint n_p3, float *r_p3, float MassP3,
+                                myint n_stars, float *r_star, float *m_star,
                                 float BoxSizeF, float BoxHalfF, float Radius2Min, float LogRadius2Min, float InvDlogRadius2);
 #ifdef MPI
 #include <mpi.h>
@@ -600,13 +601,28 @@ int main(int argc, char **argv)
 
   // Read fof and snap data
   read_fof_data();
+  MPI_Barrier(MPI_COMM_WORLD);
+  if (SUBTIMERS && ThisTask == 0) {
+    stop = clock(); double time_spent = ((double) (stop - start)) / CLOCKS_PER_SEC; start = stop;
+    cout << "\nTime spent on reading fof data: " << time_spent << " s" << endl;
+  }
   read_snap_data();
+  MPI_Barrier(MPI_COMM_WORLD);
+  if (SUBTIMERS && ThisTask == 0) {
+    stop = clock(); double time_spent = ((double) (stop - start)) / CLOCKS_PER_SEC; start = stop;
+    cout << "\nTime spent on reading snapshot data: " << time_spent << " s" << endl;
+  }
   setup_vir();
+  MPI_Barrier(MPI_COMM_WORLD);
+  if (SUBTIMERS && ThisTask == 0) {
+    stop = clock(); double time_spent = ((double) (stop - start)) / CLOCKS_PER_SEC; start = stop;
+    cout << "\nTime spent on setting up virial radius calculations: " << time_spent << " s" << endl;
+  }
   copy_hr_data();
   MPI_Barrier(MPI_COMM_WORLD);
   if (SUBTIMERS && ThisTask == 0) {
     stop = clock(); double time_spent = ((double) (stop - start)) / CLOCKS_PER_SEC; start = stop;
-    cout << "\nTime spent on reading data: " << time_spent << " s" << endl;
+    cout << "\nTime spent on copying HR data: " << time_spent << " s" << endl;
   }
 
   // Calculate minimum distances between halos and particles
@@ -651,7 +667,6 @@ int main(int argc, char **argv)
     cudaMemcpy(M_gas, d_M_gas, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
     cudaMemcpy(M_stars, d_M_stars, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
   }
-  MPI_Barrier(MPI_COMM_WORLD);
 #else
   calculate_distances();
 #endif
@@ -1229,11 +1244,13 @@ static void read_snap_data()
   n_gas_hr = 0; n_gas_lr = 0, n_stars_hr = 0, n_stars_lr = 0;
   MassHR = 0.; PosHR[0] = 0.; PosHR[1] = 0.; PosHR[2] = 0.; // Initialize
   for (int curnum = ThisTask; curnum < NumFiles; curnum += NTask) {
-    const int n_local_gas = FileCounts_Gas[curnum], n_offset_gas = FileOffsets_Gas[curnum];
-    const int n_local_dm = FileCounts_DM[curnum], n_offset_dm = FileOffsets_DM[curnum];
-    const int n_local_p2 = FileCounts_P2[curnum], n_offset_p2 = FileOffsets_P2[curnum];
-    const int n_local_p3 = FileCounts_P3[curnum], n_offset_p3 = FileOffsets_P3[curnum];
-    const int n_local_stars = FileCounts_Star[curnum], n_offset_stars = FileOffsets_Star[curnum];
+    if (VERBOSE > 0)
+      cout << "Reading snapshot file " << curnum << " of " << NumFiles << " (Task " << ThisTask << ")" << endl;
+    const myint n_local_gas = FileCounts_Gas[curnum], n_offset_gas = FileOffsets_Gas[curnum];
+    const myint n_local_dm = FileCounts_DM[curnum], n_offset_dm = FileOffsets_DM[curnum];
+    const myint n_local_p2 = FileCounts_P2[curnum], n_offset_p2 = FileOffsets_P2[curnum];
+    const myint n_local_p3 = FileCounts_P3[curnum], n_offset_p3 = FileOffsets_P3[curnum];
+    const myint n_local_stars = FileCounts_Star[curnum], n_offset_stars = FileOffsets_Star[curnum];
     if (n_local_gas > 0 || n_local_dm > 0 || n_local_p2 > 0 || n_local_p3 > 0 || n_local_stars > 0) {
       std::ostringstream oss;
       oss << file_dir << "/snapdir_" << std::setfill('0') << std::setw(3) << SnapNum
@@ -1242,7 +1259,9 @@ static void read_snap_data()
       hid_t file_id = H5Fopen(fname.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
 
       if (n_local_gas > 0) {
-        const int n3_local_gas = 3 * n_local_gas;
+        if (VERBOSE > 0)
+          cout << "Task " << ThisTask << " reading " << n_local_gas << " gas particles" << endl;
+        const myint n3_local_gas = 3 * n_local_gas;
         double *Coordinates = (double *) malloc(n3_local_gas * sizeof(double));
         hid_t dataset = H5Dopen(file_id, "PartType0/Coordinates", H5P_DEFAULT);
         H5Dread(dataset, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, Coordinates);
@@ -1259,17 +1278,17 @@ static void read_snap_data()
         H5Dclose(dataset);
 
         // Count the number of high-res gas particles
-        int n_local_gas_hr = 0;
-        for (int i = 0; i < n_local_gas; ++i) {
+        myint n_local_gas_hr = 0;
+        for (myint i = 0; i < n_local_gas; ++i) {
           if (m_local_hr[i] > GAS_HIGH_RES_THRESHOLD * m_local[i])
             ++n_local_gas_hr;
         }
-        const int n_local_gas_lr = n_local_gas - n_local_gas_hr;
+        const myint n_local_gas_lr = n_local_gas - n_local_gas_hr;
         n_gas_hr += n_local_gas_hr;
         n_gas_lr += n_local_gas_lr;
         float *r_local = &r_gas[3*n_offset_gas];
-        for (int i = 0; i < n_local_gas; ++i) {
-          const int i3 = 3 * i;
+        for (myint i = 0; i < n_local_gas; ++i) {
+          const myint i3 = 3 * i;
           if (m_local_hr[i] > GAS_HIGH_RES_THRESHOLD * m_local[i]) {
             const double m_hr = m_local_hr[i];
             MassHR += m_hr;
@@ -1285,15 +1304,17 @@ static void read_snap_data()
       }
 
       if (n_local_dm > 0) {
-        const int n3_local_dm = 3 * n_local_dm;
+        if (VERBOSE > 0)
+          cout << "Task " << ThisTask << " reading " << n_local_dm << " dm particles" << endl;
+        const myint n3_local_dm = 3 * n_local_dm;
         double *Coordinates = (double *) malloc(n3_local_dm * sizeof(double));
         hid_t dataset = H5Dopen(file_id, "PartType1/Coordinates", H5P_DEFAULT);
         H5Dread(dataset, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, Coordinates);
         H5Dclose(dataset);
 
         float *r_local = &r_dm[3*n_offset_dm];
-        for (int i = 0; i < n_local_dm; ++i) {
-          const int i3 = 3 * i;
+        for (myint i = 0; i < n_local_dm; ++i) {
+          const myint i3 = 3 * i;
           MassHR += MassDM;
           PosHR[0] += MassDM * Coordinates[i3];
           PosHR[1] += MassDM * Coordinates[i3+1];
@@ -1306,7 +1327,9 @@ static void read_snap_data()
       }
 
       if (n_local_p2 > 0) {
-        const int n3_local_p2 = 3 * n_local_p2;
+        if (VERBOSE > 0)
+          cout << "Task " << ThisTask << " reading " << n_local_p2 << " p2 particles" << endl;
+        const myint n3_local_p2 = 3 * n_local_p2;
         double *Coordinates = (double *) malloc(n3_local_p2 * sizeof(double));
         hid_t dataset = H5Dopen(file_id, "PartType2/Coordinates", H5P_DEFAULT);
         H5Dread(dataset, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, Coordinates);
@@ -1317,26 +1340,30 @@ static void read_snap_data()
         H5Dclose(dataset);
 
         float *r_local = &r_p2[3*n_offset_p2];
-        for (int i = 0; i < n3_local_p2; ++i)
+        for (myint i = 0; i < n3_local_p2; ++i)
           r_local[i] = Coordinates[i]; // Convert to single precision
         free(Coordinates);
       }
 
       if (n_local_p3 > 0) {
-        const int n3_local_p3 = 3 * n_local_p3;
+        if (VERBOSE > 0)
+          cout << "Task " << ThisTask << " reading " << n_local_p3 << " p3 particles" << endl;
+        const myint n3_local_p3 = 3 * n_local_p3;
         double *Coordinates = (double *) malloc(n3_local_p3 * sizeof(double));
         hid_t dataset = H5Dopen(file_id, "PartType3/Coordinates", H5P_DEFAULT);
         H5Dread(dataset, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, Coordinates);
         H5Dclose(dataset);
 
         float *r_local = &r_p3[3*n_offset_p3];
-        for (int i = 0; i < n3_local_p3; ++i)
+        for (myint i = 0; i < n3_local_p3; ++i)
           r_local[i] = Coordinates[i]; // Convert to single precision
         free(Coordinates);
       }
 
       if (n_local_stars > 0) {
-        const int n3_local_stars = 3 * n_local_stars;
+        if (VERBOSE > 0)
+          cout << "Task " << ThisTask << " reading " << n_local_stars << " star particles" << endl;
+        const myint n3_local_stars = 3 * n_local_stars;
         double *Coordinates = (double *) malloc(n3_local_stars * sizeof(double));
         hid_t dataset = H5Dopen(file_id, "PartType4/Coordinates", H5P_DEFAULT);
         H5Dread(dataset, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, Coordinates);
@@ -1353,17 +1380,17 @@ static void read_snap_data()
         H5Dclose(dataset);
 
         // Count the number of high-res star particles
-        int n_local_stars_hr = 0;
-        for (int i = 0; i < n_local_stars; ++i) {
+        myint n_local_stars_hr = 0;
+        for (myint i = 0; i < n_local_stars; ++i) {
           if (is_hr[i])
             ++n_local_stars_hr;
         }
-        const int n_local_stars_lr = n_local_stars - n_local_stars_hr;
+        const myint n_local_stars_lr = n_local_stars - n_local_stars_hr;
         n_stars_hr += n_local_stars_hr;
         n_stars_lr += n_local_stars_lr;
         float *r_local = &r_star[3*n_offset_stars];
-        for (int i = 0; i < n_local_stars; ++i) {
-          const int i3 = 3 * i;
+        for (myint i = 0; i < n_local_stars; ++i) {
+          const myint i3 = 3 * i;
           if (is_hr[i]) {
             const double m_hr = m_local[i];
             MassHR += m_hr;
@@ -1381,10 +1408,10 @@ static void read_snap_data()
     }
   }
 #ifdef MPI
-  MPI_Allreduce(MPI_IN_PLACE, &n_gas_hr, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-  MPI_Allreduce(MPI_IN_PLACE, &n_gas_lr, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-  MPI_Allreduce(MPI_IN_PLACE, &n_stars_hr, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-  MPI_Allreduce(MPI_IN_PLACE, &n_stars_lr, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+  MPI_Allreduce(MPI_IN_PLACE, &n_gas_hr, 1, MPI_MYINT, MPI_SUM, MPI_COMM_WORLD);
+  MPI_Allreduce(MPI_IN_PLACE, &n_gas_lr, 1, MPI_MYINT, MPI_SUM, MPI_COMM_WORLD);
+  MPI_Allreduce(MPI_IN_PLACE, &n_stars_hr, 1, MPI_MYINT, MPI_SUM, MPI_COMM_WORLD);
+  MPI_Allreduce(MPI_IN_PLACE, &n_stars_lr, 1, MPI_MYINT, MPI_SUM, MPI_COMM_WORLD);
   MPI_Allreduce(MPI_IN_PLACE, &MassHR, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
   MPI_Allreduce(MPI_IN_PLACE, PosHR, 3, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 #endif
@@ -1425,17 +1452,17 @@ static void copy_hr_data()
 
   // Gas
   if (n_gas > 0) {
-    int i_hr = 0, i_lr = 0;
-    for (int i = 0; i < n_gas; ++i) {
-      const int i3 = 3 * i;
+    myint i_hr = 0, i_lr = 0;
+    for (myint i = 0; i < n_gas; ++i) {
+      const myint i3 = 3 * i;
       if (m_gas_hr[i] > GAS_HIGH_RES_THRESHOLD * m_gas[i]) {
-        const int i3_hr = 3 * i_hr;
+        const myint i3_hr = 3 * i_hr;
         r_gas_hr[i3_hr] = r_gas[i3];
         r_gas_hr[i3_hr+1] = r_gas[i3+1];
         r_gas_hr[i3_hr+2] = r_gas[i3+2];
         ++i_hr;
       } else {
-        const int i3_lr = 3 * i_lr;
+        const myint i3_lr = 3 * i_lr;
         r_gas_lr[i3_lr] = r_gas[i3];
         r_gas_lr[i3_lr+1] = r_gas[i3+1];
         r_gas_lr[i3_lr+2] = r_gas[i3+2];
@@ -1448,19 +1475,21 @@ static void copy_hr_data()
       exit(1);
     }
   }
+  if (VERBOSE > 0)
+    cout << "\nFinished copying high-res gas particles." << endl;
   // Stars
   if (n_stars > 0) {
-    int i_hr = 0, i_lr = 0;
-    for (int i = 0; i < n_stars; ++i) {
-      const int i3 = 3 * i;
+    myint i_hr = 0, i_lr = 0;
+    for (myint i = 0; i < n_stars; ++i) {
+      const myint i3 = 3 * i;
       if (star_is_hr[i]) {
-        const int i3_hr = 3 * i_hr;
+        const myint i3_hr = 3 * i_hr;
         r_star_hr[i3_hr] = r_star[i3];
         r_star_hr[i3_hr+1] = r_star[i3+1];
         r_star_hr[i3_hr+2] = r_star[i3+2];
         ++i_hr;
       } else {
-        const int i3_lr = 3 * i_lr;
+        const myint i3_lr = 3 * i_lr;
         r_star_lr[i3_lr] = r_star[i3];
         r_star_lr[i3_lr+1] = r_star[i3+1];
         r_star_lr[i3_lr+2] = r_star[i3+2];
@@ -1473,6 +1502,8 @@ static void copy_hr_data()
       exit(1);
     }
   }
+  if (VERBOSE > 0)
+    cout << "\nFinished copying high-res star particles." << endl;
 
 #ifdef GPU
   // Allocate GPU memory and copy data
@@ -1499,20 +1530,20 @@ static void setup_vir()
 {
 //   // Gas
 //   MassGas_Total = 0.;
-//   for (int i = ThisTask; i < n_gas; i += NTask)
+//   for (myint i = ThisTask; i < n_gas; i += NTask)
 //     MassGas_Total += m_gas[i];
 //   // DM
 //   MassDM_Total = MassDM * double(n_dm);
 //   // P2
 //   MassP2_Total = 0.;
-//   for (int i = ThisTask; i < n_p2; i += NTask)
+//   for (myint i = ThisTask; i < n_p2; i += NTask)
 //     MassP2_Total += m_p2[i];
 //   // P3
 //   MassP3_Total = MassP3 * double(n_p3);
 //   // Stars
 //   MassStar_Total = 0.;
 //   if (n_stars > 0) {
-//     for (int i = ThisTask; i < n_stars; i += NTask)
+//     for (myint i = ThisTask; i < n_stars; i += NTask)
 //       MassStar_Total += m_star[i];
 //   }
 // #ifdef MPI
@@ -1593,9 +1624,9 @@ static void setup_vir()
 static void calculate_distances()
 {
   const float BoxSizeF = BoxSize, BoxHalfF = BoxSize / 2.; // Single precision
-  const int n_per_block = 64;
-  const int n_blocks_grp = (n_grps + n_per_block - 1) / n_per_block;
-  const int n_blocks_sub = (n_subs + n_per_block - 1) / n_per_block;
+  const myint n_per_block = 64;
+  const myint n_blocks_grp = (n_grps + n_per_block - 1) / n_per_block;
+  const myint n_blocks_sub = (n_subs + n_per_block - 1) / n_per_block;
 #ifdef GPU
   if (n_gas_hr > 0) {
     calculate_minimum_distance<<<n_blocks_grp, n_per_block>>>(n_grps, d_GroupPos, n_gas_hr, d_r_gas_hr, d_Group_MinDistGasHR, BoxSizeF, BoxHalfF);
@@ -1661,15 +1692,15 @@ __host__ __device__ float shortest_distance(float x1, float x2, float BoxSizeF, 
   return dx; // Shortest distance
 }
 
-__global__ void calculate_minimum_distance(int n_halo, float *r_halo, int n_part, float *r_part, float *r_min, float BoxSizeF, float BoxHalfF)
+__global__ void calculate_minimum_distance(myint n_halo, float *r_halo, myint n_part, float *r_part, float *r_min, float BoxSizeF, float BoxHalfF)
 {
 #ifdef GPU
-  const int first_halo = blockIdx.x * blockDim.x + threadIdx.x;
-  const int stride = blockDim.x * gridDim.x;
+  const myint first_halo = blockIdx.x * blockDim.x + threadIdx.x;
+  const myint stride = blockDim.x * gridDim.x;
 #else // CPU
-  const int first_halo = ThisTask, stride = NTask;
+  const myint first_halo = ThisTask, stride = NTask;
 #endif
-  int i, j, i3, j3;
+  myint i, j, i3, j3;
   float x1, y1, z1, x2, y2, z2, dx, dy, dz, r2, r2_comp;
   for (i = first_halo; i < n_halo; i += stride) {
     i3 = 3 * i; // 3D index
@@ -1695,12 +1726,12 @@ __global__ void calculate_minimum_distance(int n_halo, float *r_halo, int n_part
   }
 }
 
-static double single_minimum_distance(double r[3], int n_part, float *r_part, double BoxSize, double BoxHalf)
+static double single_minimum_distance(double r[3], myint n_part, float *r_part, double BoxSize, double BoxHalf)
 {
   const double x1 = r[0], y1 = r[1], z1 = r[2];
   double r2_comp = DBL_MAX; // Initialize to a large value
-  for (int i = ThisTask; i < n_part; i += NTask) {
-    const int i3 = 3 * i; // 3D index
+  for (myint i = ThisTask; i < n_part; i += NTask) {
+    const myint i3 = 3 * i; // 3D index
     const double x2 = r_part[i3]; // Particle position
     const double y2 = r_part[i3 + 1];
     const double z2 = r_part[i3 + 2];
@@ -1719,12 +1750,12 @@ static double single_minimum_distance(double r[3], int n_part, float *r_part, do
   return sqrt(r2_comp); // Minimum distance
 }
 
-static double single_maximum_distance(double r[3], int n_part, float *r_part, double BoxSize, double BoxHalf)
+static double single_maximum_distance(double r[3], myint n_part, float *r_part, double BoxSize, double BoxHalf)
 {
   const double x1 = r[0], y1 = r[1], z1 = r[2];
   double r2_comp = 0.; // Initialize to a large value
-  for (int i = ThisTask; i < n_part; i += NTask) {
-    const int i3 = 3 * i; // 3D index
+  for (myint i = ThisTask; i < n_part; i += NTask) {
+    const myint i3 = 3 * i; // 3D index
     const double x2 = r_part[i3]; // Particle position
     const double y2 = r_part[i3 + 1];
     const double z2 = r_part[i3 + 2];
@@ -1743,27 +1774,28 @@ static double single_maximum_distance(double r[3], int n_part, float *r_part, do
   return sqrt(r2_comp); // Maximum distance
 }
 
-__global__ void calculate_R_vir(int n_halo, float *r_halo, float *R_vir, float *M_vir, float *M_gas, float *M_stars, float M_to_rho_vir[n_bins],
-                                int n_gas, float *r_gas, float *m_gas, int n_dm, float *r_dm, float MassDM,
-                                int n_p2, float *r_p2, float *m_p2, int n_p3, float *r_p3, float MassP3,
-                                int n_stars, float *r_star, float *m_star,
+__global__ void calculate_R_vir(myint n_halo, float *r_halo, float *R_vir, float *M_vir, float *M_gas, float *M_stars, float M_to_rho_vir[n_bins],
+                                myint n_gas, float *r_gas, float *m_gas, myint n_dm, float *r_dm, float MassDM,
+                                myint n_p2, float *r_p2, float *m_p2, myint n_p3, float *r_p3, float MassP3,
+                                myint n_stars, float *r_star, float *m_star,
                                 float BoxSizeF, float BoxHalfF, float Radius2Min, float LogRadius2Min, float InvDlogRadius2)
 {
 #ifdef GPU
-  const int first_halo = blockIdx.x * blockDim.x + threadIdx.x;
-  const int stride = blockDim.x * gridDim.x;
+  const myint first_halo = blockIdx.x * blockDim.x + threadIdx.x;
+  const myint stride = blockDim.x * gridDim.x;
 #else // CPU
-  const int first_halo = ThisTask, stride = NTask;
+  const myint first_halo = ThisTask, stride = NTask;
 #endif
-  int i, j, i3, j3, ibin, ivir;
+  myint i, j, i3, j3;
+  int ibin, ivir;
   const float LogRadiusMin = 0.5 * LogRadius2Min, DlogRadius = 0.5 / InvDlogRadius2;
   float x1, y1, z1, x2, y2, z2, dx, dy, dz, r2, frac;
   float M_gas_enc[n_bins], M_dm_enc[n_bins], M_stars_enc[n_bins], M_enc[n_bins], rho_enc[n_bins]; // Enclosed mass
   for (i = first_halo; i < n_halo; i += stride) {
-    for (j = 0; j < n_bins; ++j) {
-      M_gas_enc[j] = 0.; // Reset enclosed gas mass
-      M_dm_enc[j] = 0.; // Reset enclosed dm mass
-      M_stars_enc[j] = 0.; // Reset enclosed stellar mass
+    for (ibin = 0; ibin < n_bins; ++ibin) {
+      M_gas_enc[ibin] = 0.; // Reset enclosed gas mass
+      M_dm_enc[ibin] = 0.; // Reset enclosed dm mass
+      M_stars_enc[ibin] = 0.; // Reset enclosed stellar mass
     }
     i3 = 3 * i; // 3D index
     x1 = r_halo[i3]; // Halo position
@@ -1865,14 +1897,14 @@ __global__ void calculate_R_vir(int n_halo, float *r_halo, float *R_vir, float *
       }
     }
     // Convert to enclosed densities
-    for (j = 1; j < n_bins; ++j) {
-      M_gas_enc[j] += M_gas_enc[j-1]; // Enclosed gas mass
-      M_dm_enc[j] += M_dm_enc[j-1]; // Enclosed dm mass
-      M_stars_enc[j] += M_stars_enc[j-1]; // Enclosed star mass
+    for (ibin = 1; ibin < n_bins; ++ibin) {
+      M_gas_enc[ibin] += M_gas_enc[ibin-1]; // Enclosed gas mass
+      M_dm_enc[ibin] += M_dm_enc[ibin-1]; // Enclosed dm mass
+      M_stars_enc[ibin] += M_stars_enc[ibin-1]; // Enclosed star mass
     }
-    for (j = 0; j < n_bins; ++j) {
-      M_enc[j] = M_gas_enc[j] + M_dm_enc[j] + M_stars_enc[j]; // Enclosed mass
-      rho_enc[j] = M_enc[j] * M_to_rho_vir[j]; // Enclosed density [rho_vir]
+    for (ibin = 0; ibin < n_bins; ++ibin) {
+      M_enc[ibin] = M_gas_enc[ibin] + M_dm_enc[ibin] + M_stars_enc[ibin]; // Enclosed mass
+      rho_enc[ibin] = M_enc[ibin] * M_to_rho_vir[ibin]; // Enclosed density [rho_vir]
     }
     // Calculate virial radius
     for (ivir = n_bins_minus1; ivir >= 0; --ivir) {
