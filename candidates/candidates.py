@@ -7,7 +7,6 @@ from multiprocessing import cpu_count
 from scipy.spatial import cKDTree
 
 # Constants
-NTYPES = -1 # Number of particle types (read from file)
 GAS_HIGH_RES_THRESHOLD = 0.5 # Threshold deliniating high and low resolution gas particles
 SOLAR_MASS = 1.989e33  # Solar masses
 VERBOSITY = 0 # Level of print verbosity
@@ -60,6 +59,7 @@ cand_file = f'{cand_dir}/candidates_{snap:03d}.hdf5'
 @dataclass
 class Simulation:
     """Simulation information and data."""
+    NTYPES: np.int32 = -1 # Number of particle types
     n_files: np.int32 = 0 # Number of files
     n_groups_tot: np.uint64 = None # Total number of groups
     n_subhalos_tot: np.uint64 = None # Total number of subhalos
@@ -144,7 +144,7 @@ class Simulation:
             with h5py.File(snap_pre + '0.hdf5', 'r') as f:
                 self.n_stars = np.zeros(self.n_files, dtype=np.uint64)
                 self.n_stars_tot = f['Header'].attrs['NumPart_Total'][4]
-                NTYPES = np.int32(f['Config'].attrs['NTYPES'])
+                self.NTYPES = np.int32(f['Config'].attrs['NTYPES'])
 
             # Star data
             if self.n_stars_tot > 0:
@@ -257,7 +257,7 @@ class Simulation:
                 for i in range(self.n_groups_tot):
                     i_beg, i_end = self.GroupFirstSub[i], self.GroupFirstSub[i] + self.GroupNsubs[i] # Subhalo range
                     first_subs = np.cumsum(self.SubhaloLenType[i_beg:i_end], axis=0) - self.SubhaloLenType[i_beg:i_end] # Relative offsets
-                    for i_part in range(NTYPES):
+                    for i_part in range(self.NTYPES):
                         first_subs[:,i_part] += self.GroupFirstType[i,i_part] # Add group offset
                     self.SubhaloFirstType[i_beg:i_end] = first_subs # First particle of each type in each subhalo
             self.Group_member_distances_stars_hr = self.BoxSize * np.ones(self.n_groups_tot, dtype=np.float32)  # Closest distance to a high-resolution star (group)
@@ -267,26 +267,22 @@ class Simulation:
                     r_grp = self.GroupPos[i_grp]  # Group center
                     i_beg, i_end = self.GroupFirstSub[i_grp], self.GroupFirstSub[i_grp] + self.GroupNsubs[i_grp] # Subhalo range
                     i_beg_stars, i_end_stars = self.GroupFirstType[i_grp,4], self.GroupFirstType[i_grp,4] + self.GroupLenType[i_grp,4] # Stars range
-                    is_HR_grp = self.is_HR[i_beg_stars:i_end_stars]  # High-resolution star mask (group)
+                    is_HR_grp = self.is_HR[i_beg_stars:i_end_stars].astype(bool)  # High-resolution star mask (group)
                     n_HR_grp = np.count_nonzero(is_HR_grp)  # Number of high-resolution stars (group)
                     if n_HR_grp > 0:  # Skip groups without high-resolution stars
                         if self.Group_distances_stars_hr[i_grp] < self.Group_R_Crit200[i_grp]:  # Only calculate if within R_Crit200
-                            r_stars_grp = self.r_stars[i_beg_stars:i_end_stars]  # Star positions (group)
-                            if len(r_stars_grp) > 1:
-                                r_stars_grp = r_stars_grp[is_HR_grp]  # High-resolution star positions (group)
+                            r_stars_grp = self.r_stars[i_beg_stars:i_end_stars][is_HR_grp,:]  # Star positions (group)
                             self.Group_member_distances_stars_hr[i_grp] = self.find_nearest_star(r_grp, r_stars_grp)  # Closest distance to a high-resolution star
                             # print(f'Group {i_grp}: {self.Group_member_distances_stars_hr[i_grp]}, {self.Group_distances_stars_hr[i_grp]}, {self.Group_R_Crit200[i_grp]}')
                         for i_sub in range(i_beg, i_end):
                             if self.SubhaloLenType[i_sub,4] > 0:  # Skip subhalos without stars
                                 r_sub = self.SubhaloPos[i_sub] # Subhalo center
                                 i_beg_stars, i_end_stars = self.SubhaloFirstType[i_sub,4], self.SubhaloFirstType[i_sub,4] + self.SubhaloLenType[i_sub,4]  # Stars range
-                                is_HR_sub = self.is_HR[i_beg_stars:i_end_stars]  # High-resolution star mask (subhalo)
+                                is_HR_sub = self.is_HR[i_beg_stars:i_end_stars].astype(bool)  # High-resolution star mask (subhalo)
                                 n_HR_sub = np.count_nonzero(is_HR_sub)  # Number of high-resolution stars (subhalo)
                                 if n_HR_sub > 0:  # Skip subhalos without high-resolution stars
                                     if self.Subhalo_distances_stars_hr[i_sub] < self.Subhalo_R_vir[i_sub]:  # Only calculate if within R_vir
-                                        r_stars_sub = self.r_stars[i_beg_stars:i_end_stars]  # Star positions (subhalo)
-                                        if len(r_stars_sub) > 1:
-                                            r_stars_sub = r_stars_sub[is_HR_sub] # High-resolution star positions (subhalo)
+                                        r_stars_sub = self.r_stars[i_beg_stars:i_end_stars][is_HR_sub,:]  # Star positions (subhalo)
                                         self.Subhalo_member_distances_stars_hr[i_sub] = self.find_nearest_star(r_sub, r_stars_sub)  # Closest distance to a high-resolution star
 
     def print_offsets(self):
@@ -374,10 +370,6 @@ class Simulation:
                         d_grp = self.Group_member_distances_stars_hr[self.group_mask]  # Closest distance to a high-resolution star (group)
                         group_star_flag = (d_grp <= self.Group_R_Crit200[self.group_mask])  # Star flag (group)
                         self.n_groups_candidates_stars = np.count_nonzero(group_star_flag)
-                        if VERBOSITY > 1:
-                            print(f'd_grp = {d_grp}')
-                            print(f'group_star_flag = {group_star_flag}')
-                            print(f'n_groups_candidates_stars = {self.n_groups_candidates_stars}')
                     except AttributeError:
                         group_star_flag = np.zeros(self.n_groups_candidates, dtype=bool)
                     g.create_dataset(b'StarFlag', data=group_star_flag, dtype=bool)
