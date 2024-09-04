@@ -54,7 +54,7 @@ colt_file = f'{colt_dir}/colt_{snap:03d}.hdf5'
 group_fields = ['GroupNsubs', 'GroupLenType']
 subhalo_fields = ['SubhaloLenType']
 gas_fields = ['Coordinates', 'Masses', 'HighResGasMass', 'Velocities', 'InternalEnergy', 'DustTemperature',
-              'GFM_Metallicity', 'GFM_DustMetallicity', 'Density', 'H2_Fraction', 'HI_Fraction',
+              'GFM_Metallicity', 'GFM_DustMetallicity', 'GFM_DustCarbonSiliconRatio', 'Density', 'H2_Fraction', 'HI_Fraction',
               'HeI_Fraction', 'HeII_Fraction', 'ElectronAbundance', 'StarFormationRate', 'ParticleIDs']
 star_fields = ['Coordinates', 'Masses', 'IsHighRes', 'Velocities', 'GFM_StellarFormationTime', 'GFM_Metallicity', 'GFM_InitialMass', 'ParticleIDs']
 
@@ -599,6 +599,7 @@ def arepo_to_colt(include_metals=True):
         Z = sim.gas['GFM_Metallicity']; Z[Z<0.] = 0. # Ensure positive metallicity
         f.create_dataset('Z', data=Z, dtype=np.float64) # Metallicity [mass fraction]
         f.create_dataset('D', data=sim.gas['GFM_DustMetallicity'], dtype=np.float64) # Dust-to-gas ratio [mass fraction]
+        f.create_dataset('D_Si', data=sim.gas['GFM_DustMetallicity'] / (1. + sim.gas['GFM_DustCarbonSiliconRatio']), dtype=np.float64) # Dust silicates-to-gas ratio [mass fraction]
         f.create_dataset('rho', data=sim.density_to_cgs * sim.gas['Density'], dtype=np.float64) # Density [g/cm^3]
         f['rho'].attrs['units'] = b'g/cm^3'
         # f.create_dataset('x_HI', data=sim.gas['HI_Fraction'], dtype=np.float64) # Neutral hydrogen fraction
