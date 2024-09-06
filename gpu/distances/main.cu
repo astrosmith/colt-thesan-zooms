@@ -33,7 +33,7 @@ typedef unsigned long long myint;
 //   }
 #define CHECK_INT_OVERFLOW(value)
 
-static int ThisTask, NTask, NumFiles, SnapNum, NTYPES;
+static int ThisTask, NTask, ThisDevice, NDevice, NumFiles, SnapNum, NTYPES;
 static string file_dir, out_dir, outname = "distances";
 static myint *FileCounts_Group, *FileOffsets_Group, Ngroups_Total;
 static myint *FileCounts_Subhalo, *FileOffsets_Subhalo, Nsubhalos_Total;
@@ -62,6 +62,8 @@ static float *r_gas, *m_gas, *m_gas_hr, *r_dm, *r_p2, *m_p2, *r_p3, *r_star, *m_
 static float *r_gas_hr, *r_gas_lr, *r_star_hr, *r_star_lr;
 static int *star_is_hr;
 #ifdef GPU
+static myint d_Ngroups_Total, offset_Ngroups_Total, d_Nsubhalos_Total, offset_Nsubhalos_Total;
+static myint d_n_grps, d_n_subs, d_n3_grps, d_n3_subs, first_n3_grps, first_n3_subs;
 static float *d_GroupPos, *d_R_Crit200, *d_SubhaloPos, *d_R_vir, *d_M_vir, *d_M_gas, *d_M_stars, *d_M_to_rho_vir;
 static float *d_Group_MinDistGasHR, *d_Subhalo_MinDistGasHR;
 static float *d_Group_MinDistGasLR, *d_Subhalo_MinDistGasLR;
@@ -109,6 +111,19 @@ __global__ void calculate_R_vir(myint n_halo, float *r_halo, float *R_vir, float
                                 myint n_p2, float *r_p2, float *m_p2, myint n_p3, float *r_p3, float MassP3,
                                 myint n_stars, float *r_star, float *m_star,
                                 float BoxSizeF, float BoxHalfF, float Radius2Min, float LogRadius2Min, float InvDlogRadius2);
+static inline void equal_work(const myint n_part, const myint worker, const myint n_workers, myint& n_part_worker, myint& first_part_worker)
+{
+  n_part_worker = n_part / n_workers;
+  first_part_worker = worker * n_part_worker;
+  const myint remainder = n_part - n_part_worker * n_workers;
+  if (worker < remainder) {
+    n_part_worker++; // Distribute remainder
+    first_part_worker += worker;
+  } else {
+    first_part_worker += remainder;
+  }
+}
+
 #ifdef MPI
 #include <mpi.h>
 
@@ -303,30 +318,30 @@ static void allocate()
 
 #ifdef GPU
   // Allocate GPU memory
-  if (ThisTask == 0) {
+  if (ThisTask < NDevice) {
     // Subhalo data
-    cudaMalloc(&d_GroupPos, n3_grps * sizeof(float));
-    cudaMalloc(&d_R_Crit200, Ngroups_Total * sizeof(float));
-    cudaMalloc(&d_SubhaloPos, n3_subs * sizeof(float));
-    cudaMalloc(&d_R_vir, Nsubhalos_Total * sizeof(float));
-    cudaMalloc(&d_M_vir, Nsubhalos_Total * sizeof(float));
-    cudaMalloc(&d_M_gas, Nsubhalos_Total * sizeof(float));
-    cudaMalloc(&d_M_stars, Nsubhalos_Total * sizeof(float));
+    cudaMalloc(&d_GroupPos, d_n3_grps * sizeof(float));
+    cudaMalloc(&d_R_Crit200, d_Ngroups_Total * sizeof(float));
+    cudaMalloc(&d_SubhaloPos, d_n3_subs * sizeof(float));
+    cudaMalloc(&d_R_vir, d_Nsubhalos_Total * sizeof(float));
+    cudaMalloc(&d_M_vir, d_Nsubhalos_Total * sizeof(float));
+    cudaMalloc(&d_M_gas, d_Nsubhalos_Total * sizeof(float));
+    cudaMalloc(&d_M_stars, d_Nsubhalos_Total * sizeof(float));
     cudaMalloc(&d_M_to_rho_vir, n_bins * sizeof(float));
-    cudaMalloc(&d_Group_MinDistGasHR, Ngroups_Total * sizeof(float));
-    cudaMalloc(&d_Subhalo_MinDistGasHR, Nsubhalos_Total * sizeof(float));
-    cudaMalloc(&d_Group_MinDistGasLR, Ngroups_Total * sizeof(float));
-    cudaMalloc(&d_Subhalo_MinDistGasLR, Nsubhalos_Total * sizeof(float));
-    cudaMalloc(&d_Group_MinDistDM, Ngroups_Total * sizeof(float));
-    cudaMalloc(&d_Subhalo_MinDistDM, Nsubhalos_Total * sizeof(float));
-    cudaMalloc(&d_Group_MinDistP2, Ngroups_Total * sizeof(float));
-    cudaMalloc(&d_Subhalo_MinDistP2, Nsubhalos_Total * sizeof(float));
-    cudaMalloc(&d_Group_MinDistP3, Ngroups_Total * sizeof(float));
-    cudaMalloc(&d_Subhalo_MinDistP3, Nsubhalos_Total * sizeof(float));
-    cudaMalloc(&d_Group_MinDistStarsHR, Ngroups_Total * sizeof(float));
-    cudaMalloc(&d_Subhalo_MinDistStarsHR, Nsubhalos_Total * sizeof(float));
-    cudaMalloc(&d_Group_MinDistStarsLR, Ngroups_Total * sizeof(float));
-    cudaMalloc(&d_Subhalo_MinDistStarsLR, Nsubhalos_Total * sizeof(float));
+    cudaMalloc(&d_Group_MinDistGasHR, d_Ngroups_Total * sizeof(float));
+    cudaMalloc(&d_Subhalo_MinDistGasHR, d_Nsubhalos_Total * sizeof(float));
+    cudaMalloc(&d_Group_MinDistGasLR, d_Ngroups_Total * sizeof(float));
+    cudaMalloc(&d_Subhalo_MinDistGasLR, d_Nsubhalos_Total * sizeof(float));
+    cudaMalloc(&d_Group_MinDistDM, d_Ngroups_Total * sizeof(float));
+    cudaMalloc(&d_Subhalo_MinDistDM, d_Nsubhalos_Total * sizeof(float));
+    cudaMalloc(&d_Group_MinDistP2, d_Ngroups_Total * sizeof(float));
+    cudaMalloc(&d_Subhalo_MinDistP2, d_Nsubhalos_Total * sizeof(float));
+    cudaMalloc(&d_Group_MinDistP3, d_Ngroups_Total * sizeof(float));
+    cudaMalloc(&d_Subhalo_MinDistP3, d_Nsubhalos_Total * sizeof(float));
+    cudaMalloc(&d_Group_MinDistStarsHR, d_Ngroups_Total * sizeof(float));
+    cudaMalloc(&d_Subhalo_MinDistStarsHR, d_Nsubhalos_Total * sizeof(float));
+    cudaMalloc(&d_Group_MinDistStarsLR, d_Ngroups_Total * sizeof(float));
+    cudaMalloc(&d_Subhalo_MinDistStarsLR, d_Nsubhalos_Total * sizeof(float));
 
     // Particle data
     cudaMalloc(&d_r_gas, n3_gas * sizeof(float));
@@ -348,7 +363,7 @@ static void allocate()
 static void free()
 {
 #ifdef GPU
-  if (ThisTask == 0) {
+  if (ThisTask < NDevice) {
     // HR data
     if (n_stars_lr > 0)
       cudaFree(d_r_star_lr);
@@ -538,6 +553,11 @@ int main(int argc, char **argv)
   ThisTask = 0; // Serial
   NTask = 1;
 #endif
+#ifdef GPU
+  cudaGetDeviceCount(&NDevice);
+  ThisDevice = ThisTask % NDevice;
+  cudaSetDevice(ThisDevice);
+#endif
 
   clock_t begin = clock();
   clock_t start = begin, stop;
@@ -575,6 +595,9 @@ int main(int argc, char **argv)
          << "\n\nSnap " << SnapNum << ": NumFiles = " << NumFiles << ", Ngroups = " << Ngroups_Total << ", Nsubhalos = " << Nsubhalos_Total
 #ifdef MPI
          << "  (NTask = " << NTask << ")"
+#endif
+#ifdef GPU
+         << "  (NDevice = " << NDevice << ")"
 #endif
          << "\nNumGas = " << NumGas_Total << ", NumDM = " << NumDM_Total
          << ", NumP2 = " << NumP2_Total << ", NumP3 = " << NumP3_Total << ", NumStar = " << NumStar_Total
@@ -627,10 +650,10 @@ int main(int argc, char **argv)
 
   // Calculate minimum distances between halos and particles
 #ifdef GPU
-  if (ThisTask == 0) {
+  if (ThisTask < NDevice) {
     // Copy data to GPUs
-    cudaMemcpy(d_GroupPos, GroupPos, n3_grps * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_SubhaloPos, SubhaloPos, n3_subs * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_GroupPos, &GroupPos[first_n3_grps], d_n3_grps * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_SubhaloPos, &SubhaloPos[first_n3_subs], n3_subs * sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(d_r_gas, r_gas, n3_gas * sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(d_r_dm, r_dm, n3_dm * sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(d_r_p2, r_p2, n3_p2 * sizeof(float), cudaMemcpyHostToDevice);
@@ -644,28 +667,28 @@ int main(int argc, char **argv)
     // Perform calculations on the GPU
     calculate_distances();
     // Copy data back to CPU
-    cudaMemcpy(Group_MinDistGasHR, d_Group_MinDistGasHR, Ngroups_Total * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(Subhalo_MinDistGasHR, d_Subhalo_MinDistGasHR, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(Group_MinDistGasLR, d_Group_MinDistGasLR, Ngroups_Total * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(Subhalo_MinDistGasLR, d_Subhalo_MinDistGasLR, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(Group_MinDistDM, d_Group_MinDistDM, Ngroups_Total * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(Subhalo_MinDistDM, d_Subhalo_MinDistDM, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(Group_MinDistP2, d_Group_MinDistP2, Ngroups_Total * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(Subhalo_MinDistP2, d_Subhalo_MinDistP2, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(Group_MinDistP3, d_Group_MinDistP3, Ngroups_Total * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(Subhalo_MinDistP3, d_Subhalo_MinDistP3, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&Group_MinDistGasHR[offset_Ngroups_Total], d_Group_MinDistGasHR, Ngroups_Total * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&Subhalo_MinDistGasHR[offset_Nsubhalos_Total], d_Subhalo_MinDistGasHR, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&Group_MinDistGasLR[offset_Ngroups_Total], d_Group_MinDistGasLR, Ngroups_Total * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&Subhalo_MinDistGasLR[offset_Nsubhalos_Total], d_Subhalo_MinDistGasLR, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&Group_MinDistDM[offset_Ngroups_Total], d_Group_MinDistDM, Ngroups_Total * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&Subhalo_MinDistDM[offset_Nsubhalos_Total], d_Subhalo_MinDistDM, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&Group_MinDistP2[offset_Ngroups_Total], d_Group_MinDistP2, Ngroups_Total * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&Subhalo_MinDistP2[offset_Nsubhalos_Total], d_Subhalo_MinDistP2, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&Group_MinDistP3[offset_Ngroups_Total], d_Group_MinDistP3, Ngroups_Total * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&Subhalo_MinDistP3[offset_Nsubhalos_Total], d_Subhalo_MinDistP3, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
     if (n_stars_hr > 0) {
-      cudaMemcpy(Group_MinDistStarsHR, d_Group_MinDistStarsHR, Ngroups_Total * sizeof(float), cudaMemcpyDeviceToHost);
-      cudaMemcpy(Subhalo_MinDistStarsHR, d_Subhalo_MinDistStarsHR, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
+      cudaMemcpy(&Group_MinDistStarsHR[offset_Ngroups_Total], d_Group_MinDistStarsHR, Ngroups_Total * sizeof(float), cudaMemcpyDeviceToHost);
+      cudaMemcpy(&Subhalo_MinDistStarsHR[offset_Nsubhalos_Total], d_Subhalo_MinDistStarsHR, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
     }
     if (n_stars_lr > 0) {
-      cudaMemcpy(Group_MinDistStarsLR, d_Group_MinDistStarsLR, Ngroups_Total * sizeof(float), cudaMemcpyDeviceToHost);
-      cudaMemcpy(Subhalo_MinDistStarsLR, d_Subhalo_MinDistStarsLR, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
+      cudaMemcpy(&Group_MinDistStarsLR[offset_Ngroups_Total], d_Group_MinDistStarsLR, Ngroups_Total * sizeof(float), cudaMemcpyDeviceToHost);
+      cudaMemcpy(&Subhalo_MinDistStarsLR[offset_Nsubhalos_Total], d_Subhalo_MinDistStarsLR, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
     }
-    cudaMemcpy(R_vir, d_R_vir, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(M_vir, d_M_vir, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(M_gas, d_M_gas, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(M_stars, d_M_stars, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&R_vir[offset_Nsubhalos_Total], d_R_vir, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&M_vir[offset_Nsubhalos_Total], d_M_vir, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&M_gas[offset_Nsubhalos_Total], d_M_gas, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&M_stars[offset_Nsubhalos_Total], d_M_stars, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
   }
 #else
   calculate_distances();
@@ -873,6 +896,13 @@ static void read_header()
   n3_grps = 3 * n_grps, n3_subs = 3 * n_subs;
   n_gas = NumGas_Total, n_dm = NumDM_Total, n_p2 = NumP2_Total, n_p3 = NumP3_Total, n_stars = NumStar_Total;
   n3_gas = 3 * n_gas, n3_dm = 3 * n_dm, n3_p2 = 3 * n_p2, n3_p3 = 3 * n_p3, n3_stars = 3 * n_stars;
+#if GPU
+  equal_work(Ngroups_Total, ThisDevice, NDevice, d_Ngroups_Total, offset_Ngroups_Total);
+  equal_work(Nsubhalos_Total, ThisDevice, NDevice, d_Nsubhalos_Total, offset_Nsubhalos_Total);
+  d_n_grps = d_Ngroups_Total, d_n_subs = d_Nsubhalos_Total;
+  d_n3_grps = 3 * d_Ngroups_Total, d_n3_subs = 3 * d_Nsubhalos_Total;
+  first_n3_grps = 3 * offset_Ngroups_Total, first_n3_subs = 3 * offset_Nsubhalos_Total;
+#endif
 }
 
 static void read_file_counts()
@@ -1437,8 +1467,7 @@ static void copy_hr_data()
     malloc_shared(r_star_hr, win_r_star_hr, n3_stars_hr);
   if (n_stars_lr > 0)
     malloc_shared(r_star_lr, win_r_star_lr, n3_stars_lr);
-  if (ThisTask != 0)
-    return; // Only the master task needs to copy the high-res particles
+  MPI_Barrier(MPI_COMM_WORLD);
 #else
   if (n_gas_hr > 0)
     r_gas_hr = (float *) malloc(n3_gas_hr * sizeof(float));
@@ -1451,7 +1480,8 @@ static void copy_hr_data()
 #endif
 
   // Gas
-  if (n_gas > 0) {
+  bool my_turn = (ThisTask == 0 % NTask);
+  if (my_turn && n_gas > 0) {
     myint i_hr = 0, i_lr = 0;
     for (myint i = 0; i < n_gas; ++i) {
       const myint i3 = 3 * i;
@@ -1474,11 +1504,12 @@ static void copy_hr_data()
       MPI_Finalize();
       exit(1);
     }
+    if (VERBOSE > 0)
+      cout << "\nFinished copying high-res gas particles." << endl;
   }
-  if (VERBOSE > 0)
-    cout << "\nFinished copying high-res gas particles." << endl;
   // Stars
-  if (n_stars > 0) {
+  my_turn = (ThisTask == 1 % NTask);
+  if (my_turn && n_stars > 0) {
     myint i_hr = 0, i_lr = 0;
     for (myint i = 0; i < n_stars; ++i) {
       const myint i3 = 3 * i;
@@ -1501,27 +1532,30 @@ static void copy_hr_data()
       MPI_Finalize();
       exit(1);
     }
+    if (VERBOSE > 0)
+      cout << "\nFinished copying high-res star particles." << endl;
   }
-  if (VERBOSE > 0)
-    cout << "\nFinished copying high-res star particles." << endl;
 
 #ifdef GPU
   // Allocate GPU memory and copy data
-  if (n_gas_hr > 0) {
-    cudaMalloc(&d_r_gas_hr, n3_gas_hr * sizeof(float));
-    cudaMemcpy(d_r_gas_hr, r_gas_hr, n3_gas_hr * sizeof(float), cudaMemcpyHostToDevice);
-  }
-  if (n_gas_lr > 0) {
-    cudaMalloc(&d_r_gas_lr, n3_gas_lr * sizeof(float));
-    cudaMemcpy(d_r_gas_lr, r_gas_lr, n3_gas_lr * sizeof(float), cudaMemcpyHostToDevice);
-  }
-  if (n_stars_hr > 0) {
-    cudaMalloc(&d_r_star_hr, n3_stars_hr * sizeof(float));
-    cudaMemcpy(d_r_star_hr, r_star_hr, n3_stars_hr * sizeof(float), cudaMemcpyHostToDevice);
-  }
-  if (n_stars_lr > 0) {
-    cudaMalloc(&d_r_star_lr, n3_stars_lr * sizeof(float));
-    cudaMemcpy(d_r_star_lr, r_star_lr, n3_stars_lr * sizeof(float), cudaMemcpyHostToDevice);
+  MPI_Barrier(MPI_COMM_WORLD);
+  if (ThisTask < NDevice) {
+    if (n_gas_hr > 0) {
+      cudaMalloc(&d_r_gas_hr, n3_gas_hr * sizeof(float));
+      cudaMemcpy(d_r_gas_hr, r_gas_hr, n3_gas_hr * sizeof(float), cudaMemcpyHostToDevice);
+    }
+    if (n_gas_lr > 0) {
+      cudaMalloc(&d_r_gas_lr, n3_gas_lr * sizeof(float));
+      cudaMemcpy(d_r_gas_lr, r_gas_lr, n3_gas_lr * sizeof(float), cudaMemcpyHostToDevice);
+    }
+    if (n_stars_hr > 0) {
+      cudaMalloc(&d_r_star_hr, n3_stars_hr * sizeof(float));
+      cudaMemcpy(d_r_star_hr, r_star_hr, n3_stars_hr * sizeof(float), cudaMemcpyHostToDevice);
+    }
+    if (n_stars_lr > 0) {
+      cudaMalloc(&d_r_star_lr, n3_stars_lr * sizeof(float));
+      cudaMemcpy(d_r_star_lr, r_star_lr, n3_stars_lr * sizeof(float), cudaMemcpyHostToDevice);
+    }
   }
 #endif
 }
@@ -1585,40 +1619,40 @@ static void setup_vir()
     const double V_enc = 4. * M_PI / 3. * r_enc * r_enc * r_enc; // Enclosed volume
     M_to_rho_vir[i] = 1. / (V_enc * rho_vir_code); // Mass to virial density
   }
-  if (ThisTask == 0) {
-    if (VERBOSE > 1) {
-      cout << "\n[RadiusMin, RadiusMax] = [" << RadiusMin << ", " << RadiusMax << "] ckpc/h = ["
-           << RadiusMin*length_to_cgs/kpc << ", " << RadiusMax*length_to_cgs/kpc << "] kpc"
-           << "\n[LogRadiusMin, LogRadiusMax] = [" << LogRadiusMin << ", " << LogRadiusMax << "] in units of (ckpc/h)^2"
-           << "\nn_bins = " << n_bins << ", InvDlogRadius = " << InvDlogRadius << ", InvDlogRadius2 = " << InvDlogRadius2 << endl;
-      float LogRadiusEdges[n_edges], RadiusEdges[n_edges], V_enc[n_bins];
-      for (int i = 0; i < n_edges; ++i) {
-        LogRadiusEdges[i] = LogRadiusMin + float(i) * DlogRadius;
-        RadiusEdges[i] = pow(10., LogRadiusEdges[i]);
-      }
-      for (int i = 0; i < n_bins; ++i) {
-        const double r_enc = pow(10., LogRadiusMin + float(i+1) * DlogRadius); // Upper edge of bin
-        V_enc[i] = 4. * M_PI / 3. * r_enc * r_enc * r_enc; // Enclosed volume
-      }
-      const double kpc3 = kpc * kpc * kpc;
-      RadiusEdges[0] = 0.; // r = 0
-      cout << "\nLogRadiusEdges = [" << LogRadiusEdges[0] << ", " << LogRadiusEdges[1] << ", " << LogRadiusEdges[2] << " ... "
-           << LogRadiusEdges[n_edges-3] << ", " << LogRadiusEdges[n_edges-2] << ", " << LogRadiusEdges[n_edges-1] << "] in units of ckpc/h" << endl;
-      cout << "\nRadiusEdges = [" << RadiusEdges[0] << ", " << RadiusEdges[1] << ", " << RadiusEdges[2] << " ... "
-           << RadiusEdges[n_edges-3] << ", " << RadiusEdges[n_edges-2] << ", " << RadiusEdges[n_edges-1] << "] ckpc/h\n            = ["
-           << RadiusEdges[0]*length_to_cgs/kpc << ", " << RadiusEdges[1]*length_to_cgs/kpc << ", " << RadiusEdges[2]*length_to_cgs/kpc << " ... "
-           << RadiusEdges[n_edges-3]*length_to_cgs/kpc << ", " << RadiusEdges[n_edges-2]*length_to_cgs/kpc << ", " << RadiusEdges[n_edges-1]*length_to_cgs/kpc << "] kpc" << endl;
-      cout << "\nV_enc = [" << V_enc[0] << ", " << V_enc[1] << ", " << V_enc[2] << " ... "
-           << V_enc[n_bins-3] << ", " << V_enc[n_bins-2] << ", " << V_enc[n_bins-1] << "] (ckpc/h)^3\n      = ["
-           << V_enc[0]*volume_to_cgs/kpc3 << ", " << V_enc[1]*volume_to_cgs/kpc3 << ", " << V_enc[2]*volume_to_cgs/kpc3 << " ... "
-           << V_enc[n_bins-3]*volume_to_cgs/kpc3 << ", " << V_enc[n_bins-2]*volume_to_cgs/kpc3 << ", " << V_enc[n_bins-1]*volume_to_cgs/kpc3 << "] kpc^3" << endl;
-      cout << "\nM_to_rho_vir = [" << M_to_rho_vir[0] << ", " << M_to_rho_vir[1] << ", " << M_to_rho_vir[2] << " ... "
-           << M_to_rho_vir[n_bins-3] << ", " << M_to_rho_vir[n_bins-2] << ", " << M_to_rho_vir[n_bins-1] << "] in units of (ckpc/h)^3 / (g/cm^3)" << endl;
+  if (VERBOSE > 1 && ThisTask == 0) {
+    cout << "\n[RadiusMin, RadiusMax] = [" << RadiusMin << ", " << RadiusMax << "] ckpc/h = ["
+          << RadiusMin*length_to_cgs/kpc << ", " << RadiusMax*length_to_cgs/kpc << "] kpc"
+          << "\n[LogRadiusMin, LogRadiusMax] = [" << LogRadiusMin << ", " << LogRadiusMax << "] in units of (ckpc/h)^2"
+          << "\nn_bins = " << n_bins << ", InvDlogRadius = " << InvDlogRadius << ", InvDlogRadius2 = " << InvDlogRadius2 << endl;
+    float LogRadiusEdges[n_edges], RadiusEdges[n_edges], V_enc[n_bins];
+    for (int i = 0; i < n_edges; ++i) {
+      LogRadiusEdges[i] = LogRadiusMin + float(i) * DlogRadius;
+      RadiusEdges[i] = pow(10., LogRadiusEdges[i]);
     }
-#ifdef GPU
-    cudaMemcpy(d_M_to_rho_vir, M_to_rho_vir, n_bins * sizeof(float), cudaMemcpyHostToDevice);
-#endif
+    for (int i = 0; i < n_bins; ++i) {
+      const double r_enc = pow(10., LogRadiusMin + float(i+1) * DlogRadius); // Upper edge of bin
+      V_enc[i] = 4. * M_PI / 3. * r_enc * r_enc * r_enc; // Enclosed volume
+    }
+    const double kpc3 = kpc * kpc * kpc;
+    RadiusEdges[0] = 0.; // r = 0
+    cout << "\nLogRadiusEdges = [" << LogRadiusEdges[0] << ", " << LogRadiusEdges[1] << ", " << LogRadiusEdges[2] << " ... "
+          << LogRadiusEdges[n_edges-3] << ", " << LogRadiusEdges[n_edges-2] << ", " << LogRadiusEdges[n_edges-1] << "] in units of ckpc/h" << endl;
+    cout << "\nRadiusEdges = [" << RadiusEdges[0] << ", " << RadiusEdges[1] << ", " << RadiusEdges[2] << " ... "
+          << RadiusEdges[n_edges-3] << ", " << RadiusEdges[n_edges-2] << ", " << RadiusEdges[n_edges-1] << "] ckpc/h\n            = ["
+          << RadiusEdges[0]*length_to_cgs/kpc << ", " << RadiusEdges[1]*length_to_cgs/kpc << ", " << RadiusEdges[2]*length_to_cgs/kpc << " ... "
+          << RadiusEdges[n_edges-3]*length_to_cgs/kpc << ", " << RadiusEdges[n_edges-2]*length_to_cgs/kpc << ", " << RadiusEdges[n_edges-1]*length_to_cgs/kpc << "] kpc" << endl;
+    cout << "\nV_enc = [" << V_enc[0] << ", " << V_enc[1] << ", " << V_enc[2] << " ... "
+          << V_enc[n_bins-3] << ", " << V_enc[n_bins-2] << ", " << V_enc[n_bins-1] << "] (ckpc/h)^3\n      = ["
+          << V_enc[0]*volume_to_cgs/kpc3 << ", " << V_enc[1]*volume_to_cgs/kpc3 << ", " << V_enc[2]*volume_to_cgs/kpc3 << " ... "
+          << V_enc[n_bins-3]*volume_to_cgs/kpc3 << ", " << V_enc[n_bins-2]*volume_to_cgs/kpc3 << ", " << V_enc[n_bins-1]*volume_to_cgs/kpc3 << "] kpc^3" << endl;
+    cout << "\nM_to_rho_vir = [" << M_to_rho_vir[0] << ", " << M_to_rho_vir[1] << ", " << M_to_rho_vir[2] << " ... "
+          << M_to_rho_vir[n_bins-3] << ", " << M_to_rho_vir[n_bins-2] << ", " << M_to_rho_vir[n_bins-1] << "] in units of (ckpc/h)^3 / (g/cm^3)" << endl;
   }
+#ifdef GPU
+  if (ThisTask < NDevice) {
+    cudaMemcpy(d_M_to_rho_vir, M_to_rho_vir, n_bins * sizeof(float), cudaMemcpyHostToDevice);
+  }
+#endif
 }
 
 static void calculate_distances()
@@ -1629,28 +1663,28 @@ static void calculate_distances()
   const myint n_blocks_sub = (n_subs + n_per_block - 1) / n_per_block;
 #ifdef GPU
   if (n_gas_hr > 0) {
-    calculate_minimum_distance<<<n_blocks_grp, n_per_block>>>(n_grps, d_GroupPos, n_gas_hr, d_r_gas_hr, d_Group_MinDistGasHR, BoxSizeF, BoxHalfF);
-    calculate_minimum_distance<<<n_blocks_sub, n_per_block>>>(n_subs, d_SubhaloPos, n_gas_hr, d_r_gas_hr, d_Subhalo_MinDistGasHR, BoxSizeF, BoxHalfF);
+    calculate_minimum_distance<<<n_blocks_grp, n_per_block>>>(d_n_grps, d_GroupPos, n_gas_hr, d_r_gas_hr, d_Group_MinDistGasHR, BoxSizeF, BoxHalfF);
+    calculate_minimum_distance<<<n_blocks_sub, n_per_block>>>(d_n_subs, d_SubhaloPos, n_gas_hr, d_r_gas_hr, d_Subhalo_MinDistGasHR, BoxSizeF, BoxHalfF);
   }
   if (n_gas_lr > 0) {
-    calculate_minimum_distance<<<n_blocks_grp, n_per_block>>>(n_grps, d_GroupPos, n_gas_lr, d_r_gas_lr, d_Group_MinDistGasLR, BoxSizeF, BoxHalfF);
-    calculate_minimum_distance<<<n_blocks_sub, n_per_block>>>(n_subs, d_SubhaloPos, n_gas_lr, d_r_gas_lr, d_Subhalo_MinDistGasLR, BoxSizeF, BoxHalfF);
+    calculate_minimum_distance<<<n_blocks_grp, n_per_block>>>(d_n_grps, d_GroupPos, n_gas_lr, d_r_gas_lr, d_Group_MinDistGasLR, BoxSizeF, BoxHalfF);
+    calculate_minimum_distance<<<n_blocks_sub, n_per_block>>>(d_n_subs, d_SubhaloPos, n_gas_lr, d_r_gas_lr, d_Subhalo_MinDistGasLR, BoxSizeF, BoxHalfF);
   }
-  calculate_minimum_distance<<<n_blocks_grp, n_per_block>>>(n_grps, d_GroupPos, n_dm, d_r_dm, d_Group_MinDistDM, BoxSizeF, BoxHalfF);
-  calculate_minimum_distance<<<n_blocks_sub, n_per_block>>>(n_subs, d_SubhaloPos, n_dm, d_r_dm, d_Subhalo_MinDistDM, BoxSizeF, BoxHalfF);
-  calculate_minimum_distance<<<n_blocks_grp, n_per_block>>>(n_grps, d_GroupPos, n_p2, d_r_p2, d_Group_MinDistP2, BoxSizeF, BoxHalfF);
-  calculate_minimum_distance<<<n_blocks_sub, n_per_block>>>(n_subs, d_SubhaloPos, n_p2, d_r_p2, d_Subhalo_MinDistP2, BoxSizeF, BoxHalfF);
-  calculate_minimum_distance<<<n_blocks_grp, n_per_block>>>(n_grps, d_GroupPos, n_p3, d_r_p3, d_Group_MinDistP3, BoxSizeF, BoxHalfF);
-  calculate_minimum_distance<<<n_blocks_sub, n_per_block>>>(n_subs, d_SubhaloPos, n_p3, d_r_p3, d_Subhalo_MinDistP3, BoxSizeF, BoxHalfF);
+  calculate_minimum_distance<<<n_blocks_grp, n_per_block>>>(d_n_grps, d_GroupPos, n_dm, d_r_dm, d_Group_MinDistDM, BoxSizeF, BoxHalfF);
+  calculate_minimum_distance<<<n_blocks_sub, n_per_block>>>(d_n_subs, d_SubhaloPos, n_dm, d_r_dm, d_Subhalo_MinDistDM, BoxSizeF, BoxHalfF);
+  calculate_minimum_distance<<<n_blocks_grp, n_per_block>>>(d_n_grps, d_GroupPos, n_p2, d_r_p2, d_Group_MinDistP2, BoxSizeF, BoxHalfF);
+  calculate_minimum_distance<<<n_blocks_sub, n_per_block>>>(d_n_subs, d_SubhaloPos, n_p2, d_r_p2, d_Subhalo_MinDistP2, BoxSizeF, BoxHalfF);
+  calculate_minimum_distance<<<n_blocks_grp, n_per_block>>>(d_n_grps, d_GroupPos, n_p3, d_r_p3, d_Group_MinDistP3, BoxSizeF, BoxHalfF);
+  calculate_minimum_distance<<<n_blocks_sub, n_per_block>>>(d_n_subs, d_SubhaloPos, n_p3, d_r_p3, d_Subhalo_MinDistP3, BoxSizeF, BoxHalfF);
   if (n_stars_hr > 0) {
-    calculate_minimum_distance<<<n_blocks_grp, n_per_block>>>(n_grps, d_GroupPos, n_stars_hr, d_r_star_hr, d_Group_MinDistStarsHR, BoxSizeF, BoxHalfF);
-    calculate_minimum_distance<<<n_blocks_sub, n_per_block>>>(n_subs, d_SubhaloPos, n_stars_hr, d_r_star_hr, d_Subhalo_MinDistStarsHR, BoxSizeF, BoxHalfF);
+    calculate_minimum_distance<<<n_blocks_grp, n_per_block>>>(d_n_grps, d_GroupPos, n_stars_hr, d_r_star_hr, d_Group_MinDistStarsHR, BoxSizeF, BoxHalfF);
+    calculate_minimum_distance<<<n_blocks_sub, n_per_block>>>(d_n_subs, d_SubhaloPos, n_stars_hr, d_r_star_hr, d_Subhalo_MinDistStarsHR, BoxSizeF, BoxHalfF);
   }
   if (n_stars_lr > 0) {
-    calculate_minimum_distance<<<n_blocks_grp, n_per_block>>>(n_grps, d_GroupPos, n_stars_lr, d_r_star_lr, d_Group_MinDistStarsLR, BoxSizeF, BoxHalfF);
-    calculate_minimum_distance<<<n_blocks_sub, n_per_block>>>(n_subs, d_SubhaloPos, n_stars_lr, d_r_star_lr, d_Subhalo_MinDistStarsLR, BoxSizeF, BoxHalfF);
+    calculate_minimum_distance<<<n_blocks_grp, n_per_block>>>(d_n_grps, d_GroupPos, n_stars_lr, d_r_star_lr, d_Group_MinDistStarsLR, BoxSizeF, BoxHalfF);
+    calculate_minimum_distance<<<n_blocks_sub, n_per_block>>>(d_n_subs, d_SubhaloPos, n_stars_lr, d_r_star_lr, d_Subhalo_MinDistStarsLR, BoxSizeF, BoxHalfF);
   }
-  calculate_R_vir<<<n_blocks_sub, n_per_block>>>(n_subs, d_SubhaloPos, d_R_vir, d_M_vir, d_M_gas, d_M_stars, d_M_to_rho_vir, n_gas, d_r_gas, d_m_gas, n_dm, d_r_dm, MassDM,
+  calculate_R_vir<<<n_blocks_sub, n_per_block>>>(d_n_subs, d_SubhaloPos, d_R_vir, d_M_vir, d_M_gas, d_M_stars, d_M_to_rho_vir, n_gas, d_r_gas, d_m_gas, n_dm, d_r_dm, MassDM,
                                                  n_p2, d_r_p2, d_m_p2, n_p3, d_r_p3, MassP3, n_stars, d_r_star, d_m_star,
                                                  BoxSizeF, BoxHalfF, Radius2Min, LogRadius2Min, InvDlogRadius2);
 #else
@@ -1754,11 +1788,14 @@ static double single_maximum_distance(double r[3], myint n_part, float *r_part, 
 {
   const double x1 = r[0], y1 = r[1], z1 = r[2];
   double r2_comp = 0.; // Initialize to a large value
-  for (myint i = ThisTask; i < n_part; i += NTask) {
+  myint n_part_task, first_part_task;
+  equal_work(n_part, ThisTask, NTask, n_part_task, first_part_task);
+  float *r_part_task = r_part + 3 * first_part_task;
+  for (myint i = 0; i < n_part_task; ++i) {
     const myint i3 = 3 * i; // 3D index
-    const double x2 = r_part[i3]; // Particle position
-    const double y2 = r_part[i3 + 1];
-    const double z2 = r_part[i3 + 2];
+    const double x2 = r_part_task[i3]; // Particle position
+    const double y2 = r_part_task[i3 + 1];
+    const double z2 = r_part_task[i3 + 2];
 
     const double dx = shortest_distance(x1, x2, BoxSize, BoxHalf);
     const double dy = shortest_distance(y1, y2, BoxSize, BoxHalf);
