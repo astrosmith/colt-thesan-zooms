@@ -52,8 +52,8 @@ compile main
 
 run() {
     sim_dir="/orcd/data/mvogelsb/004/Thesan-Zooms/$1/output"
-    for i in {0..188}; do
-    # for i in 188; do
+    # for i in {0..189}; do
+    for i in 0; do
         if [ "$serial" = true ]; then
             echo "Running serial: $sim_dir $i"
             ./main_serial $sim_dir $i
@@ -65,19 +65,22 @@ run() {
         if [ "$gpu" = true ]; then
             echo "Running gpu: $sim_dir $i"
             ./main_gpu $sim_dir $i
+            echo "Finished gpu: $sim_dir $i"
         fi
         if [ "$gpu_mpi" = true ]; then
             echo "Running gpu_mpi: $sim_dir $i"
-            mpirun --mca opal_warn_on_missing_libcuda 0 --mca btl '^openib' --mca psm2 ucx -np 16 ./main_gpu_mpi $sim_dir $i
+            #mpirun --mca opal_warn_on_missing_libcuda 0 --mca btl '^openib' --mca psm2 ucx -np 16 ./main_gpu_mpi $sim_dir $i
+            mpirun --mca opal_warn_on_missing_libcuda 0 --mca btl '^openib' --mca psm2 ucx -np 16 ./main_gpu_mpi . $sim_dir $i
         fi
     done
     echo "Done with $1"
 }
 
-#run g2274036/z8
+run g2274036/z8
 
 # Define job sets with individual job, group, and runs
 job_sets=(
+#  "job='A'; group='g2'; runs=('z4')"
 #  "job='B'; group='g39'; runs=('z4')"
 #  "job='C'; group='g205'; runs=('z4')"
 #  "job='D'; group='g578'; runs=('z4')"
