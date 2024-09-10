@@ -19,8 +19,8 @@ typedef unsigned long long myint;
 
 // User options
 #define GAS_HIGH_RES_THRESHOLD 0.5 // Threshold deliniating high and low resolution gas particles
-#define SUBTIMERS 0 // Enable subtimers
-#define VERBOSE 0 // Enable verbose output
+#define SUBTIMERS 1 // Enable subtimers
+#define VERBOSE 1 // Enable verbose output
 #define N_PRINT 8 // Number of particles to print
 // #define MPI
 // #define GPU
@@ -89,6 +89,7 @@ static void calculate_fof_data();
 static void read_fof_data();
 static void write_fof_data();
 static void read_snap_data();
+static void print_data();
 static void setup_vir();
 static void copy_hr_data();
 static void calculate_distances();
@@ -136,6 +137,20 @@ __host__ __device__ float shortest_distance(float x1, float x2, float BoxSizeF, 
     dx -= BoxSizeF; // Periodic wrap around
   return dx; // Shortest distance
 }
+template <typename T>
+static inline void print(T *data, const string& label, myint n_print) {
+  if (n_print <= 0) {
+    cout << label << " = []" << endl;
+    return;
+  }
+  string p_str = (n_print <= N_PRINT) ? "" : ", ... "; // Print string
+  if (n_print > N_PRINT)
+    n_print = N_PRINT;
+  cout << label << " = [" << data[0];
+  for (int i = 1; i < n_print; ++i)
+    cout << ", " << data[i];
+  cout << p_str << "]" << endl;
+};
 
 #ifdef MPI
 #include <mpi.h>
@@ -785,20 +800,32 @@ int main(int argc, char **argv)
 
   // Count the number of candidate groups and subhalos
   myint Ngroups_Candidates = 0, Nsubhalos_Candidates = 0, Ngroups_Candidates_Stars = 0, Nsubhalos_Candidates_Stars = 0;
-  for (myint i = 0; i < Ngroups_Total; i++) {
-    const float R_halo = R_Crit200[i]; // Reference radius
-    if (Group_MinDistP2[i] > R_halo && Group_MinDistP3[i] > R_halo && Group_MinDistStarsLR[i] > R_halo) {
-      Ngroups_Candidates++; // Candidate group
-      if (Group_MinMemberDistStarsHR[i] < R_halo)
-        Ngroups_Candidates_Stars++; // Candidate group with stars
+  if (ThisTask == 0) {
+    for (myint i = 0; i < Ngroups_Total; i++) {
+      if (R_Crit200[i] > 0. && Group_MinDistP2[i] > R_Crit200[i] && Group_MinDistP3[i] > R_Crit200[i] && Group_MinDistStarsLR[i] > R_Crit200[i]) {
+        Ngroups_Candidates++; // Candidate group
+        if (Group_MinMemberDistStarsHR[i] < R_Crit200[i]) {
+          Ngroups_Candidates_Stars++; // Candidate group with stars
+          if (Ngroups_Candidates_Stars < 10)
+            cout << "Group " << i << " has stars within R_vir = " << R_Crit200[i] << " > " << Group_MinMemberDistStarsHR[i] << endl;
+        } else {
+          if (Ngroups_Candidates - Ngroups_Candidates_Stars < 10)
+            cout << "Group " << i << " has no stars within R_vir = " << R_Crit200[i] << " > " << Group_MinMemberDistStarsHR[i] << endl;
+        }
+      }
     }
-  }
-  for (myint i = 0; i < Nsubhalos_Total; i++) {
-    const float R_halo = R_vir[i]; // Reference radius
-    if (Subhalo_MinDistP2[i] > R_halo && Subhalo_MinDistP3[i] > R_halo && Subhalo_MinDistStarsLR[i] > R_halo) {
-      Nsubhalos_Candidates++; // Candidate subhalo
-      if (Subhalo_MinMemberDistStarsHR[i] < R_halo)
-        Nsubhalos_Candidates_Stars++; // Candidate subhalo with stars
+    for (myint i = 0; i < Nsubhalos_Total; i++) {
+      if (R_vir[i] > 0. && Subhalo_MinDistP2[i] > R_vir[i] && Subhalo_MinDistP3[i] > R_vir[i] && Subhalo_MinDistStarsLR[i] > R_vir[i]) {
+        Nsubhalos_Candidates++; // Candidate subhalo
+        if (Subhalo_MinMemberDistStarsHR[i] < R_vir[i]) {
+          Nsubhalos_Candidates_Stars++; // Candidate subhalo with stars
+          if (Nsubhalos_Candidates_Stars < 10)
+            cout << "Subhalo " << i << " has stars within R_vir = " << R_vir[i] << " > " << Subhalo_MinMemberDistStarsHR[i] << endl;
+        } else {
+          if (Nsubhalos_Candidates - Nsubhalos_Candidates_Stars < 10)
+            cout << "Subhalo " << i << " has no stars within R_vir = " << R_vir[i] << " > " << Subhalo_MinMemberDistStarsHR[i] << endl;
+        }
+      }
     }
   }
 
@@ -808,6 +835,8 @@ int main(int argc, char **argv)
   MPI_Barrier(MPI_COMM_WORLD);
   if (SUBTIMERS && ThisTask == 0) {
     stop = clock(); double time_spent = ((double) (stop - start)) / CLOCKS_PER_SEC; start = stop;
+    if (VERBOSE)
+      print_data();
     cout << "\nTime spent on writing catalog: " << time_spent << " s" << endl;
   }
 
@@ -1058,33 +1087,104 @@ static void calculate_file_offsets()
   }
 
   if (VERBOSE) {
-    const int NumFilesPrint = (NumFiles < N_PRINT) ? NumFiles : N_PRINT;
-    string p_str = (NumFiles <= N_PRINT) ? "" : ", ... "; // Print string
-    auto print = [&](myint *FileCounts_Group, const string& label) {
-      cout << label << " = [" << FileCounts_Group[0];
-      for (int i = 1; i < NumFilesPrint; ++i)
-        cout << ", " << FileCounts_Group[i];
-      cout << p_str << "]" << endl;
-    };
     // File counts
     cout << endl;
-    print(FileCounts_Group, "FileCounts_Group");
-    print(FileCounts_Subhalo, "FileCounts_Subhalo");
-    print(FileCounts_Gas, "FileCounts_Gas");
-    print(FileCounts_DM, "FileCounts_DM");
-    print(FileCounts_P2, "FileCounts_P2");
-    print(FileCounts_P3, "FileCounts_P3");
-    print(FileCounts_Star, "FileCounts_Star");
+    print(FileCounts_Group, "FileCounts_Group", NumFiles);
+    print(FileCounts_Subhalo, "FileCounts_Subhalo", NumFiles);
+    print(FileCounts_Gas, "FileCounts_Gas", NumFiles);
+    print(FileCounts_DM, "FileCounts_DM", NumFiles);
+    print(FileCounts_P2, "FileCounts_P2", NumFiles);
+    print(FileCounts_P3, "FileCounts_P3", NumFiles);
+    print(FileCounts_Star, "FileCounts_Star", NumFiles);
 
     // File offsets
     cout << endl;
-    print(FileOffsets_Group, "FileOffsets_Group");
-    print(FileOffsets_Subhalo, "FileOffsets_Subhalo");
-    print(FileOffsets_Gas, "FileOffsets_Gas");
-    print(FileOffsets_DM, "FileOffsets_DM");
-    print(FileOffsets_P2, "FileOffsets_P2");
-    print(FileOffsets_P3, "FileOffsets_P3");
-    print(FileOffsets_Star, "FileOffsets_Star");
+    print(FileOffsets_Group, "FileOffsets_Group", NumFiles);
+    print(FileOffsets_Subhalo, "FileOffsets_Subhalo", NumFiles);
+    print(FileOffsets_Gas, "FileOffsets_Gas", NumFiles);
+    print(FileOffsets_DM, "FileOffsets_DM", NumFiles);
+    print(FileOffsets_P2, "FileOffsets_P2", NumFiles);
+    print(FileOffsets_P3, "FileOffsets_P3", NumFiles);
+    print(FileOffsets_Star, "FileOffsets_Star", NumFiles);
+  }
+}
+
+static void print_data()
+{
+  // Group data
+  cout << endl;
+  print(GroupPos, "GroupPos", 3 * Ngroups_Total);
+  print(R_Crit200, "R_Crit200", Ngroups_Total);
+  print(Group_MinDistGasHR, "Group_MinDistGasHR", Ngroups_Total);
+  print(Group_MinDistGasLR, "Group_MinDistGasLR", Ngroups_Total);
+  print(Group_MinDistDM, "Group_MinDistDM", Ngroups_Total);
+  print(Group_MinDistP2, "Group_MinDistP2", Ngroups_Total);
+  print(Group_MinDistP3, "Group_MinDistP3", Ngroups_Total);
+  print(Group_MinDistStarsHR, "Group_MinDistStarsHR", Ngroups_Total);
+  print(Group_MinDistStarsLR, "Group_MinDistStarsLR", Ngroups_Total);
+  print(Group_MinMemberDistStarsHR, "Group_MinMemberDistStarsHR", Ngroups_Total);
+
+  // Subhalo data
+  cout << endl;
+  print(SubhaloPos, "SubhaloPos", 3 * Nsubhalos_Total);
+  print(R_vir, "R_vir", Nsubhalos_Total);
+  print(M_vir, "M_vir", Nsubhalos_Total);
+  print(M_gas, "M_gas", Nsubhalos_Total);
+  print(M_stars, "M_stars", Nsubhalos_Total);
+  print(Subhalo_MinDistGasHR, "Subhalo_MinDistGasHR", Nsubhalos_Total);
+  print(Subhalo_MinDistGasLR, "Subhalo_MinDistGasLR", Nsubhalos_Total);
+  print(Subhalo_MinDistDM, "Subhalo_MinDistDM", Nsubhalos_Total);
+  print(Subhalo_MinDistP2, "Subhalo_MinDistP2", Nsubhalos_Total);
+  print(Subhalo_MinDistP3, "Subhalo_MinDistP3", Nsubhalos_Total);
+  print(Subhalo_MinDistStarsHR, "Subhalo_MinDistStarsHR", Nsubhalos_Total);
+  print(Subhalo_MinDistStarsLR, "Subhalo_MinDistStarsLR", Nsubhalos_Total);
+  print(Subhalo_MinMemberDistStarsHR, "Subhalo_MinMemberDistStarsHR", Nsubhalos_Total);
+
+  // Gas data
+  cout << endl;
+  print(r_gas, "r_gas", n3_gas);
+  print(m_gas, "m_gas", n_gas);
+  print(m_gas_hr, "m_gas_hr", n_gas);
+
+  // Gas data (high resolution)
+  cout << endl;
+  print(r_gas_hr, "r_gas_hr", n3_gas_hr);
+
+  // Gas data (low resolution)
+  cout << endl;
+  print(r_gas_lr, "r_gas_lr", n3_gas_lr);
+
+  // DM data
+  cout << endl;
+  print(r_dm, "r_dm", n_dm);
+
+  // P2 data
+  cout << endl;
+  print(r_p2, "r_p2", n3_p2);
+  print(m_p2, "m_p2", n_p2);
+
+  // P3 data
+  cout << endl;
+  print(r_p3, "r_p3", n3_p3);
+
+  // Star data
+  if (n_stars > 0) {
+    cout << endl;
+    print(r_star, "r_star", n3_stars);
+    print(m_star, "m_star", n_stars);
+    print(star_is_hr, "star_is_hr", n_stars);
+  }
+
+  // Star data (high resolution)
+  if (n_stars_hr > 0) {
+    cout << endl;
+    print(r_star_hr, "r_star_hr", n3_stars_hr);
+  }
+
+  // Star data (low resolution)
+  if (n_stars_lr > 0) {
+    cout << endl;
+    print(r_star_lr, "r_star_lr", n3_stars_lr);
   }
 }
 
