@@ -53,7 +53,7 @@ compile main
 run() {
     sim_dir="/orcd/data/mvogelsb/004/Thesan-Zooms/$1/output"
     # for i in {0..189}; do
-    for i in 0; do
+    for i in 188; do
         if [ "$serial" = true ]; then
             echo "Running serial: $sim_dir $i"
             ./main_serial $sim_dir $i
@@ -69,8 +69,7 @@ run() {
         fi
         if [ "$gpu_mpi" = true ]; then
             echo "Running gpu_mpi: $sim_dir $i"
-            #mpirun --mca opal_warn_on_missing_libcuda 0 --mca btl '^openib' --mca psm2 ucx -np 16 ./main_gpu_mpi $sim_dir $i
-            mpirun --mca opal_warn_on_missing_libcuda 0 --mca btl '^openib' --mca psm2 ucx -np 16 ./main_gpu_mpi . $sim_dir $i
+            mpirun --mca opal_warn_on_missing_libcuda 0 --mca btl '^openib' --mca psm2 ucx -np 16 ./main_gpu_mpi $sim_dir $i
         fi
     done
     echo "Done with $1"
