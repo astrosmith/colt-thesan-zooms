@@ -51,6 +51,7 @@ static double MassDM, MassP3, MassHR, PosHR[3], RadiusHR, RadiusLR;
 #define n_bins_minus1 9999
 static float Radius2Min, LogRadius2Min, InvDlogRadius2;
 static float *GroupPos, *R_Crit200, *SubhaloPos, *R_vir, *M_vir, *M_gas, *M_stars, M_to_rho_vir[n_bins];
+static myint *Group_FirstSub, *Group_Nsubs, *Group_NumStar, *Group_FirstStar, *Subhalo_NumStar, *Subhalo_FirstStar;
 static float *Group_MinDistGasHR, *Subhalo_MinDistGasHR;
 static float *Group_MinDistGasLR, *Subhalo_MinDistGasLR;
 static float *Group_MinDistDM, *Subhalo_MinDistDM;
@@ -58,6 +59,7 @@ static float *Group_MinDistP2, *Subhalo_MinDistP2;
 static float *Group_MinDistP3, *Subhalo_MinDistP3;
 static float *Group_MinDistStarsHR, *Subhalo_MinDistStarsHR;
 static float *Group_MinDistStarsLR, *Subhalo_MinDistStarsLR;
+static float *Group_MinMemberDistStarsHR, *Subhalo_MinMemberDistStarsHR;
 static float *r_gas, *m_gas, *m_gas_hr, *r_dm, *r_p2, *m_p2, *r_p3, *r_star, *m_star;
 static float *r_gas_hr, *r_gas_lr, *r_star_hr, *r_star_lr;
 static int *star_is_hr;
@@ -82,6 +84,8 @@ static double UnitLength_in_cm, UnitMass_in_g, UnitVelocity_in_cm_per_s;
 static void read_header();
 static void read_file_counts();
 static void calculate_file_offsets();
+static void calculate_fof_offsets();
+static void calculate_fof_data();
 static void read_fof_data();
 static void write_fof_data();
 static void read_snap_data();
@@ -123,6 +127,15 @@ static inline void equal_work(const myint n_part, const myint worker, const myin
     first_part_worker += remainder;
   }
 }
+__host__ __device__ float shortest_distance(float x1, float x2, float BoxSizeF, float BoxHalfF)
+{
+  float dx = x2 - x1;
+  if (dx < -BoxHalfF)
+    dx += BoxSizeF; // Periodic wrap around
+  else if (dx >= BoxHalfF)
+    dx -= BoxSizeF; // Periodic wrap around
+  return dx; // Shortest distance
+}
 
 #ifdef MPI
 #include <mpi.h>
@@ -135,6 +148,8 @@ static MPI_Win win_FileCounts_DM, win_FileOffsets_DM, win_Group_MinDistDM, win_S
 static MPI_Win win_FileCounts_P2, win_FileOffsets_P2, win_Group_MinDistP2, win_Subhalo_MinDistP2;
 static MPI_Win win_FileCounts_P3, win_FileOffsets_P3, win_Group_MinDistP3, win_Subhalo_MinDistP3;
 static MPI_Win win_FileCounts_Star, win_FileOffsets_Star, win_Group_MinDistStarsHR, win_Group_MinDistStarsLR, win_Subhalo_MinDistStarsHR, win_Subhalo_MinDistStarsLR;
+static MPI_Win win_Group_MinMemberDistStarsHR, win_Subhalo_MinMemberDistStarsHR;
+static MPI_Win win_Group_FirstSub, win_Group_Nsubs, win_Group_NumStar, win_Group_FirstStar, win_Subhalo_NumStar, win_Subhalo_FirstStar;
 
 static MPI_Win win_r_gas, win_m_gas, win_m_gas_hr, win_r_dm, win_r_p2, win_m_p2, win_r_p3, win_r_star, win_m_star;
 static MPI_Win win_r_gas_hr, win_r_gas_lr, win_r_star_hr, win_r_star_lr, win_star_is_hr;
@@ -226,6 +241,12 @@ static void allocate()
   malloc_shared(FileOffsets_Star, win_FileOffsets_Star, NumFiles);
 
   // Subhalo data
+  malloc_shared(Group_FirstSub, win_Group_FirstSub, Ngroups_Total);
+  malloc_shared(Group_Nsubs, win_Group_Nsubs, Ngroups_Total);
+  malloc_shared(Group_NumStar, win_Group_NumStar, Ngroups_Total);
+  malloc_shared(Group_FirstStar, win_Group_FirstStar, Ngroups_Total);
+  malloc_shared(Subhalo_NumStar, win_Subhalo_NumStar, Nsubhalos_Total);
+  malloc_shared(Subhalo_FirstStar, win_Subhalo_FirstStar, Nsubhalos_Total);
   malloc_shared(GroupPos, win_GroupPos, n3_grps);
   malloc_shared(R_Crit200, win_R_Crit200, Ngroups_Total);
   malloc_shared(SubhaloPos, win_SubhaloPos, n3_subs);
@@ -247,6 +268,8 @@ static void allocate()
   malloc_shared(Subhalo_MinDistStarsHR, win_Subhalo_MinDistStarsHR, Nsubhalos_Total);
   malloc_shared(Group_MinDistStarsLR, win_Group_MinDistStarsLR, Ngroups_Total);
   malloc_shared(Subhalo_MinDistStarsLR, win_Subhalo_MinDistStarsLR, Nsubhalos_Total);
+  malloc_shared(Group_MinMemberDistStarsHR, win_Group_MinMemberDistStarsHR, Ngroups_Total);
+  malloc_shared(Subhalo_MinMemberDistStarsHR, win_Subhalo_MinMemberDistStarsHR, Nsubhalos_Total);
 
   // Particle data
   malloc_shared(r_gas, win_r_gas, n3_gas);
@@ -279,6 +302,12 @@ static void allocate()
   FileOffsets_Star = (myint *) malloc(NumFiles * sizeof(myint));
 
   // Subhalo data
+  Group_FirstSub = (myint *) malloc(Ngroups_Total * sizeof(myint));
+  Group_Nsubs = (myint *) malloc(Ngroups_Total * sizeof(myint));
+  Group_NumStar = (myint *) malloc(Ngroups_Total * sizeof(myint));
+  Group_FirstStar = (myint *) malloc(Ngroups_Total * sizeof(myint));
+  Subhalo_NumStar = (myint *) malloc(Nsubhalos_Total * sizeof(myint));
+  Subhalo_FirstStar = (myint *) malloc(Nsubhalos_Total * sizeof(myint));
   GroupPos = (float *) malloc(n3_grps * sizeof(float));
   R_Crit200 = (float *) malloc(Ngroups_Total * sizeof(float));
   SubhaloPos = (float *) malloc(n3_subs * sizeof(float));
@@ -300,6 +329,8 @@ static void allocate()
   Subhalo_MinDistStarsHR = (float *) malloc(Nsubhalos_Total * sizeof(float));
   Group_MinDistStarsLR = (float *) malloc(Ngroups_Total * sizeof(float));
   Subhalo_MinDistStarsLR = (float *) malloc(Nsubhalos_Total * sizeof(float));
+  Group_MinMemberDistStarsHR = (float *) malloc(Ngroups_Total * sizeof(float));
+  Subhalo_MinMemberDistStarsHR = (float *) malloc(Nsubhalos_Total * sizeof(float));
 
   // Particle data
   r_gas = (float *) malloc(n3_gas * sizeof(float));
@@ -440,6 +471,8 @@ static void free()
   MPI_Win_free(&win_r_gas);
 
   // Subhalo data
+  MPI_Win_free(&win_Subhalo_MinMemberDistStarsHR);
+  MPI_Win_free(&win_Group_MinMemberDistStarsHR);
   MPI_Win_free(&win_Subhalo_MinDistStarsLR);
   MPI_Win_free(&win_Group_MinDistStarsLR);
   MPI_Win_free(&win_Subhalo_MinDistStarsHR);
@@ -461,6 +494,12 @@ static void free()
   MPI_Win_free(&win_SubhaloPos);
   MPI_Win_free(&win_R_Crit200);
   MPI_Win_free(&win_GroupPos);
+  MPI_Win_free(&win_Subhalo_FirstStar);
+  MPI_Win_free(&win_Subhalo_NumStar);
+  MPI_Win_free(&win_Group_FirstStar);
+  MPI_Win_free(&win_Group_NumStar);
+  MPI_Win_free(&win_Group_Nsubs);
+  MPI_Win_free(&win_Group_FirstSub);
 
   // File data
   MPI_Win_free(&win_FileOffsets_Star);
@@ -503,6 +542,8 @@ static void free()
   free(r_gas);
 
   // Subhalo data
+  free(Subhalo_MinMemberDistStarsHR);
+  free(Group_MinMemberDistStarsHR);
   free(Subhalo_MinDistStarsLR);
   free(Group_MinDistStarsLR);
   free(Subhalo_MinDistStarsHR);
@@ -524,6 +565,12 @@ static void free()
   free(SubhaloPos);
   free(R_Crit200);
   free(GroupPos);
+  free(Subhalo_FirstStar);
+  free(Subhalo_NumStar);
+  free(Group_FirstStar);
+  free(Group_NumStar);
+  free(Group_Nsubs);
+  free(Group_FirstSub);
 
   // File data
   free(FileOffsets_Star);
@@ -635,6 +682,20 @@ int main(int argc, char **argv)
     stop = clock(); double time_spent = ((double) (stop - start)) / CLOCKS_PER_SEC; start = stop;
     cout << "\nTime spent on reading snapshot data: " << time_spent << " s" << endl;
   }
+  // Calculate group and subhalo offsets (Note: needs to be done in serial)
+  if (ThisTask == 0)
+    calculate_fof_offsets();
+  MPI_Barrier(MPI_COMM_WORLD);
+  if (SUBTIMERS && ThisTask == 0) {
+    stop = clock(); double time_spent = ((double) (stop - start)) / CLOCKS_PER_SEC; start = stop;
+    cout << "\nTime spent on calculating halo offsets: " << time_spent << " s" << endl;
+  }
+  calculate_fof_data();
+  MPI_Barrier(MPI_COMM_WORLD);
+  if (SUBTIMERS && ThisTask == 0) {
+    stop = clock(); double time_spent = ((double) (stop - start)) / CLOCKS_PER_SEC; start = stop;
+    cout << "\nTime spent on calculating halo data: " << time_spent << " s" << endl;
+  }
   setup_vir();
   MPI_Barrier(MPI_COMM_WORLD);
   if (SUBTIMERS && ThisTask == 0) {
@@ -722,6 +783,25 @@ int main(int argc, char **argv)
     cout << "First subhalo R_vir = " << R_vir[0] << ", M_vir = " << M_vir[0] << ", M_gas = " << M_gas[0] << ", M_stars = " << M_stars[0] << endl;
   }
 
+  // Count the number of candidate groups and subhalos
+  myint Ngroups_Candidates = 0, Nsubhalos_Candidates = 0, Ngroups_Candidates_Stars = 0, Nsubhalos_Candidates_Stars = 0;
+  for (myint i = 0; i < Ngroups_Total; i++) {
+    const float R_halo = R_Crit200[i]; // Reference radius
+    if (Group_MinDistP2[i] > R_halo && Group_MinDistP3[i] > R_halo && Group_MinDistStarsLR[i] > R_halo) {
+      Ngroups_Candidates++; // Candidate group
+      if (Group_MinMemberDistStarsHR[i] < R_halo)
+        Ngroups_Candidates_Stars++; // Candidate group with stars
+    }
+  }
+  for (myint i = 0; i < Nsubhalos_Total; i++) {
+    const float R_halo = R_vir[i]; // Reference radius
+    if (Subhalo_MinDistP2[i] > R_halo && Subhalo_MinDistP3[i] > R_halo && Subhalo_MinDistStarsLR[i] > R_halo) {
+      Nsubhalos_Candidates++; // Candidate subhalo
+      if (Subhalo_MinMemberDistStarsHR[i] < R_halo)
+        Nsubhalos_Candidates_Stars++; // Candidate subhalo with stars
+    }
+  }
+
   // Write the catalog data
   if (ThisTask == 0)
     write_fof_data();
@@ -743,7 +823,9 @@ int main(int argc, char **argv)
 
   if (ThisTask == 0) {
     double time_spent = ((double) (clock() - begin)) / CLOCKS_PER_SEC;
-    cout << "\nTotal runtime: " << time_spent << " s" << endl;
+    cout << "\nNumber of candidates = (" << Ngroups_Candidates << " groups, " << Nsubhalos_Candidates << " subhalos)"
+         << "\nNumber with HR stars = (" << Ngroups_Candidates_Stars << " groups, " << Nsubhalos_Candidates_Stars << " subhalos)"
+         << "\n\nTotal runtime: " << time_spent << " s" << endl;
   }
 
   return 0;
@@ -1006,8 +1088,73 @@ static void calculate_file_offsets()
   }
 }
 
+static void calculate_fof_offsets()
+{
+  if (Ngroups_Total == 0)
+    return;
+  // Initialize offsets for the first group
+  myint i_g = 0, i_s = 0, n_s = Group_Nsubs[0]; // Group, Subhalo, Number of group subhalos
+  if (i_s != Group_FirstSub[i_g]) {
+    cerr << "\ni_s != GroupFirstSub[i_g]   (i_g = " << i_g << ", i_s = " << i_s << ", FirstSub = " << Group_FirstSub[i_g] << ")" << endl;
+    exit(1);
+  }
+  if (n_s <= 0) {
+    cerr << "\nGroupNsubs = " << n_s << " <= 0   (i_g = " << i_g << ", i_s = " << i_s << ")" << endl;
+    exit(1);
+  }
+  // Subhalo offsets start at the group
+  Group_FirstStar[i_g] = 0;
+  Subhalo_FirstStar[i_s] = Group_FirstStar[i_g];
+  i_s++;
+  for (myint j = 1; j < n_s; j++, i_s++)
+    Subhalo_FirstStar[i_s] = Subhalo_FirstStar[i_s-1] + Subhalo_NumStar[i_s-1];
+
+  // Initialize offsets for the remaining groups
+  for (i_g = 1; i_g < Ngroups_Total; i_g++) {
+    Group_FirstStar[i_g] = Group_FirstStar[i_g-1] + Group_NumStar[i_g-1];
+    n_s = Group_Nsubs[i_g]; // Number of group subhalos
+    if (n_s > 0) {
+      // Double check offset consistency
+      if (i_s != Group_FirstSub[i_g]) {
+        cerr << "\ni_s != GroupFirstSub[i_g]   (i_g = " << i_g << ", i_s = " << i_s << ", FirstSub = " << Group_FirstSub[i_g] << ", Nsubs = " << n_s << ")" << endl;
+        exit(1);
+      }
+      // Subhalo offsets start at the group
+      Subhalo_FirstStar[i_s] = Group_FirstStar[i_g];
+      i_s++;
+      for (myint j = 1; j < n_s; j++, i_s++)
+        Subhalo_FirstStar[i_s] = Subhalo_FirstStar[i_s-1] + Subhalo_NumStar[i_s-1];
+    }
+  }
+
+  if (VERBOSE) {
+    cout << "\nGroup_NumStar = [" << Group_NumStar[0];
+    for (int i = 1; i < N_PRINT; i++)
+      cout << ", " << Group_NumStar[i];
+    cout << ", ... ]\nGroup_FirstStar = [" << Group_FirstStar[0];
+    for (int i = 1; i < N_PRINT; i++)
+      cout << ", " << Group_FirstStar[i];
+    cout << ", ... ]\nSubhalo_NumStar = [" << Subhalo_NumStar[0];
+    for (int i = 1; i < N_PRINT; i++)
+      cout << ", " << Subhalo_NumStar[i];
+    cout << ", ... ]\nSubhalo_FirstStar = [" << Subhalo_FirstStar[0];
+    for (int i = 1; i < N_PRINT; i++)
+      cout << ", " << Subhalo_FirstStar[i];
+    cout << ", ... ]" << endl;
+
+    // Sumary statistics
+    const myint NumStar_Groups = Group_FirstStar[Ngroups_Total-1] + Group_NumStar[Ngroups_Total-1];
+    const myint NumStar_Outer = NumStar_Total - NumStar_Groups;
+    const double FracStar_Outer = (double)NumStar_Outer / (double)NumStar_Total;
+    cout << "\nNumStar_Outer = " << NumStar_Outer << "  (" << 1e2*FracStar_Outer << "%)";
+  }
+}
+
 static void read_fof_data()
 {
+  int *buffer;
+  long long *buffer_ll;
+
   for (int curnum = ThisTask; curnum < NumFiles; curnum += NTask) {
     const myint Ngroups_ThisFile = FileCounts_Group[curnum];
     const myint Nsubhalos_ThisFile = FileCounts_Subhalo[curnum];
@@ -1020,7 +1167,34 @@ static void read_fof_data()
       hid_t file_id = H5Fopen(fname.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
 
       if (Ngroups_ThisFile > 0) {
-        hid_t dataset = H5Dopen(file_id, "Group/GroupPos", H5P_DEFAULT);
+        buffer = (int *) malloc(NTYPES*Ngroups_ThisFile * sizeof(int));
+        buffer_ll = (long long *) malloc(Ngroups_ThisFile * sizeof(long long));
+
+        hid_t dataset = H5Dopen(file_id, "Group/GroupFirstSub", H5P_DEFAULT);
+        H5Dread(dataset, H5T_NATIVE_LLONG, H5S_ALL, H5S_ALL, H5P_DEFAULT, buffer_ll);
+        H5Dclose(dataset);
+
+        dataset = H5Dopen(file_id, "Group/GroupNsubs", H5P_DEFAULT);
+        H5Dread(dataset, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, buffer);
+        H5Dclose(dataset);
+
+        for (myint j = 0; j < Ngroups_ThisFile; j++) {
+          Group_FirstSub[FileOffsets_Group[curnum]+j] = (myint)buffer_ll[j];
+          Group_Nsubs[FileOffsets_Group[curnum]+j] = (myint)buffer[j];
+        }
+
+        free(buffer_ll);
+
+        dataset = H5Dopen(file_id, "Group/GroupLenType", H5P_DEFAULT);
+        H5Dread(dataset, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, buffer);
+        H5Dclose(dataset);
+
+        for (myint j = 0; j < Ngroups_ThisFile; j++)
+          Group_NumStar[FileOffsets_Group[curnum]+j] = (myint)buffer[NTYPES*j+4]; // Star = PartType4
+
+        free(buffer);
+
+        dataset = H5Dopen(file_id, "Group/GroupPos", H5P_DEFAULT);
         H5Dread(dataset, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &GroupPos[3*FileOffsets_Group[curnum]]);
         H5Dclose(dataset);
 
@@ -1030,13 +1204,80 @@ static void read_fof_data()
       }
 
       if (Nsubhalos_ThisFile > 0) {
-        hid_t dataset = H5Dopen(file_id, "Subhalo/SubhaloPos", H5P_DEFAULT);
+        buffer = (int *) malloc(NTYPES*Nsubhalos_ThisFile * sizeof(int));
+
+        hid_t dataset = H5Dopen(file_id, "Subhalo/SubhaloLenType", H5P_DEFAULT);
+        H5Dread(dataset, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, buffer);
+        H5Dclose(dataset);
+
+        for (myint j = 0; j < Nsubhalos_ThisFile; j++)
+          Subhalo_NumStar[FileOffsets_Subhalo[curnum]+j] = (myint)buffer[NTYPES*j+4]; // Star = PartType4
+
+        free(buffer);
+
+        dataset = H5Dopen(file_id, "Subhalo/SubhaloPos", H5P_DEFAULT);
         H5Dread(dataset, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &SubhaloPos[3*FileOffsets_Subhalo[curnum]]);
         H5Dclose(dataset);
       }
 
       H5Fclose(file_id);
     }
+  }
+}
+
+static void calculate_fof_data()
+{
+  if (Ngroups_Total == 0)
+    return;
+
+  // Groups
+  for (myint i_g = ThisTask; i_g < Ngroups_Total; i_g += NTask) {
+    const myint first_star = Group_FirstStar[i_g];
+    const myint last_star = first_star + Group_NumStar[i_g];
+    double r2_comp = 1e20; // Initialize to a large value
+    const double x1 = GroupPos[0], y1 = GroupPos[1], z1 = GroupPos[2];
+    for (myint i_star = first_star; i_star < last_star; i_star++) {
+      if (star_is_hr[i_star]) {
+        const myint i3star = 3 * i_star; // 3D index
+        const double x2 = r_star[i3star]; // Star position
+        const double y2 = r_star[i3star + 1];
+        const double z2 = r_star[i3star + 2];
+
+        const double dx = shortest_distance(x1, x2, BoxSize, BoxHalf);
+        const double dy = shortest_distance(y1, y2, BoxSize, BoxHalf);
+        const double dz = shortest_distance(z1, z2, BoxSize, BoxHalf);
+
+        const double r2 = dx*dx + dy*dy + dz*dz; // Distance squared
+        if (r2 < r2_comp)
+          r2_comp = r2;
+      }
+    }
+    Group_MinMemberDistStarsHR[i_g] = sqrt(r2_comp); // Minimum member distance
+  }
+
+  // Subhalos
+  for (myint i_s = ThisTask; i_s < Nsubhalos_Total; i_s += NTask) {
+    const myint first_star = Subhalo_FirstStar[i_s];
+    const myint last_star = first_star + Subhalo_NumStar[i_s];
+    double r2_comp = 1e20; // Initialize to a large value
+    const double x1 = SubhaloPos[0], y1 = SubhaloPos[1], z1 = SubhaloPos[2];
+    for (myint i_star = first_star; i_star < last_star; i_star++) {
+      if (star_is_hr[i_star]) {
+        const myint i3star = 3 * i_star; // 3D index
+        const double x2 = r_star[i3star]; // Star position
+        const double y2 = r_star[i3star + 1];
+        const double z2 = r_star[i3star + 2];
+
+        const double dx = shortest_distance(x1, x2, BoxSize, BoxHalf);
+        const double dy = shortest_distance(y1, y2, BoxSize, BoxHalf);
+        const double dz = shortest_distance(z1, z2, BoxSize, BoxHalf);
+
+        const double r2 = dx*dx + dy*dy + dz*dz; // Distance squared
+        if (r2 < r2_comp)
+          r2_comp = r2;
+      }
+    }
+    Subhalo_MinMemberDistStarsHR[i_s] = sqrt(r2_comp); // Minimum member distance
   }
 }
 
@@ -1222,6 +1463,8 @@ static void write_fof_data()
     if (n_stars_hr > 0) {
       write(group_id, Ngroups_Total, Group_MinDistStarsHR, "MinDistStarsHR"); // ckpc/h
       write_units(group_id, "MinDistStarsHR", &ua);
+      write(group_id, Ngroups_Total, Group_MinMemberDistStarsHR, "MinMemberDistStarsHR"); // ckpc/h
+      write_units(group_id, "MinMemberDistStarsHR", &ua);
     }
     if (n_stars_lr > 0) {
       write(group_id, Ngroups_Total, Group_MinDistStarsLR, "MinDistStarsLR"); // ckpc/h
@@ -1248,6 +1491,8 @@ static void write_fof_data()
     if (n_stars_hr > 0) {
       write(group_id, Nsubhalos_Total, Subhalo_MinDistStarsHR, "MinDistStarsHR"); // ckpc/h
       write_units(group_id, "MinDistStarsHR", &ua);
+      write(group_id, Nsubhalos_Total, Subhalo_MinMemberDistStarsHR, "MinMemberDistStarsHR"); // ckpc/h
+      write_units(group_id, "MinMemberDistStarsHR", &ua);
     }
     if (n_stars_lr > 0) {
       write(group_id, Nsubhalos_Total, Subhalo_MinDistStarsLR, "MinDistStarsLR"); // ckpc/h
@@ -1714,16 +1959,6 @@ static void calculate_distances()
                   n_p2, r_p2, m_p2, n_p3, r_p3, MassP3, n_stars, r_star, m_star,
                   BoxSizeF, BoxHalfF, Radius2Min, LogRadius2Min, InvDlogRadius2);
 #endif
-}
-
-__host__ __device__ float shortest_distance(float x1, float x2, float BoxSizeF, float BoxHalfF)
-{
-  float dx = x2 - x1;
-  if (dx < -BoxHalfF)
-    dx += BoxSizeF; // Periodic wrap around
-  else if (dx >= BoxHalfF)
-    dx -= BoxSizeF; // Periodic wrap around
-  return dx; // Shortest distance
 }
 
 __global__ void calculate_minimum_distance(myint n_halo, float *r_halo, myint n_part, float *r_part, float *r_min, float BoxSizeF, float BoxHalfF)
