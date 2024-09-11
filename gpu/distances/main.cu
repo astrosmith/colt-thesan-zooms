@@ -1,9 +1,9 @@
 #include <cmath>
 #include <iostream>
 #include <iomanip>
+#include <fstream>
 #include <sstream>
 #include <string>
-#include <iostream>
 #include <climits>
 #include <cfloat>
 #include <hdf5.h>
@@ -19,8 +19,8 @@ typedef unsigned long long myint;
 
 // User options
 #define GAS_HIGH_RES_THRESHOLD 0.5 // Threshold deliniating high and low resolution gas particles
-#define SUBTIMERS 1 // Enable subtimers
-#define VERBOSE 1 // Enable verbose output
+#define SUBTIMERS 0 // Enable subtimers
+#define VERBOSE 0 // Enable verbose output
 #define N_PRINT 8 // Number of particles to print
 // #define MPI
 // #define GPU
@@ -29,7 +29,7 @@ typedef unsigned long long myint;
 //   if (3 * (value) > static_cast<unsigned long long>(INT_MAX)) { \
 //     cerr << "Error: 3 * " #value " = " << 3 * (value) << " exceeds the maximum int value" << endl; \
 //     MPI_Finalize(); \
-//     exit(1); \
+//     exit(EXIT_FAILURE); \
 //   }
 #define CHECK_INT_OVERFLOW(value)
 
@@ -64,8 +64,7 @@ static float *r_gas, *m_gas, *m_gas_hr, *r_dm, *r_p2, *m_p2, *r_p3, *r_star, *m_
 static float *r_gas_hr, *r_gas_lr, *r_star_hr, *r_star_lr;
 static int *star_is_hr;
 #ifdef GPU
-static myint d_Ngroups_Total, offset_Ngroups_Total, d_Nsubhalos_Total, offset_Nsubhalos_Total;
-static myint d_n_grps, d_n_subs, d_n3_grps, d_n3_subs, first_n3_grps, first_n3_subs;
+static myint d_n_grps, d_n_subs, d_n3_grps, d_n3_subs, first_n_grps, first_n_subs, first_n3_grps, first_n3_subs;
 static float *d_GroupPos, *d_R_Crit200, *d_SubhaloPos, *d_R_vir, *d_M_vir, *d_M_gas, *d_M_stars, *d_M_to_rho_vir;
 static float *d_Group_MinDistGasHR, *d_Subhalo_MinDistGasHR;
 static float *d_Group_MinDistGasLR, *d_Subhalo_MinDistGasLR;
@@ -76,7 +75,6 @@ static float *d_Group_MinDistStarsHR, *d_Subhalo_MinDistStarsHR;
 static float *d_Group_MinDistStarsLR, *d_Subhalo_MinDistStarsLR;
 static float *d_r_gas, *d_m_gas, *d_m_gas_hr, *d_r_dm, *d_r_p2, *d_m_p2, *d_r_p3, *d_r_star, *d_m_star;
 static float *d_r_gas_hr, *d_r_gas_lr, *d_r_star_hr, *d_r_star_lr;
-static int *d_star_is_hr;
 #endif
 static double a, BoxSize, BoxHalf, h, Omega0, OmegaBaryon, OmegaLambda;
 static double UnitLength_in_cm, UnitMass_in_g, UnitVelocity_in_cm_per_s;
@@ -151,6 +149,13 @@ static inline void print(T *data, const string& label, myint n_print) {
     cout << ", " << data[i];
   cout << p_str << "]" << endl;
 };
+#define CUDA_CHECK(call) { \
+  cudaError_t err = call; \
+  if (err != cudaSuccess) { \
+    cerr << "Error: " #call " failed with error code " << err << " (" << cudaGetErrorString(err) << ")" << endl; \
+    exit(EXIT_FAILURE); \
+  } \
+}
 
 #ifdef MPI
 #include <mpi.h>
@@ -365,42 +370,41 @@ static void allocate()
 #ifdef GPU
   // Allocate GPU memory
   if (ThisTask < NDevice) {
-    // Subhalo data
-    cudaMalloc(&d_GroupPos, d_n3_grps * sizeof(float));
-    cudaMalloc(&d_R_Crit200, d_Ngroups_Total * sizeof(float));
-    cudaMalloc(&d_SubhaloPos, d_n3_subs * sizeof(float));
-    cudaMalloc(&d_R_vir, d_Nsubhalos_Total * sizeof(float));
-    cudaMalloc(&d_M_vir, d_Nsubhalos_Total * sizeof(float));
-    cudaMalloc(&d_M_gas, d_Nsubhalos_Total * sizeof(float));
-    cudaMalloc(&d_M_stars, d_Nsubhalos_Total * sizeof(float));
-    cudaMalloc(&d_M_to_rho_vir, n_bins * sizeof(float));
-    cudaMalloc(&d_Group_MinDistGasHR, d_Ngroups_Total * sizeof(float));
-    cudaMalloc(&d_Subhalo_MinDistGasHR, d_Nsubhalos_Total * sizeof(float));
-    cudaMalloc(&d_Group_MinDistGasLR, d_Ngroups_Total * sizeof(float));
-    cudaMalloc(&d_Subhalo_MinDistGasLR, d_Nsubhalos_Total * sizeof(float));
-    cudaMalloc(&d_Group_MinDistDM, d_Ngroups_Total * sizeof(float));
-    cudaMalloc(&d_Subhalo_MinDistDM, d_Nsubhalos_Total * sizeof(float));
-    cudaMalloc(&d_Group_MinDistP2, d_Ngroups_Total * sizeof(float));
-    cudaMalloc(&d_Subhalo_MinDistP2, d_Nsubhalos_Total * sizeof(float));
-    cudaMalloc(&d_Group_MinDistP3, d_Ngroups_Total * sizeof(float));
-    cudaMalloc(&d_Subhalo_MinDistP3, d_Nsubhalos_Total * sizeof(float));
-    cudaMalloc(&d_Group_MinDistStarsHR, d_Ngroups_Total * sizeof(float));
-    cudaMalloc(&d_Subhalo_MinDistStarsHR, d_Nsubhalos_Total * sizeof(float));
-    cudaMalloc(&d_Group_MinDistStarsLR, d_Ngroups_Total * sizeof(float));
-    cudaMalloc(&d_Subhalo_MinDistStarsLR, d_Nsubhalos_Total * sizeof(float));
+    // Group/Subhalo data
+    CUDA_CHECK(cudaMalloc(&d_GroupPos, d_n3_grps * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_R_Crit200, d_n_grps * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_SubhaloPos, d_n3_subs * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_R_vir, d_n_subs * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_M_vir, d_n_subs * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_M_gas, d_n_subs * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_M_stars, d_n_subs * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_M_to_rho_vir, n_bins * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_Group_MinDistGasHR, d_n_grps * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_Subhalo_MinDistGasHR, d_n_subs * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_Group_MinDistGasLR, d_n_grps * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_Subhalo_MinDistGasLR, d_n_subs * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_Group_MinDistDM, d_n_grps * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_Subhalo_MinDistDM, d_n_subs * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_Group_MinDistP2, d_n_grps * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_Subhalo_MinDistP2, d_n_subs * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_Group_MinDistP3, d_n_grps * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_Subhalo_MinDistP3, d_n_subs * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_Group_MinDistStarsHR, d_n_grps * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_Subhalo_MinDistStarsHR, d_n_subs * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_Group_MinDistStarsLR, d_n_grps * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_Subhalo_MinDistStarsLR, d_n_subs * sizeof(float)));
 
     // Particle data
-    cudaMalloc(&d_r_gas, n3_gas * sizeof(float));
-    cudaMalloc(&d_m_gas, n_gas * sizeof(float));
-    cudaMalloc(&d_m_gas_hr, n_gas * sizeof(float));
-    cudaMalloc(&d_r_dm, n3_dm * sizeof(float));
-    cudaMalloc(&d_r_p2, n3_p2 * sizeof(float));
-    cudaMalloc(&d_m_p2, n_p2 * sizeof(float));
-    cudaMalloc(&d_r_p3, n3_p3 * sizeof(float));
+    CUDA_CHECK(cudaMalloc(&d_r_gas, n3_gas * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_m_gas, n_gas * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_m_gas_hr, n_gas * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_r_dm, n3_dm * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_r_p2, n3_p2 * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_m_p2, n_p2 * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_r_p3, n3_p3 * sizeof(float)));
     if (n_stars > 0) {
-      cudaMalloc(&d_r_star, n3_stars * sizeof(float));
-      cudaMalloc(&d_m_star, n_stars * sizeof(float));
-      cudaMalloc(&d_star_is_hr, n_stars * sizeof(int));
+      CUDA_CHECK(cudaMalloc(&d_r_star, n3_stars * sizeof(float)));
+      CUDA_CHECK(cudaMalloc(&d_m_star, n_stars * sizeof(float)));
     }
   }
 #endif
@@ -412,51 +416,50 @@ static void free()
   if (ThisTask < NDevice) {
     // HR data
     if (n_stars_lr > 0)
-      cudaFree(d_r_star_lr);
+      CUDA_CHECK(cudaFree(d_r_star_lr));
     if (n_stars_hr > 0)
-      cudaFree(d_r_star_hr);
+      CUDA_CHECK(cudaFree(d_r_star_hr));
     if (n_gas_lr > 0)
-      cudaFree(d_r_gas_lr);
+      CUDA_CHECK(cudaFree(d_r_gas_lr));
     if (n_gas_hr > 0)
-      cudaFree(d_r_gas_hr);
+      CUDA_CHECK(cudaFree(d_r_gas_hr));
 
     // Particle data
     if (n_stars > 0) {
-      cudaFree(d_star_is_hr);
-      cudaFree(d_m_star);
-      cudaFree(d_r_star);
+      CUDA_CHECK(cudaFree(d_m_star));
+      CUDA_CHECK(cudaFree(d_r_star));
     }
-    cudaFree(d_r_p3);
-    cudaFree(d_m_p2);
-    cudaFree(d_r_p2);
-    cudaFree(d_r_dm);
-    cudaFree(d_m_gas_hr);
-    cudaFree(d_m_gas);
-    cudaFree(d_r_gas);
+    CUDA_CHECK(cudaFree(d_r_p3));
+    CUDA_CHECK(cudaFree(d_m_p2));
+    CUDA_CHECK(cudaFree(d_r_p2));
+    CUDA_CHECK(cudaFree(d_r_dm));
+    CUDA_CHECK(cudaFree(d_m_gas_hr));
+    CUDA_CHECK(cudaFree(d_m_gas));
+    CUDA_CHECK(cudaFree(d_r_gas));
 
     // Subhalo data
-    cudaFree(d_Subhalo_MinDistStarsLR);
-    cudaFree(d_Group_MinDistStarsLR);
-    cudaFree(d_Subhalo_MinDistStarsHR);
-    cudaFree(d_Group_MinDistStarsHR);
-    cudaFree(d_Subhalo_MinDistP3);
-    cudaFree(d_Group_MinDistP3);
-    cudaFree(d_Subhalo_MinDistP2);
-    cudaFree(d_Group_MinDistP2);
-    cudaFree(d_Subhalo_MinDistDM);
-    cudaFree(d_Group_MinDistDM);
-    cudaFree(d_Subhalo_MinDistGasLR);
-    cudaFree(d_Group_MinDistGasLR);
-    cudaFree(d_Subhalo_MinDistGasHR);
-    cudaFree(d_Group_MinDistGasHR);
-    cudaFree(d_M_to_rho_vir);
-    cudaFree(d_M_stars);
-    cudaFree(d_M_gas);
-    cudaFree(d_M_vir);
-    cudaFree(d_R_vir);
-    cudaFree(d_SubhaloPos);
-    cudaFree(d_R_Crit200);
-    cudaFree(d_GroupPos);
+    CUDA_CHECK(cudaFree(d_Subhalo_MinDistStarsLR));
+    CUDA_CHECK(cudaFree(d_Group_MinDistStarsLR));
+    CUDA_CHECK(cudaFree(d_Subhalo_MinDistStarsHR));
+    CUDA_CHECK(cudaFree(d_Group_MinDistStarsHR));
+    CUDA_CHECK(cudaFree(d_Subhalo_MinDistP3));
+    CUDA_CHECK(cudaFree(d_Group_MinDistP3));
+    CUDA_CHECK(cudaFree(d_Subhalo_MinDistP2));
+    CUDA_CHECK(cudaFree(d_Group_MinDistP2));
+    CUDA_CHECK(cudaFree(d_Subhalo_MinDistDM));
+    CUDA_CHECK(cudaFree(d_Group_MinDistDM));
+    CUDA_CHECK(cudaFree(d_Subhalo_MinDistGasLR));
+    CUDA_CHECK(cudaFree(d_Group_MinDistGasLR));
+    CUDA_CHECK(cudaFree(d_Subhalo_MinDistGasHR));
+    CUDA_CHECK(cudaFree(d_Group_MinDistGasHR));
+    CUDA_CHECK(cudaFree(d_M_to_rho_vir));
+    CUDA_CHECK(cudaFree(d_M_stars));
+    CUDA_CHECK(cudaFree(d_M_gas));
+    CUDA_CHECK(cudaFree(d_M_vir));
+    CUDA_CHECK(cudaFree(d_R_vir));
+    CUDA_CHECK(cudaFree(d_SubhaloPos));
+    CUDA_CHECK(cudaFree(d_R_Crit200));
+    CUDA_CHECK(cudaFree(d_GroupPos));
   }
 #endif
 
@@ -616,9 +619,28 @@ int main(int argc, char **argv)
   NTask = 1;
 #endif
 #ifdef GPU
-  cudaGetDeviceCount(&NDevice);
+  cudaError_t err = cudaGetDeviceCount(&NDevice);
+  if (err != cudaSuccess) {
+    cerr << "Error: cudaGetDeviceCount failed with error code " << err << endl;
+    exit(EXIT_FAILURE);
+  }
+  if (NDevice == 0) {
+    cerr << "Error: No CUDA devices found" << endl;
+    exit(EXIT_FAILURE);
+  }
+  if (NDevice > NTask) {
+    cout << "Warning: Increase the number of MPI tasks to fully utilize all CUDA devices ("
+         << NDevice << " devices found but only " << NTask << " tasks)" << endl;
+    NDevice = NTask; // Limit to number of MPI tasks
+  }
   ThisDevice = ThisTask % NDevice;
-  cudaSetDevice(ThisDevice);
+  err = cudaSetDevice(ThisDevice);
+  if (err != cudaSuccess) {
+    cerr << "Error: cudaSetDevice failed with error code " << err << endl;
+    exit(EXIT_FAILURE);
+  }
+#else
+  NDevice = ThisDevice = 0; // CPU only
 #endif
 
   clock_t begin = clock();
@@ -637,7 +659,7 @@ int main(int argc, char **argv)
   } else {
     cerr << "Usage: " << argv[0] << " <input directory> <output directory> <snapshot number>" << endl;
     MPI_Finalize();
-    exit(1);
+    exit(EXIT_FAILURE);
   }
   // Ensure the output directory exists
   {
@@ -728,43 +750,55 @@ int main(int argc, char **argv)
 #ifdef GPU
   if (ThisTask < NDevice) {
     // Copy data to GPUs
-    cudaMemcpy(d_GroupPos, &GroupPos[first_n3_grps], d_n3_grps * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_SubhaloPos, &SubhaloPos[first_n3_subs], n3_subs * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_r_gas, r_gas, n3_gas * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_r_dm, r_dm, n3_dm * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_r_p2, r_p2, n3_p2 * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_r_p3, r_p3, n3_p3 * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_m_gas, m_gas, n_gas * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_m_p2, m_p2, n_p2 * sizeof(float), cudaMemcpyHostToDevice);
+    if (d_n_grps > 0)
+      CUDA_CHECK(cudaMemcpy(d_GroupPos, &GroupPos[first_n3_grps], d_n3_grps * sizeof(float), cudaMemcpyHostToDevice));
+    if (d_n_subs > 0)
+      CUDA_CHECK(cudaMemcpy(d_SubhaloPos, &SubhaloPos[first_n3_subs], d_n3_subs * sizeof(float), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_r_gas, r_gas, n3_gas * sizeof(float), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_r_dm, r_dm, n3_dm * sizeof(float), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_r_p2, r_p2, n3_p2 * sizeof(float), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_r_p3, r_p3, n3_p3 * sizeof(float), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_m_gas, m_gas, n_gas * sizeof(float), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_m_p2, m_p2, n_p2 * sizeof(float), cudaMemcpyHostToDevice));
     if (n_stars > 0) {
-      cudaMemcpy(d_r_star, r_star, n3_stars * sizeof(float), cudaMemcpyHostToDevice);
-      cudaMemcpy(d_m_star, m_star, n_stars * sizeof(float), cudaMemcpyHostToDevice);
+      CUDA_CHECK(cudaMemcpy(d_r_star, r_star, n3_stars * sizeof(float), cudaMemcpyHostToDevice));
+      CUDA_CHECK(cudaMemcpy(d_m_star, m_star, n_stars * sizeof(float), cudaMemcpyHostToDevice));
     }
+    // Ensure all preceding operations are complete
+    CUDA_CHECK(cudaDeviceSynchronize());
     // Perform calculations on the GPU
     calculate_distances();
+    // Ensure all preceding operations are complete
+    CUDA_CHECK(cudaDeviceSynchronize());
     // Copy data back to CPU
-    cudaMemcpy(&Group_MinDistGasHR[offset_Ngroups_Total], d_Group_MinDistGasHR, Ngroups_Total * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(&Subhalo_MinDistGasHR[offset_Nsubhalos_Total], d_Subhalo_MinDistGasHR, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(&Group_MinDistGasLR[offset_Ngroups_Total], d_Group_MinDistGasLR, Ngroups_Total * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(&Subhalo_MinDistGasLR[offset_Nsubhalos_Total], d_Subhalo_MinDistGasLR, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(&Group_MinDistDM[offset_Ngroups_Total], d_Group_MinDistDM, Ngroups_Total * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(&Subhalo_MinDistDM[offset_Nsubhalos_Total], d_Subhalo_MinDistDM, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(&Group_MinDistP2[offset_Ngroups_Total], d_Group_MinDistP2, Ngroups_Total * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(&Subhalo_MinDistP2[offset_Nsubhalos_Total], d_Subhalo_MinDistP2, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(&Group_MinDistP3[offset_Ngroups_Total], d_Group_MinDistP3, Ngroups_Total * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(&Subhalo_MinDistP3[offset_Nsubhalos_Total], d_Subhalo_MinDistP3, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
-    if (n_stars_hr > 0) {
-      cudaMemcpy(&Group_MinDistStarsHR[offset_Ngroups_Total], d_Group_MinDistStarsHR, Ngroups_Total * sizeof(float), cudaMemcpyDeviceToHost);
-      cudaMemcpy(&Subhalo_MinDistStarsHR[offset_Nsubhalos_Total], d_Subhalo_MinDistStarsHR, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
+    if (d_n_grps > 0) {
+      CUDA_CHECK(cudaMemcpy(&Group_MinDistGasHR[first_n_grps], d_Group_MinDistGasHR, d_n_grps * sizeof(float), cudaMemcpyDeviceToHost));
+      CUDA_CHECK(cudaMemcpy(&Group_MinDistGasLR[first_n_grps], d_Group_MinDistGasLR, d_n_grps * sizeof(float), cudaMemcpyDeviceToHost));
+      CUDA_CHECK(cudaMemcpy(&Group_MinDistDM[first_n_grps], d_Group_MinDistDM, d_n_grps * sizeof(float), cudaMemcpyDeviceToHost));
+      CUDA_CHECK(cudaMemcpy(&Group_MinDistP2[first_n_grps], d_Group_MinDistP2, d_n_grps * sizeof(float), cudaMemcpyDeviceToHost));
+      CUDA_CHECK(cudaMemcpy(&Group_MinDistP3[first_n_grps], d_Group_MinDistP3, d_n_grps * sizeof(float), cudaMemcpyDeviceToHost));
+      if (n_stars_hr > 0)
+        CUDA_CHECK(cudaMemcpy(&Group_MinDistStarsHR[first_n_grps], d_Group_MinDistStarsHR, d_n_grps * sizeof(float), cudaMemcpyDeviceToHost));
+      if (n_stars_lr > 0)
+        CUDA_CHECK(cudaMemcpy(&Group_MinDistStarsLR[first_n_grps], d_Group_MinDistStarsLR, d_n_grps * sizeof(float), cudaMemcpyDeviceToHost));
     }
-    if (n_stars_lr > 0) {
-      cudaMemcpy(&Group_MinDistStarsLR[offset_Ngroups_Total], d_Group_MinDistStarsLR, Ngroups_Total * sizeof(float), cudaMemcpyDeviceToHost);
-      cudaMemcpy(&Subhalo_MinDistStarsLR[offset_Nsubhalos_Total], d_Subhalo_MinDistStarsLR, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
+    if (d_n_subs > 0) {
+      CUDA_CHECK(cudaMemcpy(&Subhalo_MinDistGasHR[first_n_subs], d_Subhalo_MinDistGasHR, d_n_subs * sizeof(float), cudaMemcpyDeviceToHost));
+      CUDA_CHECK(cudaMemcpy(&Subhalo_MinDistGasLR[first_n_subs], d_Subhalo_MinDistGasLR, d_n_subs * sizeof(float), cudaMemcpyDeviceToHost));
+      CUDA_CHECK(cudaMemcpy(&Subhalo_MinDistDM[first_n_subs], d_Subhalo_MinDistDM, d_n_subs * sizeof(float), cudaMemcpyDeviceToHost));
+      CUDA_CHECK(cudaMemcpy(&Subhalo_MinDistP2[first_n_subs], d_Subhalo_MinDistP2, d_n_subs * sizeof(float), cudaMemcpyDeviceToHost));
+      CUDA_CHECK(cudaMemcpy(&Subhalo_MinDistP3[first_n_subs], d_Subhalo_MinDistP3, d_n_subs * sizeof(float), cudaMemcpyDeviceToHost));
+      if (n_stars_hr > 0)
+        CUDA_CHECK(cudaMemcpy(&Subhalo_MinDistStarsHR[first_n_subs], d_Subhalo_MinDistStarsHR, d_n_subs * sizeof(float), cudaMemcpyDeviceToHost));
+      if (n_stars_lr > 0)
+        CUDA_CHECK(cudaMemcpy(&Subhalo_MinDistStarsLR[first_n_subs], d_Subhalo_MinDistStarsLR, d_n_subs * sizeof(float), cudaMemcpyDeviceToHost));
+      CUDA_CHECK(cudaMemcpy(&R_vir[first_n_subs], d_R_vir, d_n_subs * sizeof(float), cudaMemcpyDeviceToHost));
+      CUDA_CHECK(cudaMemcpy(&M_vir[first_n_subs], d_M_vir, d_n_subs * sizeof(float), cudaMemcpyDeviceToHost));
+      CUDA_CHECK(cudaMemcpy(&M_gas[first_n_subs], d_M_gas, d_n_subs * sizeof(float), cudaMemcpyDeviceToHost));
+      CUDA_CHECK(cudaMemcpy(&M_stars[first_n_subs], d_M_stars, d_n_subs * sizeof(float), cudaMemcpyDeviceToHost));
     }
-    cudaMemcpy(&R_vir[offset_Nsubhalos_Total], d_R_vir, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(&M_vir[offset_Nsubhalos_Total], d_M_vir, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(&M_gas[offset_Nsubhalos_Total], d_M_gas, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(&M_stars[offset_Nsubhalos_Total], d_M_stars, Nsubhalos_Total * sizeof(float), cudaMemcpyDeviceToHost);
+    // Ensure all preceding operations are complete
+    CUDA_CHECK(cudaDeviceSynchronize());
   }
 #else
   calculate_distances();
@@ -806,11 +840,13 @@ int main(int argc, char **argv)
         Ngroups_Candidates++; // Candidate group
         if (Group_MinMemberDistStarsHR[i] < R_Crit200[i]) {
           Ngroups_Candidates_Stars++; // Candidate group with stars
+#if VERBOSE
           if (Ngroups_Candidates_Stars < 10)
             cout << "Group " << i << " has stars within R_vir = " << R_Crit200[i] << " > " << Group_MinMemberDistStarsHR[i] << endl;
         } else {
           if (Ngroups_Candidates - Ngroups_Candidates_Stars < 10)
             cout << "Group " << i << " has no stars within R_vir = " << R_Crit200[i] << " > " << Group_MinMemberDistStarsHR[i] << endl;
+#endif
         }
       }
     }
@@ -819,11 +855,13 @@ int main(int argc, char **argv)
         Nsubhalos_Candidates++; // Candidate subhalo
         if (Subhalo_MinMemberDistStarsHR[i] < R_vir[i]) {
           Nsubhalos_Candidates_Stars++; // Candidate subhalo with stars
+#if VERBOSE
           if (Nsubhalos_Candidates_Stars < 10)
             cout << "Subhalo " << i << " has stars within R_vir = " << R_vir[i] << " > " << Subhalo_MinMemberDistStarsHR[i] << endl;
         } else {
           if (Nsubhalos_Candidates - Nsubhalos_Candidates_Stars < 10)
             cout << "Subhalo " << i << " has no stars within R_vir = " << R_vir[i] << " > " << Subhalo_MinMemberDistStarsHR[i] << endl;
+#endif
         }
       }
     }
@@ -860,7 +898,6 @@ int main(int argc, char **argv)
   return 0;
 }
 
-
 static void read_header()
 {
   // Read header info from the group files
@@ -869,6 +906,14 @@ static void read_header()
     oss << file_dir << "/groups_" << std::setfill('0') << std::setw(3) << SnapNum
         << "/fof_subhalo_tab_" << std::setfill('0') << std::setw(3) << SnapNum << ".0.hdf5";
     string fname = oss.str();
+    // Check if the file exists
+    {
+      std::ifstream file(fname.c_str());
+      if (!file) {
+        cerr << "Error: File " << fname << " does not exist." << endl;
+        exit(EXIT_FAILURE);
+      }
+    }
     hid_t file_id = H5Fopen(fname.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
 
     // Header
@@ -1008,11 +1053,10 @@ static void read_header()
   n_gas = NumGas_Total, n_dm = NumDM_Total, n_p2 = NumP2_Total, n_p3 = NumP3_Total, n_stars = NumStar_Total;
   n3_gas = 3 * n_gas, n3_dm = 3 * n_dm, n3_p2 = 3 * n_p2, n3_p3 = 3 * n_p3, n3_stars = 3 * n_stars;
 #if GPU
-  equal_work(Ngroups_Total, ThisDevice, NDevice, d_Ngroups_Total, offset_Ngroups_Total);
-  equal_work(Nsubhalos_Total, ThisDevice, NDevice, d_Nsubhalos_Total, offset_Nsubhalos_Total);
-  d_n_grps = d_Ngroups_Total, d_n_subs = d_Nsubhalos_Total;
-  d_n3_grps = 3 * d_Ngroups_Total, d_n3_subs = 3 * d_Nsubhalos_Total;
-  first_n3_grps = 3 * offset_Ngroups_Total, first_n3_subs = 3 * offset_Nsubhalos_Total;
+  equal_work(Ngroups_Total, ThisDevice, NDevice, d_n_grps, first_n_grps);
+  equal_work(Nsubhalos_Total, ThisDevice, NDevice, d_n_subs, first_n_subs);
+  d_n3_grps = 3 * d_n_grps, d_n3_subs = 3 * d_n_subs;
+  first_n3_grps = 3 * first_n_grps, first_n3_subs = 3 * first_n_subs;
 #endif
 }
 
@@ -1196,11 +1240,11 @@ static void calculate_fof_offsets()
   myint i_g = 0, i_s = 0, n_s = Group_Nsubs[0]; // Group, Subhalo, Number of group subhalos
   if (i_s != Group_FirstSub[i_g]) {
     cerr << "\ni_s != GroupFirstSub[i_g]   (i_g = " << i_g << ", i_s = " << i_s << ", FirstSub = " << Group_FirstSub[i_g] << ")" << endl;
-    exit(1);
+    exit(EXIT_FAILURE);
   }
   if (n_s <= 0) {
     cerr << "\nGroupNsubs = " << n_s << " <= 0   (i_g = " << i_g << ", i_s = " << i_s << ")" << endl;
-    exit(1);
+    exit(EXIT_FAILURE);
   }
   // Subhalo offsets start at the group
   Group_FirstStar[i_g] = 0;
@@ -1217,7 +1261,7 @@ static void calculate_fof_offsets()
       // Double check offset consistency
       if (i_s != Group_FirstSub[i_g]) {
         cerr << "\ni_s != GroupFirstSub[i_g]   (i_g = " << i_g << ", i_s = " << i_s << ", FirstSub = " << Group_FirstSub[i_g] << ", Nsubs = " << n_s << ")" << endl;
-        exit(1);
+        exit(EXIT_FAILURE);
       }
       // Subhalo offsets start at the group
       Subhalo_FirstStar[i_s] = Group_FirstStar[i_g];
@@ -1327,15 +1371,13 @@ static void read_fof_data()
 
 static void calculate_fof_data()
 {
-  if (Ngroups_Total == 0)
-    return;
-
   // Groups
   for (myint i_g = ThisTask; i_g < Ngroups_Total; i_g += NTask) {
+    const myint i3_g = 3 * i_g; // 3D index
     const myint first_star = Group_FirstStar[i_g];
     const myint last_star = first_star + Group_NumStar[i_g];
     double r2_comp = 1e20; // Initialize to a large value
-    const double x1 = GroupPos[0], y1 = GroupPos[1], z1 = GroupPos[2];
+    const double x1 = GroupPos[i3_g], y1 = GroupPos[i3_g+1], z1 = GroupPos[i3_g+2];
     for (myint i_star = first_star; i_star < last_star; i_star++) {
       if (star_is_hr[i_star]) {
         const myint i3star = 3 * i_star; // 3D index
@@ -1357,10 +1399,11 @@ static void calculate_fof_data()
 
   // Subhalos
   for (myint i_s = ThisTask; i_s < Nsubhalos_Total; i_s += NTask) {
+    const myint i3_s = 3 * i_s; // 3D index
     const myint first_star = Subhalo_FirstStar[i_s];
     const myint last_star = first_star + Subhalo_NumStar[i_s];
     double r2_comp = 1e20; // Initialize to a large value
-    const double x1 = SubhaloPos[0], y1 = SubhaloPos[1], z1 = SubhaloPos[2];
+    const double x1 = SubhaloPos[i3_s], y1 = SubhaloPos[i3_s+1], z1 = SubhaloPos[i3_s+2];
     for (myint i_star = first_star; i_star < last_star; i_star++) {
       if (star_is_hr[i_star]) {
         const myint i3star = 3 * i_star; // 3D index
@@ -1387,7 +1430,7 @@ static void calculate_fof_data()
   status       = H5Awrite(attribute_id, attr_type, &(attr_value));                                  \
   status       = H5Aclose(attribute_id);                                                            \
   status       = H5Sclose(dataspace_id);                                                            \
-  if (status < 0) { cerr << "Error: Failed to read attribute " << attr_name << endl; exit(1); }
+  if (status < 0) { cerr << "Error: Failed to read attribute " << attr_name << endl; exit(EXIT_FAILURE); }
 
 #define WRITE_ARRAY_ATTRIBUTE(attr_name, attr_ptr, attr_len, attr_type)                             \
   dims[0] = attr_len;                                                                               \
@@ -1396,7 +1439,7 @@ static void calculate_fof_data()
   status       = H5Awrite(attribute_id, attr_type, attr_ptr);                                       \
   status       = H5Aclose(attribute_id);                                                            \
   status       = H5Sclose(dataspace_id);                                                            \
-  if (status < 0) { cerr << "Error: Failed to read array attribute " << attr_name << endl; exit(1); }
+  if (status < 0) { cerr << "Error: Failed to read array attribute " << attr_name << endl; exit(EXIT_FAILURE); }
 
 struct UnitAttrs
 {
@@ -1847,7 +1890,7 @@ static void copy_hr_data()
     if (i_hr != n_gas_hr || i_lr != n_gas_lr) {
       cerr << "Error: Gas accounting! (HR: " << i_hr << " != " << n_gas_hr << ", LR: " << i_lr << " != " << n_gas_lr << ")" << endl;
       MPI_Finalize();
-      exit(1);
+      exit(EXIT_FAILURE);
     }
     if (VERBOSE > 0)
       cout << "\nFinished copying high-res gas particles." << endl;
@@ -1875,7 +1918,7 @@ static void copy_hr_data()
     if (i_hr != n_stars_hr || i_lr != n_stars_lr) {
       cerr << "Error: Stars accounting! (HR: " << i_hr << " != " << n_stars_hr << ", LR: " << i_lr << " != " << n_stars_lr << ")" << endl;
       MPI_Finalize();
-      exit(1);
+      exit(EXIT_FAILURE);
     }
     if (VERBOSE > 0)
       cout << "\nFinished copying high-res star particles." << endl;
@@ -1886,20 +1929,20 @@ static void copy_hr_data()
   MPI_Barrier(MPI_COMM_WORLD);
   if (ThisTask < NDevice) {
     if (n_gas_hr > 0) {
-      cudaMalloc(&d_r_gas_hr, n3_gas_hr * sizeof(float));
-      cudaMemcpy(d_r_gas_hr, r_gas_hr, n3_gas_hr * sizeof(float), cudaMemcpyHostToDevice);
+      CUDA_CHECK(cudaMalloc(&d_r_gas_hr, n3_gas_hr * sizeof(float)));
+      CUDA_CHECK(cudaMemcpy(d_r_gas_hr, r_gas_hr, n3_gas_hr * sizeof(float), cudaMemcpyHostToDevice));
     }
     if (n_gas_lr > 0) {
-      cudaMalloc(&d_r_gas_lr, n3_gas_lr * sizeof(float));
-      cudaMemcpy(d_r_gas_lr, r_gas_lr, n3_gas_lr * sizeof(float), cudaMemcpyHostToDevice);
+      CUDA_CHECK(cudaMalloc(&d_r_gas_lr, n3_gas_lr * sizeof(float)));
+      CUDA_CHECK(cudaMemcpy(d_r_gas_lr, r_gas_lr, n3_gas_lr * sizeof(float), cudaMemcpyHostToDevice));
     }
     if (n_stars_hr > 0) {
-      cudaMalloc(&d_r_star_hr, n3_stars_hr * sizeof(float));
-      cudaMemcpy(d_r_star_hr, r_star_hr, n3_stars_hr * sizeof(float), cudaMemcpyHostToDevice);
+      CUDA_CHECK(cudaMalloc(&d_r_star_hr, n3_stars_hr * sizeof(float)));
+      CUDA_CHECK(cudaMemcpy(d_r_star_hr, r_star_hr, n3_stars_hr * sizeof(float), cudaMemcpyHostToDevice));
     }
     if (n_stars_lr > 0) {
-      cudaMalloc(&d_r_star_lr, n3_stars_lr * sizeof(float));
-      cudaMemcpy(d_r_star_lr, r_star_lr, n3_stars_lr * sizeof(float), cudaMemcpyHostToDevice);
+      CUDA_CHECK(cudaMalloc(&d_r_star_lr, n3_stars_lr * sizeof(float)));
+      CUDA_CHECK(cudaMemcpy(d_r_star_lr, r_star_lr, n3_stars_lr * sizeof(float), cudaMemcpyHostToDevice));
     }
   }
 #endif
@@ -1995,7 +2038,7 @@ static void setup_vir()
   }
 #ifdef GPU
   if (ThisTask < NDevice) {
-    cudaMemcpy(d_M_to_rho_vir, M_to_rho_vir, n_bins * sizeof(float), cudaMemcpyHostToDevice);
+    CUDA_CHECK(cudaMemcpy(d_M_to_rho_vir, M_to_rho_vir, n_bins * sizeof(float), cudaMemcpyHostToDevice));
   }
 #endif
 }
@@ -2007,57 +2050,65 @@ static void calculate_distances()
   const myint n_blocks_grp = (n_grps + n_per_block - 1) / n_per_block;
   const myint n_blocks_sub = (n_subs + n_per_block - 1) / n_per_block;
 #ifdef GPU
-  if (n_gas_hr > 0) {
-    calculate_minimum_distance<<<n_blocks_grp, n_per_block>>>(d_n_grps, d_GroupPos, n_gas_hr, d_r_gas_hr, d_Group_MinDistGasHR, BoxSizeF, BoxHalfF);
-    calculate_minimum_distance<<<n_blocks_sub, n_per_block>>>(d_n_subs, d_SubhaloPos, n_gas_hr, d_r_gas_hr, d_Subhalo_MinDistGasHR, BoxSizeF, BoxHalfF);
+  if (d_n_grps > 0) {
+    if (n_gas_hr > 0)
+      calculate_minimum_distance<<<n_blocks_grp, n_per_block>>>(d_n_grps, d_GroupPos, n_gas_hr, d_r_gas_hr, d_Group_MinDistGasHR, BoxSizeF, BoxHalfF);
+    if (n_gas_lr > 0)
+      calculate_minimum_distance<<<n_blocks_grp, n_per_block>>>(d_n_grps, d_GroupPos, n_gas_lr, d_r_gas_lr, d_Group_MinDistGasLR, BoxSizeF, BoxHalfF);
+    calculate_minimum_distance<<<n_blocks_grp, n_per_block>>>(d_n_grps, d_GroupPos, n_dm, d_r_dm, d_Group_MinDistDM, BoxSizeF, BoxHalfF);
+    calculate_minimum_distance<<<n_blocks_grp, n_per_block>>>(d_n_grps, d_GroupPos, n_p2, d_r_p2, d_Group_MinDistP2, BoxSizeF, BoxHalfF);
+    calculate_minimum_distance<<<n_blocks_grp, n_per_block>>>(d_n_grps, d_GroupPos, n_p3, d_r_p3, d_Group_MinDistP3, BoxSizeF, BoxHalfF);
+    if (n_stars_hr > 0)
+      calculate_minimum_distance<<<n_blocks_grp, n_per_block>>>(d_n_grps, d_GroupPos, n_stars_hr, d_r_star_hr, d_Group_MinDistStarsHR, BoxSizeF, BoxHalfF);
+    if (n_stars_lr > 0)
+      calculate_minimum_distance<<<n_blocks_grp, n_per_block>>>(d_n_grps, d_GroupPos, n_stars_lr, d_r_star_lr, d_Group_MinDistStarsLR, BoxSizeF, BoxHalfF);
   }
-  if (n_gas_lr > 0) {
-    calculate_minimum_distance<<<n_blocks_grp, n_per_block>>>(d_n_grps, d_GroupPos, n_gas_lr, d_r_gas_lr, d_Group_MinDistGasLR, BoxSizeF, BoxHalfF);
-    calculate_minimum_distance<<<n_blocks_sub, n_per_block>>>(d_n_subs, d_SubhaloPos, n_gas_lr, d_r_gas_lr, d_Subhalo_MinDistGasLR, BoxSizeF, BoxHalfF);
+  if (d_n_subs > 0) {
+    if (n_gas_hr > 0)
+      calculate_minimum_distance<<<n_blocks_sub, n_per_block>>>(d_n_subs, d_SubhaloPos, n_gas_hr, d_r_gas_hr, d_Subhalo_MinDistGasHR, BoxSizeF, BoxHalfF);
+    if (n_gas_lr > 0)
+      calculate_minimum_distance<<<n_blocks_sub, n_per_block>>>(d_n_subs, d_SubhaloPos, n_gas_lr, d_r_gas_lr, d_Subhalo_MinDistGasLR, BoxSizeF, BoxHalfF);
+    calculate_minimum_distance<<<n_blocks_sub, n_per_block>>>(d_n_subs, d_SubhaloPos, n_dm, d_r_dm, d_Subhalo_MinDistDM, BoxSizeF, BoxHalfF);
+    calculate_minimum_distance<<<n_blocks_sub, n_per_block>>>(d_n_subs, d_SubhaloPos, n_p2, d_r_p2, d_Subhalo_MinDistP2, BoxSizeF, BoxHalfF);
+    calculate_minimum_distance<<<n_blocks_sub, n_per_block>>>(d_n_subs, d_SubhaloPos, n_p3, d_r_p3, d_Subhalo_MinDistP3, BoxSizeF, BoxHalfF);
+    if (n_stars_hr > 0)
+      calculate_minimum_distance<<<n_blocks_sub, n_per_block>>>(d_n_subs, d_SubhaloPos, n_stars_hr, d_r_star_hr, d_Subhalo_MinDistStarsHR, BoxSizeF, BoxHalfF);
+    if (n_stars_lr > 0)
+      calculate_minimum_distance<<<n_blocks_sub, n_per_block>>>(d_n_subs, d_SubhaloPos, n_stars_lr, d_r_star_lr, d_Subhalo_MinDistStarsLR, BoxSizeF, BoxHalfF);
+    calculate_R_vir<<<n_blocks_sub, n_per_block>>>(d_n_subs, d_SubhaloPos, d_R_vir, d_M_vir, d_M_gas, d_M_stars, d_M_to_rho_vir, n_gas, d_r_gas, d_m_gas, n_dm, d_r_dm, MassDM,
+                                                   n_p2, d_r_p2, d_m_p2, n_p3, d_r_p3, MassP3, n_stars, d_r_star, d_m_star,
+                                                   BoxSizeF, BoxHalfF, Radius2Min, LogRadius2Min, InvDlogRadius2);
   }
-  calculate_minimum_distance<<<n_blocks_grp, n_per_block>>>(d_n_grps, d_GroupPos, n_dm, d_r_dm, d_Group_MinDistDM, BoxSizeF, BoxHalfF);
-  calculate_minimum_distance<<<n_blocks_sub, n_per_block>>>(d_n_subs, d_SubhaloPos, n_dm, d_r_dm, d_Subhalo_MinDistDM, BoxSizeF, BoxHalfF);
-  calculate_minimum_distance<<<n_blocks_grp, n_per_block>>>(d_n_grps, d_GroupPos, n_p2, d_r_p2, d_Group_MinDistP2, BoxSizeF, BoxHalfF);
-  calculate_minimum_distance<<<n_blocks_sub, n_per_block>>>(d_n_subs, d_SubhaloPos, n_p2, d_r_p2, d_Subhalo_MinDistP2, BoxSizeF, BoxHalfF);
-  calculate_minimum_distance<<<n_blocks_grp, n_per_block>>>(d_n_grps, d_GroupPos, n_p3, d_r_p3, d_Group_MinDistP3, BoxSizeF, BoxHalfF);
-  calculate_minimum_distance<<<n_blocks_sub, n_per_block>>>(d_n_subs, d_SubhaloPos, n_p3, d_r_p3, d_Subhalo_MinDistP3, BoxSizeF, BoxHalfF);
-  if (n_stars_hr > 0) {
-    calculate_minimum_distance<<<n_blocks_grp, n_per_block>>>(d_n_grps, d_GroupPos, n_stars_hr, d_r_star_hr, d_Group_MinDistStarsHR, BoxSizeF, BoxHalfF);
-    calculate_minimum_distance<<<n_blocks_sub, n_per_block>>>(d_n_subs, d_SubhaloPos, n_stars_hr, d_r_star_hr, d_Subhalo_MinDistStarsHR, BoxSizeF, BoxHalfF);
-  }
-  if (n_stars_lr > 0) {
-    calculate_minimum_distance<<<n_blocks_grp, n_per_block>>>(d_n_grps, d_GroupPos, n_stars_lr, d_r_star_lr, d_Group_MinDistStarsLR, BoxSizeF, BoxHalfF);
-    calculate_minimum_distance<<<n_blocks_sub, n_per_block>>>(d_n_subs, d_SubhaloPos, n_stars_lr, d_r_star_lr, d_Subhalo_MinDistStarsLR, BoxSizeF, BoxHalfF);
-  }
-  calculate_R_vir<<<n_blocks_sub, n_per_block>>>(d_n_subs, d_SubhaloPos, d_R_vir, d_M_vir, d_M_gas, d_M_stars, d_M_to_rho_vir, n_gas, d_r_gas, d_m_gas, n_dm, d_r_dm, MassDM,
-                                                 n_p2, d_r_p2, d_m_p2, n_p3, d_r_p3, MassP3, n_stars, d_r_star, d_m_star,
-                                                 BoxSizeF, BoxHalfF, Radius2Min, LogRadius2Min, InvDlogRadius2);
 #else
-  if (n_gas_hr > 0) {
-    calculate_minimum_distance(n_grps, GroupPos, n_gas_hr, r_gas_hr, Group_MinDistGasHR, BoxSizeF, BoxHalfF);
-    calculate_minimum_distance(n_subs, SubhaloPos, n_gas_hr, r_gas_hr, Subhalo_MinDistGasHR, BoxSizeF, BoxHalfF);
+  if (n_grps > 0) {
+    if (n_gas_hr > 0)
+      calculate_minimum_distance(n_grps, GroupPos, n_gas_hr, r_gas_hr, Group_MinDistGasHR, BoxSizeF, BoxHalfF);
+    if (n_gas_lr > 0)
+      calculate_minimum_distance(n_grps, GroupPos, n_gas_lr, r_gas_lr, Group_MinDistGasLR, BoxSizeF, BoxHalfF);
+    calculate_minimum_distance(n_grps, GroupPos, n_dm, r_dm, Group_MinDistDM, BoxSizeF, BoxHalfF);
+    calculate_minimum_distance(n_grps, GroupPos, n_p2, r_p2, Group_MinDistP2, BoxSizeF, BoxHalfF);
+    calculate_minimum_distance(n_grps, GroupPos, n_p3, r_p3, Group_MinDistP3, BoxSizeF, BoxHalfF);
+    if (n_stars_hr > 0)
+      calculate_minimum_distance(n_grps, GroupPos, n_stars_hr, r_star_hr, Group_MinDistStarsHR, BoxSizeF, BoxHalfF);
+    if (n_stars_lr > 0)
+      calculate_minimum_distance(n_grps, GroupPos, n_stars_lr, r_star_lr, Group_MinDistStarsLR, BoxSizeF, BoxHalfF);
   }
-  if (n_gas_lr > 0) {
-    calculate_minimum_distance(n_grps, GroupPos, n_gas_lr, r_gas_lr, Group_MinDistGasLR, BoxSizeF, BoxHalfF);
-    calculate_minimum_distance(n_subs, SubhaloPos, n_gas_lr, r_gas_lr, Subhalo_MinDistGasLR, BoxSizeF, BoxHalfF);
+  if (n_subs > 0) {
+    if (n_gas_hr > 0)
+      calculate_minimum_distance(n_subs, SubhaloPos, n_gas_hr, r_gas_hr, Subhalo_MinDistGasHR, BoxSizeF, BoxHalfF);
+    if (n_gas_lr > 0)
+      calculate_minimum_distance(n_subs, SubhaloPos, n_gas_lr, r_gas_lr, Subhalo_MinDistGasLR, BoxSizeF, BoxHalfF);
+    calculate_minimum_distance(n_subs, SubhaloPos, n_dm, r_dm, Subhalo_MinDistDM, BoxSizeF, BoxHalfF);
+    calculate_minimum_distance(n_subs, SubhaloPos, n_p2, r_p2, Subhalo_MinDistP2, BoxSizeF, BoxHalfF);
+    calculate_minimum_distance(n_subs, SubhaloPos, n_p3, r_p3, Subhalo_MinDistP3, BoxSizeF, BoxHalfF);
+    if (n_stars_hr > 0)
+      calculate_minimum_distance(n_subs, SubhaloPos, n_stars_hr, r_star_hr, Subhalo_MinDistStarsHR, BoxSizeF, BoxHalfF);
+    if (n_stars_lr > 0)
+      calculate_minimum_distance(n_subs, SubhaloPos, n_stars_lr, r_star_lr, Subhalo_MinDistStarsLR, BoxSizeF, BoxHalfF);
+    calculate_R_vir(n_subs, SubhaloPos, R_vir, M_vir, M_gas, M_stars, M_to_rho_vir, n_gas, r_gas, m_gas, n_dm, r_dm, MassDM,
+                    n_p2, r_p2, m_p2, n_p3, r_p3, MassP3, n_stars, r_star, m_star,
+                    BoxSizeF, BoxHalfF, Radius2Min, LogRadius2Min, InvDlogRadius2);
   }
-  calculate_minimum_distance(n_grps, GroupPos, n_dm, r_dm, Group_MinDistDM, BoxSizeF, BoxHalfF);
-  calculate_minimum_distance(n_subs, SubhaloPos, n_dm, r_dm, Subhalo_MinDistDM, BoxSizeF, BoxHalfF);
-  calculate_minimum_distance(n_grps, GroupPos, n_p2, r_p2, Group_MinDistP2, BoxSizeF, BoxHalfF);
-  calculate_minimum_distance(n_subs, SubhaloPos, n_p2, r_p2, Subhalo_MinDistP2, BoxSizeF, BoxHalfF);
-  calculate_minimum_distance(n_grps, GroupPos, n_p3, r_p3, Group_MinDistP3, BoxSizeF, BoxHalfF);
-  calculate_minimum_distance(n_subs, SubhaloPos, n_p3, r_p3, Subhalo_MinDistP3, BoxSizeF, BoxHalfF);
-  if (n_stars_hr > 0) {
-    calculate_minimum_distance(n_grps, GroupPos, n_stars_hr, r_star_hr, Group_MinDistStarsHR, BoxSizeF, BoxHalfF);
-    calculate_minimum_distance(n_subs, SubhaloPos, n_stars_hr, r_star_hr, Subhalo_MinDistStarsHR, BoxSizeF, BoxHalfF);
-  }
-  if (n_stars_lr > 0) {
-    calculate_minimum_distance(n_grps, GroupPos, n_stars_lr, r_star_lr, Group_MinDistStarsLR, BoxSizeF, BoxHalfF);
-    calculate_minimum_distance(n_subs, SubhaloPos, n_stars_lr, r_star_lr, Subhalo_MinDistStarsLR, BoxSizeF, BoxHalfF);
-  }
-  calculate_R_vir(n_subs, SubhaloPos, R_vir, M_vir, M_gas, M_stars, M_to_rho_vir, n_gas, r_gas, m_gas, n_dm, r_dm, MassDM,
-                  n_p2, r_p2, m_p2, n_p3, r_p3, MassP3, n_stars, r_star, m_star,
-                  BoxSizeF, BoxHalfF, Radius2Min, LogRadius2Min, InvDlogRadius2);
 #endif
 }
 
