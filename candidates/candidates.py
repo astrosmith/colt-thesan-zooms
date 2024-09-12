@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from time import time
 from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import cpu_count
-from scipy.spatial import cKDTree
 
 # Constants
 GAS_HIGH_RES_THRESHOLD = 0.5 # Threshold deliniating high and low resolution gas particles
@@ -19,7 +18,6 @@ READ_COUNTS = READ_DEFAULT # Read counts methods
 READ_GROUPS = READ_DEFAULT # Read groups methods
 READ_SNAPS = READ_DEFAULT # Read snapshots methods
 SUBHALOS = True # Process individual subhalos
-MEMBER_STARS = True and SUBHALOS # Process individual member stars
 TIMERS = True # Print timers
 SUB_TIMERS = False and TIMERS # Print sub-timers
 
@@ -63,7 +61,6 @@ class Simulation:
     n_files: np.int32 = 0 # Number of files
     n_groups_tot: np.uint64 = None # Total number of groups
     n_subhalos_tot: np.uint64 = None # Total number of subhalos
-    n_stars_tot: np.uint64 = None # Total number of star particles
     a: np.float64 = None # Scale factor
     BoxSize: np.float64 = None # Size of the simulation volume
     BoxHalf: np.float64 = None # Half the size of the simulation volume
@@ -83,21 +80,14 @@ class Simulation:
     # File counts and offsets
     n_groups: np.ndarray = None
     n_subhalos: np.ndarray = None
-    n_stars: np.ndarray = None
     first_group: np.ndarray = None
     first_subhalo: np.ndarray = None
-    first_star: np.ndarray = None
 
     # FOF data
     groups: dict = field(default_factory=dict)
     group_units: dict = field(default_factory=dict)
     subhalos: dict = field(default_factory=dict)
     subhalo_units: dict = field(default_factory=dict)
-
-    # Particle data
-    stars: dict = field(default_factory=dict)
-    r_stars: np.ndarray = None
-    is_HR: np.ndarray = None
 
     def __post_init__(self):
         """Allocate memory for group data."""
@@ -140,26 +130,6 @@ class Simulation:
                         self.subhalo_units[field] = {key: val for key,val in g_attrs.items()}
                         print(f'field: {self.subhalo_units[field]}')
 
-        if MEMBER_STARS:
-            with h5py.File(snap_pre + '0.hdf5', 'r') as f:
-                self.n_stars = np.zeros(self.n_files, dtype=np.uint64)
-                self.n_stars_tot = f['Header'].attrs['NumPart_Total'][4]
-                self.NTYPES = np.int32(f['Config'].attrs['NTYPES'])
-
-            # Star data
-            if self.n_stars_tot > 0:
-                for i in range(self.n_files):
-                    with h5py.File(snap_pre + f'{i}.hdf5', 'r') as f:
-                        if 'PartType4' in f:
-                            g = f['PartType4']
-                            for field in ['Coordinates', 'IsHighRes']:
-                                shape, dtype = g[field].shape, g[field].dtype
-                                shape = (self.n_stars_tot,) + shape[1:]
-                                self.stars[field] = np.empty(shape, dtype=dtype)
-                            break # Found star data
-                self.r_stars = self.stars['Coordinates']
-                self.is_HR = self.stars['IsHighRes']
-
         # Derived quantities
         self.BoxHalf = self.BoxSize / 2.
         self.length_to_cgs = self.a * self.UnitLength_in_cm / self.h
@@ -194,6 +164,10 @@ class Simulation:
                     self.Group_distances_stars_hr = g['MinDistStarsHR'][:]
                 else:
                     self.Group_distances_stars_hr = 100. * np.copy(self.Group_R_Crit200) # No HR in Rvir
+                if 'MinMemberDistStarsHR' in g:
+                    self.Group_member_distances_stars_hr = g['MinMemberDistStarsHR'][:]
+                else:
+                    self.Group_member_distances_stars_hr = 100. * np.copy(self.Group_R_Crit200) # No HR in Rvir
             if SUBHALOS and self.n_subhalos_tot > 0:
                 g = f['Subhalo']
                 self.Subhalo_M_gas = g['M_gas'][:]
@@ -214,85 +188,30 @@ class Simulation:
                     # Calculate the minimum distance to a low-resolution particle
                     self.Subhalo_distances_lr = np.minimum(self.Subhalo_distances_p2, self.Subhalo_distances_p3) # P2,P3
                 if 'MinDistStarsHR' in g:
-                    # print(f'MinDistStarsHR = {g["MinDistStarsHR"][:]}')
                     self.Subhalo_distances_stars_hr = g['MinDistStarsHR'][:]
                 else:
                     self.Subhalo_distances_stars_hr = 100. * np.copy(self.Subhalo_R_vir) # No HR in Rvir
+                if 'MinMemberDistStarsHR' in g:
+                    self.Subhalo_member_distances_stars_hr = g['MinMemberDistStarsHR'][:]
+                else:
+                    self.Subhalo_member_distances_stars_hr = 100. * np.copy(self.Subhalo_R_vir) # No HR in Rvir
 
     def convert_counts(self):
         """Convert the counts to file offsets."""
         self.first_group = np.cumsum(self.n_groups) - self.n_groups
         self.first_subhalo = np.cumsum(self.n_subhalos) - self.n_subhalos
-        if MEMBER_STARS:
-            self.first_star = np.cumsum(self.n_stars) - self.n_stars
 
     def periodic_distance(self, coord1, coord2):
         """Calculate the periodic distance between two coordinates."""
         delta = np.abs(coord1 - coord2)  # Absolute differences
         return np.minimum(delta, self.BoxSize - delta)  # Minimum of delta and its periodic counterpart
 
-    def find_nearest_star(self, r_sub, r):
-        """Calculate the closest distance to a particle."""
-        r = np.atleast_2d(r)  # Ensure r is at least 2-dimensional
-        dx = self.periodic_distance(r[:,0], r_sub[0])
-        dy = self.periodic_distance(r[:,1], r_sub[1])
-        dz = self.periodic_distance(r[:,2], r_sub[2])
-        r2 = dx**2 + dy**2 + dz**2  # Squared distances
-        return np.sqrt(np.min(r2))  # Closest distance
-
-    def find_nearest(self):
-        """Find the nearest high-resolution star distance to each group and subhalo position."""
-        if self.n_stars_tot > 0:
-            # Calculate group and subhalo convenience indices
-            if self.n_groups_tot > 0:
-                self.GroupPos = self.groups['GroupPos']
-                self.GroupNsubs = self.groups['GroupNsubs']
-                self.GroupLenType = self.groups['GroupLenType']
-                self.GroupFirstSub = np.cumsum(self.GroupNsubs) - self.GroupNsubs # First subhalo in each group
-                self.GroupFirstType = np.cumsum(self.GroupLenType, axis=0) - self.GroupLenType # First particle of each type in each group
-            if self.n_subhalos_tot > 0:
-                self.SubhaloPos = self.subhalos['SubhaloPos']
-                self.SubhaloLenType = self.subhalos['SubhaloLenType']
-                self.SubhaloFirstType = np.zeros_like(self.SubhaloLenType) # First particle of each type in each subhalo
-                for i in range(self.n_groups_tot):
-                    i_beg, i_end = self.GroupFirstSub[i], self.GroupFirstSub[i] + self.GroupNsubs[i] # Subhalo range
-                    first_subs = np.cumsum(self.SubhaloLenType[i_beg:i_end], axis=0) - self.SubhaloLenType[i_beg:i_end] # Relative offsets
-                    for i_part in range(self.NTYPES):
-                        first_subs[:,i_part] += self.GroupFirstType[i,i_part] # Add group offset
-                    self.SubhaloFirstType[i_beg:i_end] = first_subs # First particle of each type in each subhalo
-            self.Group_member_distances_stars_hr = self.BoxSize * np.ones(self.n_groups_tot, dtype=np.float32)  # Closest distance to a high-resolution star (group)
-            self.Subhalo_member_distances_stars_hr = self.BoxSize * np.ones(self.n_subhalos_tot, dtype=np.float32)  # Closest distance to a high-resolution star (subhalo)
-            for i_grp in range(self.n_groups_tot):
-                if self.GroupLenType[i_grp,4] > 0:  # Skip groups without stars
-                    r_grp = self.GroupPos[i_grp]  # Group center
-                    i_beg, i_end = self.GroupFirstSub[i_grp], self.GroupFirstSub[i_grp] + self.GroupNsubs[i_grp] # Subhalo range
-                    i_beg_stars, i_end_stars = self.GroupFirstType[i_grp,4], self.GroupFirstType[i_grp,4] + self.GroupLenType[i_grp,4] # Stars range
-                    is_HR_grp = self.is_HR[i_beg_stars:i_end_stars].astype(bool)  # High-resolution star mask (group)
-                    n_HR_grp = np.count_nonzero(is_HR_grp)  # Number of high-resolution stars (group)
-                    if n_HR_grp > 0:  # Skip groups without high-resolution stars
-                        if self.Group_distances_stars_hr[i_grp] < self.Group_R_Crit200[i_grp]:  # Only calculate if within R_Crit200
-                            r_stars_grp = self.r_stars[i_beg_stars:i_end_stars][is_HR_grp,:]  # Star positions (group)
-                            self.Group_member_distances_stars_hr[i_grp] = self.find_nearest_star(r_grp, r_stars_grp)  # Closest distance to a high-resolution star
-                            # print(f'Group {i_grp}: {self.Group_member_distances_stars_hr[i_grp]}, {self.Group_distances_stars_hr[i_grp]}, {self.Group_R_Crit200[i_grp]}')
-                        for i_sub in range(i_beg, i_end):
-                            if self.SubhaloLenType[i_sub,4] > 0:  # Skip subhalos without stars
-                                r_sub = self.SubhaloPos[i_sub] # Subhalo center
-                                i_beg_stars, i_end_stars = self.SubhaloFirstType[i_sub,4], self.SubhaloFirstType[i_sub,4] + self.SubhaloLenType[i_sub,4]  # Stars range
-                                is_HR_sub = self.is_HR[i_beg_stars:i_end_stars].astype(bool)  # High-resolution star mask (subhalo)
-                                n_HR_sub = np.count_nonzero(is_HR_sub)  # Number of high-resolution stars (subhalo)
-                                if n_HR_sub > 0:  # Skip subhalos without high-resolution stars
-                                    if self.Subhalo_distances_stars_hr[i_sub] < self.Subhalo_R_vir[i_sub]:  # Only calculate if within R_vir
-                                        r_stars_sub = self.r_stars[i_beg_stars:i_end_stars][is_HR_sub,:]  # Star positions (subhalo)
-                                        self.Subhalo_member_distances_stars_hr[i_sub] = self.find_nearest_star(r_sub, r_stars_sub)  # Closest distance to a high-resolution star
-
     def print_offsets(self):
         """Print the file counts and offsets."""
         print(f'n_groups = {self.n_groups} (n_groups_tot = {self.n_groups_tot})')
         print(f'n_subhalos = {self.n_subhalos} (n_subhalos_tot = {self.n_subhalos_tot})')
-        if MEMBER_STARS: print(f'n_stars = {self.n_stars} (n_stars_tot = {self.n_stars_tot})')
         print(f'first_group = {self.first_group} (n_groups_tot = {self.n_groups_tot})')
         print(f'first_subhalo = {self.first_subhalo} (n_subhalos_tot = {self.n_subhalos_tot})')
-        if MEMBER_STARS: print(f'first_star = {self.first_star} (n_stars_tot = {self.n_stars_tot})')
 
     def print_groups(self):
         """Print the group data."""
@@ -320,11 +239,8 @@ class Simulation:
                 # Mask out subhalos with R_vir == 0 [R_vir > 0]
                 # Mask out subhalos with MinDistP2 or MinDistP3 < R_vir [MinDist(P2,P3,StarsLR) > R_vir]
                 self.subhalo_mask = (self.Subhalo_R_vir > 0) & (self.Subhalo_distances_lr > self.Subhalo_R_vir)
-                try:
-                    centrals = self.GroupFirstSub[(self.GroupNsubs > 0) & self.group_mask]  # Central subhalos
-                    self.subhalo_mask[centrals] = True  # Ensure central subhalos are included
-                except AttributeError:
-                    pass
+                # centrals = self.GroupFirstSub[(self.GroupNsubs > 0) & self.group_mask]  # Central subhalos
+                # self.subhalo_mask[centrals] = True  # Ensure central subhalos are included
                 self.n_subhalos_candidates = np.int32(np.count_nonzero(self.subhalo_mask))
             else:
                 self.subhalo_mask = np.array([self.subhalos['SubhaloGroupNr'][i] in GroupID for i in range(self.n_subhalos_tot)], dtype=bool)
@@ -342,6 +258,10 @@ class Simulation:
             g.attrs['Nsubhalos_Total'] = self.n_subhalos_tot
             g.attrs['Ngroups_Candidates'] = self.n_groups_candidates
             g.attrs['Nsubhalos_Candidates'] = self.n_subhalos_candidates
+            if self.n_groups_candidates == 0:
+                g.attrs['Ngroups_Candidates_Stars'] = self.n_groups_candidates
+            if self.n_subhalos_candidates == 0:
+                g.attrs['Nsubhalos_Candidates_Stars'] = self.n_subhalos_candidates
             g.attrs['Time'] = self.a
             g.attrs['Redshift'] = 1. / self.a - 1.
             g.attrs['BoxSize'] = self.BoxSize
@@ -365,19 +285,19 @@ class Simulation:
                 g.create_dataset(b'MinDistP3', data=self.Group_distances_p3[self.group_mask])
                 g.create_dataset(b'MinDistStarsLR', data=self.Group_distances_stars_lr[self.group_mask])
                 g.create_dataset(b'MinDistStarsHR', data=self.Group_distances_stars_hr[self.group_mask])
-                if MEMBER_STARS:
-                    try:
-                        d_grp = self.Group_member_distances_stars_hr[self.group_mask]  # Closest distance to a high-resolution star (group)
-                        group_star_flag = (d_grp <= self.Group_R_Crit200[self.group_mask])  # Star flag (group)
-                        self.n_groups_candidates_stars = np.count_nonzero(group_star_flag)
-                    except AttributeError:
-                        group_star_flag = np.zeros(self.n_groups_candidates, dtype=bool)
-                    g.create_dataset(b'StarFlag', data=group_star_flag, dtype=bool)
+                g.create_dataset(b'MinMemberDistStarsHR', data=self.Group_member_distances_stars_hr[self.group_mask])
+                try:  # Additionally require a high-resolution star within R_Crit200
+                    group_star_flag = (self.Group_member_distances_stars_hr[self.group_mask] <= self.Group_R_Crit200[self.group_mask])
+                    self.n_groups_candidates_stars = np.int32(np.count_nonzero(group_star_flag))  # Star flag (group)
+                except AttributeError:
+                    group_star_flag = np.zeros(self.n_groups_candidates, dtype=bool)
+                    self.n_groups_candidates_stars = np.int32(0)
+                f['Header'].attrs['Ngroups_Candidates_Stars'] = self.n_groups_candidates_stars
+                g.create_dataset(b'StarFlag', data=group_star_flag, dtype=bool)
                 if 'GroupPos' in self.group_units:
                     for key,val in self.group_units['GroupPos'].items():
-                        for field in ['MinDistGasLR', 'MinDistGasHR', 'MinDistDM', 'MinDistP2', 'MinDistP3', 'MinDistStarsLR', 'MinDistStarsHR']:
+                        for field in ['MinDistGasLR', 'MinDistGasHR', 'MinDistDM', 'MinDistP2', 'MinDistP3', 'MinDistStarsLR', 'MinDistStarsHR', 'MinMemberDistStarsHR']:
                             g[field].attrs[key] = val
-                        if MEMBER_STARS: g['MinMemberDistStarsHR'].attrs[key] = val
                 for field in self.groups.keys():
                     g.create_dataset(field, data=self.groups[field][self.group_mask])
                     if field in self.group_units:
@@ -393,6 +313,7 @@ class Simulation:
                 g.create_dataset(b'MinDistP3', data=self.Subhalo_distances_p3[self.subhalo_mask])
                 g.create_dataset(b'MinDistStarsLR', data=self.Subhalo_distances_stars_lr[self.subhalo_mask])
                 g.create_dataset(b'MinDistStarsHR', data=self.Subhalo_distances_stars_hr[self.subhalo_mask])
+                g.create_dataset(b'MinMemberDistStarsHR', data=self.Subhalo_member_distances_stars_hr[self.subhalo_mask])
                 if SUBHALOS:
                     g.create_dataset(b'M_gas', data=self.Subhalo_M_gas[self.subhalo_mask])
                     g.create_dataset(b'M_stars', data=self.Subhalo_M_stars[self.subhalo_mask])
@@ -405,19 +326,18 @@ class Simulation:
                     if 'SubhaloPos' in self.subhalo_units:
                         for key,val in self.subhalo_units['SubhaloPos'].items():
                             g['R_vir'].attrs[key] = val
-                if MEMBER_STARS:
-                    try:
-                        d_sub = self.Subhalo_member_distances_stars_hr[self.subhalo_mask]  # Closest distance to a high-resolution star (subhalo)
-                        subhalo_star_flag = (d_sub <= self.Subhalo_R_vir[self.subhalo_mask])  # Star flag (subhalo)
-                        self.n_subhalos_candidates_stars = np.count_nonzero(subhalo_star_flag)
-                    except AttributeError:
-                        subhalo_star_flag = np.zeros(self.n_subhalos_candidates, dtype=bool)
-                    g.create_dataset(b'StarFlag', data=subhalo_star_flag, dtype=bool)
+                try:  # Additionally require a high-resolution star within R_vir
+                    subhalo_star_flag = (self.Subhalo_member_distances_stars_hr[self.subhalo_mask] <= self.Subhalo_R_vir[self.subhalo_mask])
+                    self.n_subhalos_candidates_stars = np.int32(np.count_nonzero(subhalo_star_flag))  # Star flag (subhalo)
+                except AttributeError:
+                    subhalo_star_flag = np.zeros(self.n_subhalos_candidates, dtype=bool)
+                    self.n_subhalos_candidates_stars = np.int32(0)
+                f['Header'].attrs['Nsubhalos_Candidates_Stars'] = self.n_subhalos_candidates_stars
+                g.create_dataset(b'StarFlag', data=subhalo_star_flag, dtype=bool)
                 if 'SubhaloPos' in self.subhalo_units:
                     for key,val in self.subhalo_units['SubhaloPos'].items():
-                        for field in ['MinDistGasLR', 'MinDistGasHR', 'MinDistDM', 'MinDistP2', 'MinDistP3', 'MinDistStarsLR', 'MinDistStarsHR']:
+                        for field in ['MinDistGasLR', 'MinDistGasHR', 'MinDistDM', 'MinDistP2', 'MinDistP3', 'MinDistStarsLR', 'MinDistStarsHR', 'MinMemberDistStarsHR']:
                             g[field].attrs[key] = val
-                        if MEMBER_STARS: g['MinMemberDistStarsHR'].attrs[key] = val
                 for field in self.subhalos.keys():
                     g.create_dataset(field, data=self.subhalos[field][self.subhalo_mask])
                     if field in self.subhalo_units:
@@ -431,12 +351,6 @@ class Simulation:
                 header = f['Header'].attrs
                 self.n_groups[i] = header['Ngroups_ThisFile']
                 self.n_subhalos[i] = header['Nsubhalos_ThisFile']
-
-        if MEMBER_STARS:
-            with h5py.File(snap_pre + f'{i}.hdf5', 'r') as f:
-                header = f['Header'].attrs
-                nums = header['NumPart_ThisFile'] # Number of particles in this file by type
-                self.n_stars[i] = nums[4] # Number of star particles in this file
 
     def read_counts(self):
         """Read the counts from the FOF and snapshot files."""
@@ -481,28 +395,6 @@ class Simulation:
                 await asyncio.gather(*(loop.run_in_executor(executor, self.read_groups_single, i) for i in range(self.n_files)))
         asyncio.run(read_groups_async())
 
-    def read_snaps_single(self, i):
-        """Read the particle data from a single snapshot file."""
-        with h5py.File(snap_pre + f'{i}.hdf5', 'r') as f:
-            if self.n_stars[i] > 0:
-                offset = self.first_star[i]
-                next_offset = offset + self.n_stars[i]
-                self.r_stars[offset:next_offset] = f['PartType4/Coordinates'][:]
-                self.is_HR[offset:next_offset] = f['PartType4/IsHighRes'][:]
-
-    def read_snaps(self):
-        """Read the particle data from the snapshot files."""
-        for i in range(self.n_files):
-            self.read_snaps_single(i)
-
-    def read_snaps_asyncio(self):
-        """Read the particle data from the snapshot files using asyncio."""
-        async def read_snaps_async():
-            loop = asyncio.get_running_loop()
-            with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-                await asyncio.gather(*(loop.run_in_executor(executor, self.read_snaps_single, i) for i in range(self.n_files)))
-        asyncio.run(read_snaps_async())
-
 def main():
     # Setup simulation parameters
     if TIMERS: t1 = time()
@@ -536,31 +428,11 @@ def main():
         if SUB_TIMERS: t2 = time(); print(f"Time to read group data from files: {t2 - t1:g} s [asyncio]"); t1 = t2
     if VERBOSITY > 1: sim.print_groups()
 
-    if MEMBER_STARS:
-        # Read the particle data from the snapshot files
-        if SUB_TIMERS: print('\nReading snapshot data...')
-        if SERIAL in READ_SNAPS:
-            sim.read_snaps()
-            if SUB_TIMERS: t2 = time(); print(f'Time to read particle data from files: {t2 - t1:g} s [serial]'); t1 = t2
-        if ASYNCIO in READ_SNAPS:
-            sim.read_snaps_asyncio()
-            if SUB_TIMERS: t2 = time(); print(f'Time to read particle data from files: {t2 - t1:g} s [asyncio]'); t1 = t2
-
-        if sim.n_groups_tot > 0:
-            # Find the nearest member distance from each group position
-            if SUB_TIMERS: print('\nFinding the nearest member distance from each group and subhalo position...')
-            sim.find_nearest()
-            if SUB_TIMERS: t2 = time(); print(f'Time to find nearest member distances: {t2 - t1:g} s'); t1 = t2
-
     # Write the results to a file
     if SUB_TIMERS: print("\nWriting the results to a file...")
     sim.write()
-    print(f'Number of candidates = {sim.n_groups_candidates} groups, {sim.n_subhalos_candidates} subhalos')
-    if MEMBER_STARS:
-        try:
-            print(f'Number of candidates with stars in R_halo = {sim.n_groups_candidates_stars} groups, {sim.n_subhalos_candidates_stars} subhalos')
-        except AttributeError:
-            pass
+    print(f'Number of candidates = ({sim.n_groups_candidates} groups, {sim.n_subhalos_candidates} subhalos)')
+    print(f'Number with HR stars = ({sim.n_groups_candidates_stars} groups, {sim.n_subhalos_candidates_stars} subhalos)')
     if SUB_TIMERS: t2 = time(); print(f"Time to write results to a file: {t2 - t1:g} s"); t1 = t2
     else: t2 = time(); print(f'Total time: {t2 - t1:g} s')
 

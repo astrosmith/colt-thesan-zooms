@@ -40,11 +40,7 @@ def write_halos():
         a = header['Time']
         h = header['HubbleParam']
         UnitLength_in_cm = header['UnitLength_in_cm']
-        UnitMass_in_g = header['UnitMass_in_g']
         length_to_cgs = a * UnitLength_in_cm / h
-        mass_to_cgs = UnitMass_in_g / h
-        Msun = 1.988435e33 # Solar mass [g]
-        mass_to_Msun = mass_to_cgs / Msun
         r_HR =  header['PosHR'].astype(np.float64) * length_to_cgs # High-resolution position [cm]
         n_groups = header['Ngroups_Candidates']
         if n_groups > 0:
@@ -64,6 +60,10 @@ def write_halos():
                 R_group = g['Group_R_Crit200'][:][group_mask].astype(np.float64) * length_to_cgs # Halo radii [cm]
                 R_group_light = 2. * mg['1500Half'][:][group_id].astype(np.float64) * length_to_cgs # Half-light radii [cm]
                 R_group_mass = 2. * mg['MstarHalf'][:][group_id].astype(np.float64) * length_to_cgs # Half-mass radii [cm]
+                v_group_light = mg['1500Vel'][:][group_id].astype(np.float64) * 1e5 # Light-weighted velocities [cm/s]
+                v_group_mass = mg['MstarVel'][:][group_id].astype(np.float64) * 1e5 # Mass-weighted velocities [cm/s]
+                s_group_light = mg['1500VelDisp'][:][group_id].astype(np.float64) * 1e5 # Light-weighted velocity dispersions [cm/s]
+                s_group_mass = mg['MstarVelDisp'][:][group_id].astype(np.float64) * 1e5 # Mass-weighted velocity dispersions [cm/s]
                 # Add the halo data to the COLT initial conditions file
                 hf.create_dataset(b'group_id', data=group_id)
                 hf.create_dataset(b'r_group', data=r_group)
@@ -78,24 +78,37 @@ def write_halos():
                 hf['R_group_light'].attrs['units'] = b'cm'
                 hf.create_dataset(b'R_group_mass', data=R_group_mass)
                 hf['R_group_mass'].attrs['units'] = b'cm'
+                hf.create_dataset(b'v_group_light', data=v_group_light)
+                hf['v_group_light'].attrs['units'] = b'cm/s'
+                hf.create_dataset(b'v_group_mass', data=v_group_mass)
+                hf['v_group_mass'].attrs['units'] = b'cm/s'
+                hf.create_dataset(b's_group_light', data=s_group_light)
+                hf['s_group_light'].attrs['units'] = b'cm/s'
+                hf.create_dataset(b's_group_mass', data=s_group_mass)
+                hf['s_group_mass'].attrs['units'] = b'cm/s'
         n_subhalos = header['Nsubhalos_Candidates']
         if n_subhalos > 0:
             g = f['Subhalo']
             subhalo_mask = g['StarFlag'][:]
             n_subhalos = np.int32(np.count_nonzero(subhalo_mask)) # Number of subhalos with high-resolution stars
             if n_subhalos > 0:
-                mg = mf['Subhalo'] # M1500 data
+                mg = mf['Subhalo'] # Mstar data
+                mg_NoSFH = mf['Subhalo_NoSFH'] # M1500 data
                 subhalo_id = g['SubhaloID'][:][subhalo_mask] # Subhalo IDs
                 r_subhalo = g['SubhaloPos'][:][subhalo_mask].astype(np.float64) * length_to_cgs # Halo positions [cm]
-                r_subhalo_light = mg['1500Pos'][:][subhalo_id].astype(np.float64) * length_to_cgs # Light-weighted positions [cm]
+                r_subhalo_light = mg_NoSFH['1500Pos'][:][subhalo_id].astype(np.float64) * length_to_cgs # Light-weighted positions [cm]
                 r_subhalo_mass = mg['MstarPos'][:][subhalo_id].astype(np.float64) * length_to_cgs # Mass-weighted positions [cm]
                 for i in range(3):
                     r_subhalo[:,i] -= r_HR[i] # Relative halo positions [cm]
                     r_subhalo_light[:,i] -= r_HR[i]
                     r_subhalo_mass[:,i] -= r_HR[i]
                 R_subhalo = g['R_vir'][:][subhalo_mask].astype(np.float64) * length_to_cgs # Halo radii [cm]
-                R_subhalo_light = 2. * mg['1500Half'][:][subhalo_id].astype(np.float64) * length_to_cgs # Half-light radii [cm]
+                R_subhalo_light = 2. * mg_NoSFH['1500Half'][:][subhalo_id].astype(np.float64) * length_to_cgs # Half-light radii [cm]
                 R_subhalo_mass = 2. * mg['MstarHalf'][:][subhalo_id].astype(np.float64) * length_to_cgs # Half-mass radii [cm]
+                v_subhalo_light = mg_NoSFH['1500Vel'][:][subhalo_id].astype(np.float64) * 1e5 # Light-weighted velocities [cm/s]
+                v_subhalo_mass = mg['MstarVel'][:][subhalo_id].astype(np.float64) * 1e5 # Mass-weighted velocities [cm/s]
+                s_subhalo_light = mg_NoSFH['1500VelDisp'][:][subhalo_id].astype(np.float64) * 1e5 # Light-weighted velocity dispersions [cm/s]
+                s_subhalo_mass = mg['MstarVelDisp'][:][subhalo_id].astype(np.float64) * 1e5 # Mass-weighted velocity dispersions [cm/s]
                 # Add the halo data to the COLT initial conditions file
                 hf.create_dataset(b'subhalo_id', data=subhalo_id)
                 hf.create_dataset(b'r_subhalo', data=r_subhalo)
@@ -110,6 +123,14 @@ def write_halos():
                 hf['R_subhalo_light'].attrs['units'] = b'cm'
                 hf.create_dataset(b'R_subhalo_mass', data=R_subhalo_mass)
                 hf['R_subhalo_mass'].attrs['units'] = b'cm'
+                hf.create_dataset(b'v_subhalo_light', data=v_subhalo_light)
+                hf['v_subhalo_light'].attrs['units'] = b'cm/s'
+                hf.create_dataset(b'v_subhalo_mass', data=v_subhalo_mass)
+                hf['v_subhalo_mass'].attrs['units'] = b'cm/s'
+                hf.create_dataset(b's_subhalo_light', data=s_subhalo_light)
+                hf['s_subhalo_light'].attrs['units'] = b'cm/s'
+                hf.create_dataset(b's_subhalo_mass', data=s_subhalo_mass)
+                hf['s_subhalo_mass'].attrs['units'] = b'cm/s'
 
 if __name__ == '__main__':
     write_halos()
