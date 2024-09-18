@@ -7,6 +7,8 @@ output_dir: output            # Output directory name (default: "output")
 output_base: halo-M1500-RHD   # Output file base name (default: "colt")
 # abundances_base: states       # Output a separate abundances file
 
+output_ion_stats_dust: true   # Ionization statistics for dust
+
 # Group information
 group_base: halo              # Group catalog base name (default: init_base)
 select_group: true            # Specified halo is a group
@@ -15,15 +17,16 @@ use_group_catalog: true       # Use group catalog file
 output_groups: true           # Output group statistics
 output_groups_obs: true       # Output group statistics for observations
 output_groups_vir: true       # Output group statistics for virial quantities
-output_groups_ism: true       # Output group statistics for ISM quantities
+output_groups_gal: true       # Output group statistics for galaxy quantities
 output_map2_groups: true      # Output escape fraction maps (and statistics)
 n_side_groups: 5              # Healpix resolution for group maps
 output_radial_map_groups: true # Output radial surface brightness group maps
 n_side_radial_groups: 3       # Healpix resolution for group radial maps
-map_radius_kpc_groups: 60     # Radial group maps radius [kpc]
-n_map_pixels_groups: 100      # Number of radial pixels for group radial maps
+map_radius_kpc_groups: 500    # Radial group maps radius [kpc]
+min_map_radius_pc_groups: 0.5 # Minimum radial distance for group maps [pc]
+n_map_pixels_groups: 120      # Number of radial pixels for group radial maps
 group_flows:                  # Group flow statistics
-  radial_logspace_Rvir: [-3, 2, 51] # Logarithmically spaced radial bins [Rvir]
+  radial_logspace_Rvir: [-3, 1, 41] # Logarithmically spaced radial bins [Rvir]
   freq_edge_names: [min, max] # Coarse frequency bin edge names
 
 # Subhalo information
@@ -35,15 +38,16 @@ use_subhalo_catalog: true     # Use subhalo catalog file
 output_subhalos: true         # Output subhalo statistics
 output_subhalos_obs: true     # Output subhalo statistics for observations
 output_subhalos_vir: true     # Output subhalo statistics for virial quantities
-output_subhalos_ism: true     # Output subhalo statistics for ISM quantities
+output_subhalos_gal: true     # Output subhalo statistics for galaxy quantities
 output_map2_subhalos: true    # Output escape fraction maps (and statistics)
 n_side_subhalos: 5            # Healpix resolution for subhalo maps
 output_radial_map_subhalos: true # Output radial surface brightness subhalo maps
 n_side_radial_subhalos: 3     # Healpix resolution for subhalo radial maps
-map_radius_kpc_subhalos: 60   # Radial subhalo maps radius [kpc]
-n_map_pixels_subhalos: 100    # Number of radial pixels for subhalo radial maps
+map_radius_kpc_subhalos: 500  # Radial subhalo maps radius [kpc]
+min_map_radius_pc_subhalos: 0.5 # Minimum radial distance for subhalo maps [pc]
+n_map_pixels_subhalos: 120    # Number of radial pixels for subhalo radial maps
 subhalo_flows:                # Subhalo flow statistics
-  radial_logspace_Rvir: [-3, 2, 51] # Logarithmically spaced radial bins [Rvir]
+  radial_logspace_Rvir: [-3, 1, 41] # Logarithmically spaced radial bins [Rvir]
   freq_edge_names: [min, max] # Coarse frequency bin edge names
 
 # focus_radial_on_emission: true

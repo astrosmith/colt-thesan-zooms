@@ -20,5 +20,6 @@
 *.zip
 .vscode
 *__*
-*/old/*
+*/old
+*/*/old
 
