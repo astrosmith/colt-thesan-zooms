@@ -1,5 +1,5 @@
 # COLT config file
---- !ionization               # MCRT ionization equilibrium module
+--- !mcrt                     # Monte Carlo radiative transfer module
 
 init_dir: ics                 # Initial conditions directory (default: "ics")
 init_base: colt               # Initial conditions base name (optional)
@@ -65,7 +65,7 @@ subhalo_flows:                # Subhalo flow statistics
 cosmological: true            # Indicates whether the simulation is cosmological
 recombinations: true          # Include recombination emission
 T_floor_rec: 7000             # Apply a recombination temperature floor [K]
-# collisions: true              # Include collisional excitation
+collisions: true              # Include collisional excitation
 # collisions_limiter: 10        # Limited by photoheating rate
 # output_collisions: true       # Output collisional excitation data
 dust_model: SMC               # Dust model: SMC, MW, etc.
