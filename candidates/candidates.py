@@ -18,6 +18,11 @@ READ_COUNTS = READ_DEFAULT # Read counts methods
 READ_GROUPS = READ_DEFAULT # Read groups methods
 READ_SNAPS = READ_DEFAULT # Read snapshots methods
 SUBHALOS = True # Process individual subhalos
+CENTRALS = True # Add the central subhalos of valid candidate groups (and vice versa)
+ADD_TREE = True # Add the main group and subhalo from the tree
+MIN_STARS = 1 # Initial minimum number of star particles (for StarFlag)
+MAX_STARS = 10 # Maximum for the minimum number of star particles (for StarFlag)
+MAX_HALOS_TO_STARS = 20 # Maximum number of subhalos per star threshold (for StarFlag)
 TIMERS = True # Print timers
 SUB_TIMERS = False and TIMERS # Print sub-timers
 
@@ -52,6 +57,7 @@ cand_dir = f'{zoom_dir}/{sim}/postprocessing/candidates'
 # The following paths should not change
 fof_pre = f'{out_dir}/groups_{snap:03d}/fof_subhalo_tab_{snap:03d}.'
 dist_file = f'{dist_dir}/distances_{snap:03d}.hdf5'
+tree_file = f'{out_dir}/tree.hdf5'
 cand_file = f'{cand_dir}/candidates_{snap:03d}.hdf5'
 
 @dataclass
@@ -138,6 +144,16 @@ class Simulation:
         self.mass_to_msun = self.mass_to_cgs / SOLAR_MASS
         self.velocity_to_cgs = np.sqrt(self.a) * self.UnitVelocity_in_cm_per_s
 
+        # Read tree info
+        if ADD_TREE:
+            with h5py.File(tree_file, 'r') as f:
+                Snapshots = f['Snapshots'][:] # Snapshots in the tree
+                indices = np.where(Snapshots == snap)[0]
+                i_tree = indices[0] if indices.size > 0 else -1 # Index of the snapshot in the tree
+                if i_tree >= 0:
+                    self.TreeGroupID = f['Group']['GroupID'][:][i_tree] # Group ID in the tree
+                    self.TreeSubhaloID = f['Subhalo']['SubhaloID'][:][i_tree] # Subhalo ID in the tree
+
         # Read distances info
         with h5py.File(dist_file, 'r') as f:
             header = f['Header'].attrs
@@ -222,36 +238,151 @@ class Simulation:
 
     def write(self):
         """Write the candidate results to an HDF5 file."""
+        # Construct the group mask
         if self.n_groups_tot > 0:
             # Mask out groups with R_Crit200 == 0 [R_Crit200 > 0]
             # Mask out groups with MinDistP2 or MinDistP3 < R_Crit200 [MinDist(P2,P3,StarsLR) > R_Crit200]
             self.group_mask = (self.Group_R_Crit200 > 0) & (self.Group_distances_lr > self.Group_R_Crit200)
-            self.n_groups_candidates = np.int32(np.count_nonzero(self.group_mask))
-            GroupID = np.arange(self.n_groups_tot, dtype=np.int32)[self.group_mask]
-            if VERBOSITY > 1:
-                print(f'GroupID = {GroupID}')
-                print(f'n_groups_candidates = {self.n_groups_candidates}')
+            if ADD_TREE and self.TreeGroupID >= 0:
+                self.group_mask[self.TreeGroupID] = True  # Ensure the main group is included
         else:
             self.n_groups_candidates = np.int32(0)  # No groups
 
+        # Construct the subhalo mask
         if self.n_subhalos_tot > 0:
             if SUBHALOS:
                 # Mask out subhalos with R_vir == 0 [R_vir > 0]
                 # Mask out subhalos with MinDistP2 or MinDistP3 < R_vir [MinDist(P2,P3,StarsLR) > R_vir]
                 self.subhalo_mask = (self.Subhalo_R_vir > 0) & (self.Subhalo_distances_lr > self.Subhalo_R_vir)
-                # centrals = self.GroupFirstSub[(self.GroupNsubs > 0) & self.group_mask]  # Central subhalos
-                # self.subhalo_mask[centrals] = True  # Ensure central subhalos are included
-                self.n_subhalos_candidates = np.int32(np.count_nonzero(self.subhalo_mask))
+                if ADD_TREE and self.TreeSubhaloID >= 0:
+                    self.subhalo_mask[self.TreeSubhaloID] = True  # Ensure the main subhalo is included
             else:
-                self.subhalo_mask = np.array([self.subhalos['SubhaloGroupNr'][i] in GroupID for i in range(self.n_subhalos_tot)], dtype=bool)
-                self.n_subhalos_candidates = np.int32(np.count_nonzero(self.subhalo_mask))
-            SubhaloID = np.arange(self.n_subhalos_tot, dtype=np.int32)[self.subhalo_mask]
+                self.subhalo_mask = np.array([self.group_mask[self.subhalos['SubhaloGroupNr'][i]] for i in range(self.n_subhalos_tot)], dtype=bool)
+        else:
+            self.n_subhalos_candidates = np.int32(0)  # No subhalos
+
+        # Add the central subhalos of valid candidate groups (and vice versa)
+        if CENTRALS and self.n_groups_tot > 0 and self.n_subhalos_tot > 0:
+            # All central subhalos and host groups
+            hosts_mask = (self.groups['GroupNsubs'] > 0)  # Host groups (mask) [n_groups_tot]
+            # hosts = np.flatnonzero(hosts_mask).astype(np.int32)  # Host groups (indices) [n_centrals]
+            centrals = self.groups['GroupFirstSub'][hosts_mask]  # Central subhalos (indices) [n_centrals]
+            if np.any((centrals < 0) | (centrals >= self.n_subhalos_tot)):
+                raise ValueError('Invalid central subhalo indices')  # Must be in [0, n_subhalos_tot)
+            centrals_mask = np.zeros(self.n_subhalos_tot, dtype=bool)
+            centrals_mask[centrals] = True  # Central subhalos (mask) [n_subhalos_tot]
+            # Ensure group-based candidate central subhalos are included
+            grpcand_hosts_mask = self.group_mask & hosts_mask  # Candidate host groups (mask, group-based) [n_groups_tot]
+            # grpcand_hosts = np.flatnonzero(grpcand_hosts_mask).astype(np.int32)  # Candidate host groups (indices, group-based) [n_centrals_groups]
+            grpcand_centrals = self.groups['GroupFirstSub'][grpcand_hosts_mask]  # Candidate central subhalos (indices, group-based) [n_centrals_groups]
+            grpcand_centrals_mask = np.zeros(self.n_subhalos_tot, dtype=bool)
+            grpcand_centrals_mask[grpcand_centrals] = True  # Candidate central subhalos (mask, group-based) [n_subhalos_tot]
+            self.subhalo_mask[grpcand_centrals_mask] = True  # Mission accomplished!
+            # Ensure subhalo-based candidate host groups are included
+            subcand_centrals_mask = self.subhalo_mask & centrals_mask  # Candidate central subhalos (mask, subhalo-based) [n_subhalos_tot]
+            subcand_centrals = np.flatnonzero(subcand_centrals_mask).astype(np.int32)  # Candidate central subhalos (indices, subhalo-based) [n_centrals_subhalos]
+            subcand_hosts = self.subhalos['SubhaloGroupNr'][subcand_centrals]  # Candidate host groups (indices, subhalo-based) [n_centrals_subhalos]
+            subcand_hosts_mask = np.zeros(self.n_groups_tot, dtype=bool)
+            subcand_hosts_mask[subcand_hosts] = True  # Candidate host groups (mask, subhalo-based) [n_groups_tot]
+            self.group_mask[subcand_hosts_mask] = True  # Mission accomplished!
+
+        # Set up the counts and IDs
+        if self.n_groups_tot > 0:
+            self.n_groups_candidates = np.int32(np.count_nonzero(self.group_mask))
+            GroupID = np.flatnonzero(self.group_mask).astype(np.int32)
+            if VERBOSITY > 1:
+                print(f'GroupID = {GroupID}')
+                print(f'n_groups_candidates = {self.n_groups_candidates}')
+        if self.n_subhalos_tot > 0:
+            self.n_subhalos_candidates = np.int32(np.count_nonzero(self.subhalo_mask))
+            SubhaloID = np.flatnonzero(self.subhalo_mask).astype(np.int32)
             if VERBOSITY > 1:
                 print(f'SubhaloID = {SubhaloID}')
                 print(f'n_subhalos_candidates = {self.n_subhalos_candidates}')
                 print(f'GroupID of each Subhalo = {self.subhalos["SubhaloGroupNr"][SubhaloID]}')
+
+        # Stricter requirements for star particles (star flag)
+        global MIN_STARS  # Declare MIN_STARS as global to modify it within the function
+        assert MIN_STARS >= 1  # Consistency check
+        assert MAX_STARS >= MIN_STARS  # Consistency check
+        assert MAX_HALOS_TO_STARS >= 1  # Consistency check
+        if self.n_subhalos_candidates > 0:
+            try:  # Count the number of subhalos with at least MIN_STARS star particles
+                keep_counting = (MAX_STARS > MIN_STARS)  # Keep counting until the maximum number of star particles is reached
+                while keep_counting:
+                    guess = np.count_nonzero(self.subhalo_mask & (self.subhalos['SubhaloLenType'][:,4] >= MIN_STARS) &
+                        (self.Subhalo_member_distances_stars_hr <= self.Subhalo_R_vir))  # Approximate star flag count
+                    if guess < MAX_HALOS_TO_STARS * MIN_STARS:
+                        keep_counting = False  # Stop counting
+                    else:
+                        MIN_STARS += 1  # Increment the star particle threshold
+                        if MIN_STARS >= MAX_STARS:
+                            keep_counting = False  # Stop counting
+            except AttributeError:
+                pass  # Nothing to do
+        if self.n_groups_candidates > 0:
+            try:  # Require a high-resolution member star within R_Crit200 and MIN_STARS star particles
+                group_star_flag = (self.groups['GroupLenType'][:,4] >= MIN_STARS)  # Star flag (group)
+                if ADD_TREE and self.TreeGroupID >= 0:
+                    group_star_flag[self.TreeGroupID] = True  # Ensure the main group is included
+                if VERBOSITY > 1:
+                    print(f'n_stars_groups = {self.groups["GroupLenType"][:,4][self.group_mask]}')
+                    print(f'group_min_stars_flag = {group_star_flag[self.group_mask]}')
+                group_star_flag = self.group_mask & group_star_flag & (self.Group_member_distances_stars_hr <= self.Group_R_Crit200)  # Star flag (group)
+                if VERBOSITY > 1:
+                    print(f'group_star_flag = {group_star_flag[self.group_mask]}')
+            except AttributeError:
+                group_star_flag = np.zeros(self.n_groups_tot, dtype=bool)
         else:
-            self.n_subhalos_candidates = np.int32(0)  # No subhalos
+            group_star_flag = np.zeros(self.n_groups_candidates, dtype=bool)
+            self.n_groups_candidates_stars = np.int32(0)
+        if self.n_subhalos_candidates > 0:
+            try:  # Require a high-resolution member star within R_vir and MIN_STARS star particles
+                subhalo_star_flag = (self.subhalos['SubhaloLenType'][:,4] >= MIN_STARS)  # Full flag (subhalo)
+                if ADD_TREE and self.TreeSubhaloID >= 0:
+                    subhalo_star_flag[self.TreeSubhaloID] = True  # Ensure the main subhalo is included
+                if VERBOSITY > 1:
+                    print(f'n_stars_subhalos = {self.subhalos["SubhaloLenType"][:,4][self.subhalo_mask]}')
+                    print(f'subhalo_min_stars_flag = {subhalo_star_flag[self.subhalo_mask]}')
+                subhalo_star_flag = self.subhalo_mask & subhalo_star_flag & (self.Subhalo_member_distances_stars_hr <= self.Subhalo_R_vir)  # Star flag (subhalo)
+                if VERBOSITY > 1:
+                    print(f'subhalo_star_flag = {subhalo_star_flag[self.subhalo_mask]}')
+            except AttributeError:
+                subhalo_star_flag = np.zeros(self.n_subhalos_tot, dtype=bool)
+        else:
+            subhalo_star_flag = np.zeros(self.n_subhalos_candidates, dtype=bool)
+            self.n_subhalos_candidates_stars = np.int32(0)
+
+        # Add the central subhalos of valid star flag groups (and vice versa)
+        if CENTRALS and self.n_groups_candidates > 0 and self.n_subhalos_candidates > 0:
+            # Ensure group-based candidate star central subhalos are included
+            grpstar_hosts_mask = group_star_flag & hosts_mask  # Candidate star host groups (mask, group-based) [n_groups_tot]
+            # grpstar_hosts = np.flatnonzero(grpstar_hosts_mask).astype(np.int32)  # Candidate star host groups (indices, group-based) [n_centrals_groups]
+            grpstar_centrals = self.groups['GroupFirstSub'][grpstar_hosts_mask]  # Candidate star central subhalos (indices, group-based) [n_centrals_groups]
+            grpstar_centrals_mask = np.zeros(self.n_subhalos_tot, dtype=bool)
+            grpstar_centrals_mask[grpstar_centrals] = True  # Candidate star central subhalos (mask, group-based) [n_subhalos_tot]
+            subhalo_star_flag[grpstar_centrals_mask] = True  # Mission accomplished!
+            # Ensure subhalo-based candidate star host groups are included
+            substar_centrals_mask = subhalo_star_flag & centrals_mask  # Candidate star central subhalos (mask, subhalo-based) [n_subhalos_tot]
+            substar_centrals = np.flatnonzero(substar_centrals_mask).astype(np.int32)  # Candidate star central subhalos (indices, subhalo-based) [n_centrals_subhalos]
+            substar_hosts = self.subhalos['SubhaloGroupNr'][substar_centrals]  # Candidate star host groups (indices, subhalo-based) [n_centrals_subhalos]
+            substar_hosts_mask = np.zeros(self.n_groups_tot, dtype=bool)
+            substar_hosts_mask[substar_hosts] = True  # Candidate star host groups (mask, subhalo-based) [n_groups_tot]
+            group_star_flag[substar_hosts_mask] = True  # Mission accomplished!
+
+        # Set up the counts (star flag)
+        if self.n_groups_candidates > 0:
+            group_star_flag = group_star_flag[self.group_mask]  # Restrict to candidate groups
+            self.n_groups_candidates_stars = np.int32(np.count_nonzero(group_star_flag))  # Star flag (group)
+            if VERBOSITY > 1:
+                print(f'n_groups_candidates_stars = {self.n_groups_candidates_stars}')
+        if self.n_subhalos_candidates > 0:
+            subhalo_star_flag = subhalo_star_flag[self.subhalo_mask]  # Restrict to candidate subhalos
+            self.n_subhalos_candidates_stars = np.int32(np.count_nonzero(subhalo_star_flag))  # Star flag (subhalo)
+            if VERBOSITY > 1:
+                print(f'n_subhalos_candidates_stars = {self.n_subhalos_candidates_stars}')
+
+        # Write the results to a file
         with h5py.File(cand_file, 'w') as f:
             g = f.create_group(b'Header')
             g.attrs['Ngroups_Total'] = self.n_groups_tot
@@ -275,6 +406,7 @@ class Simulation:
             g.attrs['PosHR'] = self.r_com
             g.attrs['RadiusHR'] = self.RadiusHR
             g.attrs['RadiusLR'] = self.RadiusLR
+            g.attrs['MinStars'] = np.int32(MIN_STARS)
             if self.n_groups_candidates > 0:
                 g = f.create_group(b'Group')
                 g.create_dataset(b'GroupID', data=GroupID)
@@ -286,12 +418,6 @@ class Simulation:
                 g.create_dataset(b'MinDistStarsLR', data=self.Group_distances_stars_lr[self.group_mask])
                 g.create_dataset(b'MinDistStarsHR', data=self.Group_distances_stars_hr[self.group_mask])
                 g.create_dataset(b'MinMemberDistStarsHR', data=self.Group_member_distances_stars_hr[self.group_mask])
-                try:  # Additionally require a high-resolution star within R_Crit200
-                    group_star_flag = (self.Group_member_distances_stars_hr[self.group_mask] <= self.Group_R_Crit200[self.group_mask])
-                    self.n_groups_candidates_stars = np.int32(np.count_nonzero(group_star_flag))  # Star flag (group)
-                except AttributeError:
-                    group_star_flag = np.zeros(self.n_groups_candidates, dtype=bool)
-                    self.n_groups_candidates_stars = np.int32(0)
                 f['Header'].attrs['Ngroups_Candidates_Stars'] = self.n_groups_candidates_stars
                 g.create_dataset(b'StarFlag', data=group_star_flag, dtype=bool)
                 if 'GroupPos' in self.group_units:
@@ -326,12 +452,6 @@ class Simulation:
                     if 'SubhaloPos' in self.subhalo_units:
                         for key,val in self.subhalo_units['SubhaloPos'].items():
                             g['R_vir'].attrs[key] = val
-                try:  # Additionally require a high-resolution star within R_vir
-                    subhalo_star_flag = (self.Subhalo_member_distances_stars_hr[self.subhalo_mask] <= self.Subhalo_R_vir[self.subhalo_mask])
-                    self.n_subhalos_candidates_stars = np.int32(np.count_nonzero(subhalo_star_flag))  # Star flag (subhalo)
-                except AttributeError:
-                    subhalo_star_flag = np.zeros(self.n_subhalos_candidates, dtype=bool)
-                    self.n_subhalos_candidates_stars = np.int32(0)
                 f['Header'].attrs['Nsubhalos_Candidates_Stars'] = self.n_subhalos_candidates_stars
                 g.create_dataset(b'StarFlag', data=subhalo_star_flag, dtype=bool)
                 if 'SubhaloPos' in self.subhalo_units:
@@ -432,7 +552,7 @@ def main():
     if SUB_TIMERS: print("\nWriting the results to a file...")
     sim.write()
     print(f'Number of candidates = ({sim.n_groups_candidates} groups, {sim.n_subhalos_candidates} subhalos)')
-    print(f'Number with HR stars = ({sim.n_groups_candidates_stars} groups, {sim.n_subhalos_candidates_stars} subhalos)')
+    print(f'Number with HR stars = ({sim.n_groups_candidates_stars} groups, {sim.n_subhalos_candidates_stars} subhalos)  [MIN_STARS = {MIN_STARS}]')
     if SUB_TIMERS: t2 = time(); print(f"Time to write results to a file: {t2 - t1:g} s"); t1 = t2
     else: t2 = time(); print(f'Total time: {t2 - t1:g} s')
 
