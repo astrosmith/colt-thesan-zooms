@@ -599,6 +599,7 @@ def arepo_to_colt(include_metals=True):
         Z = sim.gas['GFM_Metallicity']; Z[Z<0.] = 0. # Ensure positive metallicity
         f.create_dataset('Z', data=Z, dtype=np.float64) # Metallicity [mass fraction]
         f.create_dataset('D', data=sim.gas['GFM_DustMetallicity'], dtype=np.float64) # Dust-to-gas ratio [mass fraction]
+        sim.gas['GFM_DustCarbonSiliconRatio'][np.isnan(sim.gas['GFM_DustCarbonSiliconRatio'])] = 1. # Fix NaNs
         f.create_dataset('D_Si', data=sim.gas['GFM_DustMetallicity'] / (1. + sim.gas['GFM_DustCarbonSiliconRatio']), dtype=np.float64) # Dust silicates-to-gas ratio [mass fraction]
         f.create_dataset('rho', data=sim.density_to_cgs * sim.gas['Density'], dtype=np.float64) # Density [g/cm^3]
         f['rho'].attrs['units'] = b'g/cm^3'
