@@ -21,7 +21,7 @@ SUBHALOS = True # Process individual subhalos
 CENTRALS = True # Add the central subhalos of valid candidate groups (and vice versa)
 ADD_TREE = True # Add the main group and subhalo from the tree
 MIN_STARS = 1 # Initial minimum number of star particles (for StarFlag)
-MAX_STARS = 10 # Maximum for the minimum number of star particles (for StarFlag)
+MAX_STARS = 1 # Maximum for the minimum number of star particles (for StarFlag)
 MAX_HALOS_TO_STARS = 20 # Maximum number of subhalos per star threshold (for StarFlag)
 TIMERS = True # Print timers
 SUB_TIMERS = False and TIMERS # Print sub-timers
@@ -57,7 +57,8 @@ cand_dir = f'{zoom_dir}/{sim}/postprocessing/candidates'
 # The following paths should not change
 fof_pre = f'{out_dir}/groups_{snap:03d}/fof_subhalo_tab_{snap:03d}.'
 dist_file = f'{dist_dir}/distances_{snap:03d}.hdf5'
-tree_file = f'{out_dir}/tree.hdf5'
+# tree_file = f'{out_dir}/tree.hdf5'
+tree_file = f'/orcd/data/mvogelsb/004/Thesan-Zooms/analyze/trees/{sim}/tree.hdf5'
 cand_file = f'{cand_dir}/candidates_{snap:03d}.hdf5'
 
 @dataclass
@@ -67,6 +68,8 @@ class Simulation:
     n_files: np.int32 = 0 # Number of files
     n_groups_tot: np.uint64 = None # Total number of groups
     n_subhalos_tot: np.uint64 = None # Total number of subhalos
+    TreeGroupID: np.int32 = -1 # Group ID in the tree
+    TreeSubhaloID: np.int32 = -1 # Subhalo ID in the tree
     a: np.float64 = None # Scale factor
     BoxSize: np.float64 = None # Size of the simulation volume
     BoxHalf: np.float64 = None # Half the size of the simulation volume
@@ -153,6 +156,25 @@ class Simulation:
                 if i_tree >= 0:
                     self.TreeGroupID = f['Group']['GroupID'][:][i_tree] # Group ID in the tree
                     self.TreeSubhaloID = f['Subhalo']['SubhaloID'][:][i_tree] # Subhalo ID in the tree
+                    if self.TreeSubhaloID >= self.n_subhalos_tot:
+                        self.TreeSubhaloID = -1 # Reset the subhalo ID
+                        # print(f'Subhalo/SubhaloID = {f["Subhalo"]["SubhaloID"][:]}')
+                        # print(f'Snapshots = {Snapshots}')
+                        # print(f'snap = {snap}')
+                        # print(f'indices = {indices}')
+                        # print(f'i_tree = {i_tree}')
+                        # print(f'TreeSubhaloID = {self.TreeSubhaloID}')
+                        # print(f'n_subhalos_tot = {self.n_subhalos_tot}')
+                        # raise ValueError('Invalid tree subhalo ID')
+                    if self.TreeGroupID >= self.n_groups_tot:
+                        self.TreeGroupID = -1 # Reset the group ID
+                        # print(f'Snapshots = {Snapshots}')
+                        # print(f'snap = {snap}')
+                        # print(f'indices = {indices}')
+                        # print(f'i_tree = {i_tree}')
+                        # print(f'TreeGroupID = {self.TreeGroupID}')
+                        # print(f'n_groups_tot = {self.n_groups_tot}')
+                        # raise ValueError('Invalid tree group ID')
 
         # Read distances info
         with h5py.File(dist_file, 'r') as f:
