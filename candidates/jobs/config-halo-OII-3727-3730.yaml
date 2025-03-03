@@ -92,8 +92,8 @@ subhalo_flows:                # Subhalo flow statistics
 
 # Information about sources
 cosmological: true            # Indicates whether the simulation is cosmological
-recombinations: true          # Include recombination emission
-T_floor_rec: 7000             # Apply a recombination temperature floor [K]
+recombinations: false         # Include recombination emission
+# T_floor_rec: 7000             # Apply a recombination temperature floor [K]
 collisions: true              # Include collisional excitation
 # collisions_limiter: 10        # Limited by photoheating rate
 # output_collisions: true       # Output collisional excitation data
