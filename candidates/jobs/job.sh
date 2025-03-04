@@ -4,15 +4,16 @@
 # SBATCH --output=colt-%a-%A.out
 # SBATCH --output=ion-%a-%A.out
 # SBATCH --output=M1500-%a-%A.out
-#SBATCH --output=opt-%a-%A.out
+# SBATCH --output=opt-%a-%A.out
 # SBATCH --output=eq-%a-%A.out
+#SBATCH --output=teq-%a-%A.out
 # SBATCH --output=Ha-%a-%A.out
 # SBATCH --output=halos-%a-%A.out
 # SBATCH --output=halos-%A.out
-#SBATCH --array=5-188
+# SBATCH --array=5-188
 # SBATCH --array=8-188:10
 # SBATCH --array=108-188:20
-# SBATCH --array=188
+#SBATCH --array=188
 # SBATCH --partition=sched_mit_mvogelsb,sched_mit_mki,sched_mit_mki_preempt
 #SBATCH --partition=sched_mit_mki,sched_mit_mki_preempt
 # SBATCH --partition=sched_mit_mvogelsb,sched_mit_mki
@@ -39,6 +40,7 @@
 # SBATCH --exclude=node1400,node1406,node1414,node1418,node1454,node1456
 # node1400,node1406,node1407,node1408,node1409,node1420,node1422,node1423,node1424,node1427,node1436,node1438,node1439,node1441,node1444,node1450
 # ###SBATCH --exclude=node1412,node1413,node1415,node1421,node1426,node1454,node1455,node1447
+# SBATCH --dependency=afterok:12345678
 
 ## Module setup
 . /etc/profile.d/modules.sh
@@ -78,13 +80,16 @@ run() {
         #echo "Running simulation with ${config_file} ..."
         #$call $colt $config_file $SLURM_ARRAY_TASK_ID
         # $call $colt-flows $config_file $SLURM_ARRAY_TASK_ID
-        $call $colt-ion $config_file $SLURM_ARRAY_TASK_ID
+        # $call $colt-ion $config_file $SLURM_ARRAY_TASK_ID
+        # $call $colt-line $config_file $SLURM_ARRAY_TASK_ID
+        $call $colt-ion-teq $config_file $SLURM_ARRAY_TASK_ID
+        # $call $colt-line-teq $config_file $SLURM_ARRAY_TASK_ID
     done
 }
 
 # setup_runs
 # run ion-eq-pre7
-run ion-eq-pre8
+# run ion-eq-pre8
 # run ion-eq
 # run ion-eq-MCRT ion-eq-RHD
 # run proj Ha Lya
@@ -93,5 +98,9 @@ run ion-eq-pre8
 #run halo-optical
 #run halo-Ha-RHD
 # run Lya-RHD
+# run halo-Ha halo-OII-3727-3730 halo-OIII-5008
+# run halo-Ha halo-OIII-5008
 # run OII-3727-3730 OIII-5008 M1500
+run ion-eq-pre7-teq ion-eq-pre8-teq
+# run halo-Ha-teq halo-OIII-5008-teq
 

@@ -12,6 +12,7 @@ output_dir: output            # Output directory name (default: "output")
 # f_dust: 0.4                   # Fraction of metals locked in dust grains
 output_base: halo-OIII-5008-teq   # Output file base name (default: "colt")
 abundances_base: states-teq # Output a separate abundances file
+data_dir: /home/arsmith/colt/tables # Data directory
 
 # output_cells: true            # Output cell emission and escape
 
