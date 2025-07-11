@@ -19,7 +19,8 @@ if __name__ == '__main__':
 
 # Derived global variables
 cand_dir = f'{zoom_dir}/{sim}/postprocessing/candidates'
-colt_dir = f'{zoom_dir}-COLT/{sim}/ics'
+# colt_dir = f'{zoom_dir}-COLT/{sim}/ics'
+colt_dir = f'/orcd/data/mvogelsb/005/Lab/Thesan-Zooms-COLT/{sim}/ics'
 states = 'states-no-UVB' # States prefix
 copy_states = True # Copy ionization states to the new colt file
 os.makedirs(f'{colt_dir}_tree', exist_ok=True) # Ensure the new colt directory exists
@@ -48,7 +49,7 @@ def progressbar(it, prefix="", size=100, file=sys.stdout):
     file.write("\n")
     file.flush()
 
-f_vir = 2.  # Virial radius extraction factor
+f_vir = 4.  # Virial radius extraction factor
 gas_fields = ['D', 'D_Si', 'SFR', 'T_dust', 'X', 'Y', 'Z', 'Z_C', 'Z_Fe', 'Z_Mg', 'Z_N', 'Z_Ne', 'Z_O', 'Z_S', 'Z_Si',
               'e_int', 'is_HR', 'rho', 'v', 'x_H2', 'x_HI', 'x_HeI', 'x_HeII', 'x_e', 'id', 'group_id', 'subhalo_id']
 state_fields = ['G_ion', 'x_e', 'x_HI', 'x_HII', 'x_HeI', 'x_HeII',
@@ -75,8 +76,11 @@ with h5py.File(tree_file, 'r') as f:
 
 zs_smooth, R_virs = savgol_filter((zs, R_virs), 11, 3) # Smooth the data
 if False:
-    mask = np.zeros(len(snaps), dtype=bool)
-    mask[-2] = True
+    #mask = np.zeros(len(snaps), dtype=bool)
+    #mask[-2] = True
+    1/0
+    # n_start = 8
+    # mask = (snaps >= n_start*189//9) & (snaps <= (n_start+1)*189//9)
     snaps = snaps[mask]
     R_virs = R_virs[mask]
     zs = zs[mask]
