@@ -87,8 +87,6 @@ for i in progressbar(range(n_snaps)):
     cand_file = f'{cand_dir}/candidates_{snap:03d}.hdf5'
     colt_file = f'{colt_dir}/colt_{snap:03d}.hdf5'
     dm_file = f'{colt_dir}/dm_{snap:03d}.hdf5'
-    new_file = f'{colt_dir}_tree/colt_{snap:03d}.hdf5'
-    silentremove(new_file)
     with h5py.File(cand_file, 'r') as f:
         header = f['Header'].attrs
         a = header['Time']
@@ -106,7 +104,7 @@ for i in progressbar(range(n_snaps)):
         group_indices[i] = np.where(cand_group_ids == group_ids[i])[0][0] # Group index in the candidates
         subhalo_indices[i] = np.where(cand_subhalo_ids == subhalo_ids[i])[0][0] # Subhalo index in the candidates
         r_HRs[i] = length_to_cgs * header['PosHR'] # High-resolution center of mass position [cm]
-        r_virs[i] = length_to_cgs * f['Group']['GroupPos'][group_indices[i]] - r_HRs[i] # Group position [cm]
+        r_virs[i] = length_to_cgs * f['Group']['GroupPos'][group_indices[i]] - r_HRs[i] # Group position relative to high-resolution center of mass [cm]
         R_virs[i] = length_to_cgs * R_virs[i] # Virial radius unit conversion [cm]
         pos = f['Group']['GroupPos'][group_indices[i]]
 
