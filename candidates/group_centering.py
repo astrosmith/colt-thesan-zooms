@@ -13,7 +13,7 @@ if __name__ == '__main__':
     if len(sys.argv) == 2:
         sim = sys.argv[1]
     elif len(sys.argv) == 3:
-        sim, zoom_dir = sys.argv[1], sys.argv[3]
+        sim, zoom_dir = sys.argv[1], sys.argv[2]
     elif len(sys.argv) != 1:
         raise ValueError('Usage: python group_centering.py [sim] [zoom_dir]')
 
@@ -28,7 +28,6 @@ pc = 3.085677581467192e18 # Parsec in cm
 kpc = 1e3 * pc # Kiloparsec in cm
 
 # Overwrite for local testing
-#dist_dir = '.'
 #colt_dir = '.'
 
 def silentremove(filename):
