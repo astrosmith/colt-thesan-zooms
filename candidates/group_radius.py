@@ -261,8 +261,8 @@ for i in progressbar(range(n_snaps)):
         Subhalo_M_stars[i] = 10.**(np.log10(M_stars_enc[i_vir-1]) + frac * np.log10(M_stars_enc[i_vir]/M_stars_enc[i_vir-1])) # Stellar mass (<R_vir)
 
 with h5py.File(colt_dir + '_tree/center.hdf5', 'r+') as f:
-    if 'TargetPosSmooth' in f.keys():
-        del f['TargetPosSmooth']
+    for key in ['TargetPosSmooth', 'R_Crit200_Smooth']:
+        if key in f.keys(): del f[key]  # Remove previous data
     f.create_dataset(name='TargetPosSmooth', data=SmoothPos)
     f.create_dataset(name='R_Crit200_Smooth', data=Subhalo_R_vir)
     f['R_Crit200_Smooth'].attrs['units'] = b'ckpc/h'
