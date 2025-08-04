@@ -162,6 +162,7 @@ for i in progressbar(range(n_snaps)):
         GasPos = (f['r'][:] + r_HRs[i]) / length_to_cgs - SmoothPos[i]  # Gas position [ckpc/h] [centered on SmoothPos]
         n_cells = f.attrs['n_cells'] # Number of cells
         gas_rho = f['rho'][:]  # Gas density [g/cm^3]
+        gas_rho[~f['is_HR'][:]] = 0.  # Set gas density to 0 outside the high-resolution region
         gas_vol = f['V'][:]  # Cell volume [cm^3]
         gas_mass = (gas_rho[:] * gas_vol[:]) / M_sun  # Gas mass [Msun]
         GasMass = gas_mass / mass_to_cgs * M_sun  # Convert to code units [BoxUnits]
@@ -260,6 +261,7 @@ for i in progressbar(range(n_snaps)):
     else:
         Subhalo_M_stars[i] = 10.**(np.log10(M_stars_enc[i_vir-1]) + frac * np.log10(M_stars_enc[i_vir]/M_stars_enc[i_vir-1])) # Stellar mass (<R_vir)
 
+print('Writing to ' + colt_dir + '_tree/center.hdf5')
 with h5py.File(colt_dir + '_tree/center.hdf5', 'r+') as f:
     for key in ['TargetPosSmooth', 'R_Crit200_Smooth']:
         if key in f.keys(): del f[key]  # Remove previous data
