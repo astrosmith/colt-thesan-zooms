@@ -1,7 +1,7 @@
 import numpy as np
 import h5py, os, errno, platform
 from scipy.signal import savgol_filter
-import matplotlib.pyplot as plt
+from scipy.interpolate import interp1d
 
 # Configurable global variables
 if platform.system() == 'Darwin':
@@ -24,13 +24,13 @@ colt_dir = f'{zoom_dir}-COLT/{sim}/ics'
 # colt_dir = f'/orcd/data/mvogelsb/005/Lab/Thesan-Zooms-COLT/{sim}/ics'
 os.makedirs(f'{colt_dir}_tree', exist_ok=True) # Ensure the new colt directory exists
 
-M_sun = 1.988435e33 # Solar mass in g
-pc = 3.085677581467192e18 # Parsec in cm
-kpc = 1e3 * pc # Kiloparsec in cm
-km = 1e5                    # Units: 1 km = 1e5 cm
+SOLAR_MASS = 1.989e33  # Solar masses
+pc = 3.085677581467192e18  # Parsec in cm
+kpc = 1e3 * pc  # Kiloparsec in cm
+km = 1e5  # Units: 1 km = 1e5 cm
 Mpc = 3.085677581467192e24  # Units: 1 Mpc = 3e24 cm
-G = 6.6743015e-8 # Gravitational constant [cm^3/g/s^2]
-USE_200 = True # Use 200 times the critical density for the virial radius
+G = 6.6743015e-8  # Gravitational constant [cm^3/g/s^2]
+USE_200 = True  # Use 200 times the critical density for the virial radius
 
 # Overwrite for local testing
 #colt_dir = '.'
@@ -73,17 +73,23 @@ def calculate_M_enc(r, m):
     ibin[ibin < 0] = 0  # Clip to first bin
     return np.cumsum(np.bincount(ibin, weights=m, minlength=n_bins))  # Enclosed gas mass
 
+def smooth(x, y):
+    """Smooth the data."""
+    x_smooth, y_smooth = savgol_filter((x, y), 15, 3)
+    interp = interp1d(x_smooth, y_smooth, fill_value='extrapolate')
+    return interp(x)  # Interpolate the smoothed data back to the original x values
+
+def smooth_pos(x, pos):
+    """Smooth position data."""
+    return np.array([smooth(x, pos[:,0]), smooth(x, pos[:,1]), smooth(x, pos[:,2])]).T
+
 print(f'Calculating {colt_dir} ...')
 tree_file = f'{zoom_dir}/{sim}/output/tree.hdf5'
 
 with h5py.File(colt_dir + '_tree/center.hdf5', 'r') as f:
     redshift = f['Redshifts'][:]
     TargetPos = f['TargetPos'][:]
-
-_, SmoothPosX = savgol_filter((redshift, TargetPos[:,0]), 11, 3) # Smooth the data
-_, SmoothPosY = savgol_filter((redshift, TargetPos[:,1]), 11, 3) # Smooth the data
-_, SmoothPosZ = savgol_filter((redshift, TargetPos[:,2]), 11, 3) # Smooth the data
-SmoothPos = np.array([SmoothPosX, SmoothPosY, SmoothPosZ]).T
+    SmoothPos = smooth_pos(redshift, TargetPos) # Smooth the data
 
 with h5py.File(tree_file, 'r') as f:
     snaps = f['Snapshots'][:] # Snapshots in the tree
@@ -111,14 +117,14 @@ r_HRs = np.empty([n_snaps, 3]) # High-resolution center of mass positions [cm]
 r_virs = np.empty([n_snaps, 3]) # Group positions [cm]
 r_HRs.fill(np.nan) # Fill with NaNs
 r_virs.fill(np.nan)
-Subhalo_R_vir = np.empty([n_snaps])
-Subhalo_R_vir.fill(np.nan)
-Subhalo_M_vir = np.empty([n_snaps])
-Subhalo_M_vir.fill(np.nan)
-Subhalo_M_gas = np.empty([n_snaps])
-Subhalo_M_gas.fill(np.nan)
-Subhalo_M_stars = np.empty([n_snaps])
-Subhalo_M_stars.fill(np.nan)
+halo_R_vir = np.empty([n_snaps])
+halo_R_vir.fill(np.nan)
+halo_M_vir = np.empty([n_snaps])
+halo_M_vir.fill(np.nan)
+halo_M_gas = np.empty([n_snaps])
+halo_M_gas.fill(np.nan)
+halo_M_stars = np.empty([n_snaps])
+halo_M_stars.fill(np.nan)
 
 for i in progressbar(range(n_snaps)):
     snap = snaps[i]
@@ -153,7 +159,7 @@ for i in progressbar(range(n_snaps)):
     BoxHalf = BoxSize / 2.
     volume_to_cgs = length_to_cgs**3
     mass_to_cgs = UnitMass_in_g / h
-    mass_to_msun = mass_to_cgs / M_sun
+    mass_to_msun = mass_to_cgs / SOLAR_MASS
     density_to_cgs = mass_to_cgs / volume_to_cgs
     velocity_to_cgs = np.sqrt(a) * UnitVelocity_in_cm_per_s
 
@@ -164,8 +170,8 @@ for i in progressbar(range(n_snaps)):
         gas_rho = f['rho'][:]  # Gas density [g/cm^3]
         gas_rho[~f['is_HR'][:]] = 0.  # Set gas density to 0 outside the high-resolution region
         gas_vol = f['V'][:]  # Cell volume [cm^3]
-        gas_mass = (gas_rho[:] * gas_vol[:]) / M_sun  # Gas mass [Msun]
-        GasMass = gas_mass / mass_to_cgs * M_sun  # Convert to code units [BoxUnits]
+        gas_mass = (gas_rho[:] * gas_vol[:]) / SOLAR_MASS  # Gas mass [Msun]
+        GasMass = gas_mass / mass_to_msun  # Convert to code units [BoxUnits]
 
         # Star Properties
         if 'r_star' in f:
@@ -250,21 +256,26 @@ for i in progressbar(range(n_snaps)):
     i_vir = np.where(rho_enc > 1)[0][-1] + 1  # Find the last bin with rho_enc > 1
     # Log interpolation to find the virial radius and masses
     frac = -np.log10(rho_enc[i_vir-1]) / np.log10(rho_enc[i_vir]/rho_enc[i_vir-1]) # Interpolation coordinate
-    Subhalo_R_vir[i] = 10.**(log_rbins[i_vir] + frac * dlog_rbin) # Virial radius
-    Subhalo_M_vir[i] = 10.**(np.log10(M_enc[i_vir-1]) + frac * np.log10(M_enc[i_vir]/M_enc[i_vir-1])) # Virial mass
+    halo_R_vir[i] = 10.**(log_rbins[i_vir] + frac * dlog_rbin) # Virial radius
+    halo_M_vir[i] = 10.**(np.log10(M_enc[i_vir-1]) + frac * np.log10(M_enc[i_vir]/M_enc[i_vir-1])) # Virial mass
     if M_gas_enc[i_vir-1] <= 0.:
-        Subhalo_M_gas[i] = M_gas_enc[i_vir-1] + frac * (M_gas_enc[i_vir] - M_gas_enc[i_vir-1]) # Gas mass (<R_vir)
+        halo_M_gas[i] = M_gas_enc[i_vir-1] + frac * (M_gas_enc[i_vir] - M_gas_enc[i_vir-1]) # Gas mass (<R_vir)
     else:
-        Subhalo_M_gas[i] = 10.**(np.log10(M_gas_enc[i_vir-1]) + frac * np.log10(M_gas_enc[i_vir]/M_gas_enc[i_vir-1])) # Gas mass (<R_vir)
+        halo_M_gas[i] = 10.**(np.log10(M_gas_enc[i_vir-1]) + frac * np.log10(M_gas_enc[i_vir]/M_gas_enc[i_vir-1])) # Gas mass (<R_vir)
     if M_stars_enc[i_vir-1] <= 0.:
-        Subhalo_M_stars[i] = M_stars_enc[i_vir-1] + frac * (M_stars_enc[i_vir] - M_stars_enc[i_vir-1]) # Stellar mass (<R_vir)
+        halo_M_stars[i] = M_stars_enc[i_vir-1] + frac * (M_stars_enc[i_vir] - M_stars_enc[i_vir-1]) # Stellar mass (<R_vir)
     else:
-        Subhalo_M_stars[i] = 10.**(np.log10(M_stars_enc[i_vir-1]) + frac * np.log10(M_stars_enc[i_vir]/M_stars_enc[i_vir-1])) # Stellar mass (<R_vir)
+        halo_M_stars[i] = 10.**(np.log10(M_stars_enc[i_vir-1]) + frac * np.log10(M_stars_enc[i_vir]/M_stars_enc[i_vir-1])) # Stellar mass (<R_vir)
 
 print('Writing to ' + colt_dir + '_tree/center.hdf5')
 with h5py.File(colt_dir + '_tree/center.hdf5', 'r+') as f:
-    for key in ['TargetPosSmooth', 'R_Crit200_Smooth']:
+    for key in ['TargetPosSmooth', 'R_Crit200_Smooth', 'M_vir', 'M_gas', 'M_stars']:
         if key in f.keys(): del f[key]  # Remove previous data
     f.create_dataset(name='TargetPosSmooth', data=SmoothPos)
-    f.create_dataset(name='R_Crit200_Smooth', data=Subhalo_R_vir)
+    f.create_dataset(name='R_Crit200_Smooth', data=halo_R_vir)
     f['R_Crit200_Smooth'].attrs['units'] = b'ckpc/h'
+    f.create_dataset(name='M_vir', data=halo_M_vir*mass_to_msun)
+    f.create_dataset(name='M_gas', data=halo_M_gas*mass_to_msun)
+    f.create_dataset(name='M_stars', data=halo_M_stars*mass_to_msun)
+    for key in ['M_vir', 'M_gas', 'M_stars']:
+        f[key].attrs['units'] = b'Msun'

@@ -1,6 +1,5 @@
 import numpy as np
 import h5py, os, errno, platform
-from scipy.signal import savgol_filter
 
 # Configurable global variables
 if platform.system() == 'Darwin':
@@ -60,12 +59,9 @@ with h5py.File(tree_file, 'r') as f:
     R_virs = f['Group']['Group_R_Crit200'][:] # Group virial radii in the tree [ckpc/h]
     zs = f['Redshifts'][:] # Redshifts in the tree
 
-zs_smooth, R_virs = savgol_filter((zs, R_virs), 11, 3) # Smooth the data
 if False:
     mask = np.zeros(len(snaps), dtype=bool)
     mask[-2:] = True
-    # n_start = 8
-    # mask = (snaps >= n_start*189//9) & (snaps <= (n_start+1)*189//9)
     snaps = snaps[mask]
     R_virs = R_virs[mask]
     zs = zs[mask]
