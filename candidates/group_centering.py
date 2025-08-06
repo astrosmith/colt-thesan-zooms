@@ -226,6 +226,7 @@ for i in progressbar(range(n_snaps)):
 
 with h5py.File(f'{colt_dir}_tree/center.hdf5', 'w') as f:
     # Save the new COM
-    f.create_dataset('TargetPos', data=com_arepo_box)  # New center of mass [ckpc/h]
+    g = f.create_group('Unsmoothed')
+    g.create_dataset('TargetPos', data=com_arepo_box)  # New center of mass [ckpc/h]
     f.create_dataset('Redshifts', data=zs)  # Redshift of the snapshot
-    f['TargetPos'].attrs['units'] = b'ckpc/h'
+    g['TargetPos'].attrs['units'] = b'ckpc/h'

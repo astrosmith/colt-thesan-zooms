@@ -1,6 +1,5 @@
 import numpy as np
 import h5py, os, errno, platform
-from scipy.signal import savgol_filter
 
 # Configurable global variables
 if platform.system() == 'Darwin':
@@ -19,8 +18,8 @@ if __name__ == '__main__':
 
 # Derived global variables
 cand_dir = f'{zoom_dir}/{sim}/postprocessing/candidates'
-# colt_dir = f'{zoom_dir}-COLT/{sim}/ics'
-colt_dir = f'/orcd/data/mvogelsb/005/Lab/Thesan-Zooms-COLT/{sim}/ics'
+colt_dir = f'{zoom_dir}-COLT/{sim}/ics'
+# colt_dir = f'/orcd/data/mvogelsb/005/Lab/Thesan-Zooms-COLT/{sim}/ics'
 states = 'states-no-UVB' # States prefix
 copy_states = True # Copy ionization states to the new colt file
 os.makedirs(f'{colt_dir}_tree', exist_ok=True) # Ensure the new colt directory exists
@@ -50,6 +49,7 @@ def progressbar(it, prefix="", size=100, file=sys.stdout):
     file.flush()
 
 f_vir = 4.  # Virial radius extraction factor
+use_smoothed = True  # Use smoothed versions
 gas_fields = ['D', 'D_Si', 'SFR', 'T_dust', 'X', 'Y', 'Z', 'Z_C', 'Z_Fe', 'Z_Mg', 'Z_N', 'Z_Ne', 'Z_O', 'Z_S', 'Z_Si',
               'e_int', 'is_HR', 'rho', 'v', 'x_H2', 'x_HI', 'x_HeI', 'x_HeII', 'x_e', 'id', 'group_id', 'subhalo_id']
 state_fields = ['G_ion', 'x_e', 'x_HI', 'x_HII', 'x_HeI', 'x_HeII',
@@ -69,30 +69,37 @@ print(f'Extracting {colt_dir} ...')
 tree_file = f'/orcd/data/mvogelsb/004/Thesan-Zooms/analyze/trees/{sim}/tree.hdf5'
 with h5py.File(tree_file, 'r') as f:
     snaps = f['Snapshots'][:] # Snapshots in the tree
-    group_ids = f['Group']['GroupID'][:] # Group ID in the tree
-    subhalo_ids = f['Subhalo']['SubhaloID'][:] # Subhalo ID in the tree
-    R_virs = f['Group']['Group_R_Crit200'][:] # Group virial radii in the tree [ckpc/h]
     zs = f['Redshifts'][:] # Redshifts in the tree
+    if not use_smoothed:
+        group_ids = f['Group']['GroupID'][:] # Group ID in the tree
+        subhalo_ids = f['Subhalo']['SubhaloID'][:] # Subhalo ID in the tree
+        R_virs = f['Group']['Group_R_Crit200'][:] # Group virial radii in the tree [ckpc/h]
+    else:
+        with h5py.File(colt_dir + '_tree/center.hdf5', 'r') as sf:
+            g = sf['Smoothed']
+            r_virs = g['TargetPos'][:]  # Use smoothed versions
+            R_virs = g['R_Crit200'][:]
 
-zs_smooth, R_virs = savgol_filter((zs, R_virs), 11, 3) # Smooth the data
 if False:
-    #mask = np.zeros(len(snaps), dtype=bool)
-    #mask[-2] = True
-    1/0
+    mask = np.zeros(len(snaps), dtype=bool)
+    mask[-2] = True
     # n_start = 8
     # mask = (snaps >= n_start*189//9) & (snaps <= (n_start+1)*189//9)
     snaps = snaps[mask]
-    R_virs = R_virs[mask]
     zs = zs[mask]
-    group_ids = group_ids[mask]
-    subhalo_ids = subhalo_ids[mask]
+    r_virs = r_virs[mask,:]
+    R_virs = R_virs[mask]
+    if not use_smoothed:
+        group_ids = group_ids[mask]
+        subhalo_ids = subhalo_ids[mask]
 n_snaps = len(snaps)
-group_indices = np.empty(n_snaps, dtype=np.int32) # Group index in the candidates
-subhalo_indices = np.empty(n_snaps, dtype=np.int32) # Subhalo index in the candidates
 r_HRs = np.empty([n_snaps, 3]) # High-resolution center of mass positions [cm]
-r_virs = np.empty([n_snaps, 3]) # Group positions [cm]
 r_HRs.fill(np.nan) # Fill with NaNs
-r_virs.fill(np.nan)
+if not use_smoothed:
+    group_indices = np.empty(n_snaps, dtype=np.int32) # Group index in the candidates
+    subhalo_indices = np.empty(n_snaps, dtype=np.int32) # Subhalo index in the candidates
+    r_virs = np.empty([n_snaps, 3]) # Group positions [cm]
+    r_virs.fill(np.nan)
 failed_states = [] # List of snapshots where ionization states failed to copy
 for i in progressbar(range(n_snaps)):
     snap = snaps[i]
@@ -112,12 +119,15 @@ for i in progressbar(range(n_snaps)):
         UnitMass_in_g = header['UnitMass_in_g']
         UnitVelocity_in_cm_per_s = header['UnitVelocity_in_cm_per_s']
         length_to_cgs = a * UnitLength_in_cm / h
-        cand_group_ids = f['Group']['GroupID'][:] # Group ID in the candidates
-        cand_subhalo_ids = f['Subhalo']['SubhaloID'][:] # Subhalo ID in the candidates
-        group_indices[i] = np.where(cand_group_ids == group_ids[i])[0][0] # Group index in the candidates
-        subhalo_indices[i] = np.where(cand_subhalo_ids == subhalo_ids[i])[0][0] # Subhalo index in the candidates
         r_HRs[i] = length_to_cgs * header['PosHR'] # High-resolution center of mass position [cm]
-        r_virs[i] = length_to_cgs * f['Group']['GroupPos'][group_indices[i]] - r_HRs[i] # Group position [cm]
+        if use_smoothed:
+            r_virs[i] = length_to_cgs * r_virs[i] - r_HRs[i] # Relative group position [cm]
+        else:
+            cand_group_ids = f['Group']['GroupID'][:] # Group ID in the candidates
+            cand_subhalo_ids = f['Subhalo']['SubhaloID'][:] # Subhalo ID in the candidates
+            group_indices[i] = np.where(cand_group_ids == group_ids[i])[0][0] # Group index in the candidates
+            subhalo_indices[i] = np.where(cand_subhalo_ids == subhalo_ids[i])[0][0] # Subhalo index in the candidates
+            r_virs[i] = length_to_cgs * f['Group']['GroupPos'][group_indices[i]] - r_HRs[i] # Relative group position [cm]
         R_virs[i] = length_to_cgs * R_virs[i] # Virial radius unit conversion [cm]
 
     with h5py.File(colt_file, 'r') as f, h5py.File(new_file, 'w') as g:

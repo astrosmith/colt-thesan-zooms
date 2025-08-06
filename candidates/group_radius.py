@@ -88,14 +88,13 @@ tree_file = f'{zoom_dir}/{sim}/output/tree.hdf5'
 
 with h5py.File(colt_dir + '_tree/center.hdf5', 'r') as f:
     redshift = f['Redshifts'][:]
-    TargetPos = f['TargetPos'][:]
+    TargetPos = f['Unsmoothed/TargetPos'][:]
     SmoothPos = smooth_pos(redshift, TargetPos) # Smooth the data
 
 with h5py.File(tree_file, 'r') as f:
     snaps = f['Snapshots'][:] # Snapshots in the tree
     group_ids = f['Group']['GroupID'][:] # Group ID in the tree
     subhalo_ids = f['Subhalo']['SubhaloID'][:] # Subhalo ID in the tree
-    R_virs = f['Group']['Group_R_Crit200'][:] # Group virial radii in the tree [ckpc/h]
     zs = f['Redshifts'][:] # Redshifts in the tree
 
 if False:
@@ -104,7 +103,6 @@ if False:
     # n_start = 8
     # mask = (snaps >= n_start*189//9) & (snaps <= (n_start+1)*189//9)
     snaps = snaps[mask]
-    R_virs = R_virs[mask]
     zs = zs[mask]
     group_ids = group_ids[mask]
     subhalo_ids = subhalo_ids[mask]
@@ -151,8 +149,7 @@ for i in progressbar(range(n_snaps)):
         PosHR = header['PosHR'] # High-resolution center of mass position [BoxUnits]
         r_HRs[i] = length_to_cgs * header['PosHR'] # High-resolution center of mass position [cm]
         r_virs[i] = length_to_cgs * f['Group']['GroupPos'][group_indices[i]] - r_HRs[i] # Group position [cm]
-        R_virs[i] = length_to_cgs * R_virs[i] # Virial radius unit conversion [cm]
-        GroupPos = f['Group']['GroupPos'][group_indices[i]] # High-resolution center of mass position [BoxUnits]
+        # GroupPos = f['Group']['GroupPos'][group_indices[i]] # High-resolution center of mass position [BoxUnits]
         # SmoothPos[i] = GroupPos  # Remove comment to verify if the calculated R_vir goes to the one saved in tree file
 
     # Certain Derived Quantities
@@ -269,13 +266,25 @@ for i in progressbar(range(n_snaps)):
 
 print('Writing to ' + colt_dir + '_tree/center.hdf5')
 with h5py.File(colt_dir + '_tree/center.hdf5', 'r+') as f:
-    for key in ['TargetPosSmooth', 'R_Crit200_Smooth', 'M_vir', 'M_gas', 'M_stars']:
-        if key in f.keys(): del f[key]  # Remove previous data
-    f.create_dataset(name='TargetPosSmooth', data=SmoothPos)
-    f.create_dataset(name='R_Crit200_Smooth', data=halo_R_vir)
-    f['R_Crit200_Smooth'].attrs['units'] = b'ckpc/h'
-    f.create_dataset(name='M_vir', data=halo_M_vir*mass_to_msun)
-    f.create_dataset(name='M_gas', data=halo_M_gas*mass_to_msun)
-    f.create_dataset(name='M_stars', data=halo_M_stars*mass_to_msun)
-    for key in ['M_vir', 'M_gas', 'M_stars']:
-        f[key].attrs['units'] = b'Msun'
+    ug = f.create_group('Unsmoothed') if 'Unsmoothed' not in f.keys() else f['Unsmoothed']
+    us = f.create_group('Smoothed') if 'Smoothed' not in f.keys() else f['Smoothed']
+    for g in [ug, us]:
+        for key in ['TargetPos', 'R_Crit200', 'M_vir', 'M_gas', 'M_stars']:
+            if key in g.keys(): del g[key]  # Remove previous data
+    # Add unsmoothed data
+    ug.create_dataset(name='R_Crit200', data=halo_R_vir)
+    ug.create_dataset(name='M_vir', data=halo_M_vir*mass_to_msun)
+    ug.create_dataset(name='M_gas', data=halo_M_gas*mass_to_msun)
+    ug.create_dataset(name='M_stars', data=halo_M_stars*mass_to_msun)
+    # Add smoothed data
+    halo_R_vir = smooth(redshift, halo_R_vir)
+    halo_R_vir[halo_R_vir < 10.] = 10.  # Minimum radius
+    us.create_dataset(name='TargetPos', data=SmoothPos)
+    us.create_dataset(name='R_Crit200', data=halo_R_vir)
+    us.create_dataset(name='M_vir', data=smooth(redshift, halo_M_vir*mass_to_msun))
+    us.create_dataset(name='M_gas', data=smooth(redshift, halo_M_gas*mass_to_msun))
+    us.create_dataset(name='M_stars', data=smooth(redshift, halo_M_stars*mass_to_msun))
+    for g in [ug, us]:
+        g['R_Crit200'].attrs['units'] = b'ckpc/h'
+        for key in ['M_vir', 'M_gas', 'M_stars']:
+            g[key].attrs['units'] = b'Msun'
