@@ -1,5 +1,5 @@
 import numpy as np
-import h5py, os, errno, platform
+import h5py, os, errno, platform, subprocess
 from scipy.interpolate import interp1d
 from astropy.cosmology import FlatLambdaCDM
 
@@ -71,6 +71,11 @@ def silentremove(filename):
     except OSError as e: # this would be "except OSError, e:" before Python 2.6
         if e.errno != errno.ENOENT: # errno.ENOENT = no such file or directory
             raise # re-raise exception if a different error occurred
+
+def make_softlink(src, dst):
+    if os.path.exists(dst) or os.path.islink(dst):
+        os.remove(dst)  # Remove existing file or link
+    subprocess.run(['ln', '-s', src, dst], check=True)
 
 def progressbar(it, prefix="", size=100, file=sys.stdout):
     count = len(it)
@@ -239,6 +244,14 @@ def interpolate_colt_movie_multi(c1, c2, fields, n_split=4):
     files_added = []
     if len(file_count) == 0:
         for i in range(0, n_split + 1):
+            if i == 0 :
+                make_softlink(c1.filename, f'{ics_movie_dir}/colt_{i:03d}.hdf5')
+                files_added.append(i)
+                continue
+            elif i == n_split:
+                make_softlink(c2.filename, f'{ics_movie_dir}/colt_{i:03d}.hdf5')
+                files_added.append(i)
+                continue
             with h5py.File(f'{ics_movie_dir}/colt_{i:03d}.hdf5', 'w') as f:
                 f.attrs['n_cells'] = np.int32(len(id_collective))  # Number of cells
                 f.attrs['n_stars'] = np.int32(len(id_collective_star) if id_collective_star is not None else 0)  # Number of star particles
@@ -263,6 +276,10 @@ def interpolate_colt_movie_multi(c1, c2, fields, n_split=4):
         for i in range(0, n_split + 1):
             if i == 0:
                 continue  # Skip first frame if continuing
+            elif i == n_split:
+                make_softlink(c2.filename, f'{ics_movie_dir}/colt_{last_file_no + i :03d}.hdf5')
+                files_added.append(last_file_no + i)
+                continue
             with h5py.File(f'{ics_movie_dir}/colt_{last_file_no + i :03d}.hdf5', 'w') as f:
                 f.attrs['n_cells'] = np.int32(len(id_collective))  # Number of cells
                 f.attrs['n_stars'] = np.int32(len(id_collective_star) if id_collective_star is not None else 0)  # Number of star particles
