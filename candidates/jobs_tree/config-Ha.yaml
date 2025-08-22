@@ -1,0 +1,98 @@
+# COLT config file
+--- !mcrt                     # Monte Carlo radiative transfer module
+
+init_dir: ics_tree            # Initial conditions directory (default: "ics")
+init_base: colt               # Initial conditions base name (optional)
+output_dir: output_tree       # Output directory name (default: "output")
+# output_dir: output_tree_fdust_10 # Output directory name (default: "output")
+# f_dust: 0.1                   # Fraction of metals locked in dust grains
+# output_dir: output_tree_fdust_20 # Output directory name (default: "output")
+# f_dust: 0.2                   # Fraction of metals locked in dust grains
+# output_dir: output_tree_fdust_40 # Output directory name (default: "output")
+# f_dust: 0.4                   # Fraction of metals locked in dust grains
+output_base: Ha               # Output file base name (default: "colt")
+abundances_base: states-no-UVB # Output a separate abundances file
+
+# output_cells: true            # Output cell emission and escape
+
+# output_map: true       # Output escape fraction maps
+# output_map2: true      # Output escape fraction maps (and statistics)
+# output_freq2_map: true # Output frequency^2 group maps
+# n_side_map: 5              # Healpix resolution for group maps
+# output_flux_map: true  # Output spectral flux group maps
+# n_side_flux: 3         # Healpix resolution for group flux maps
+# map_freq_min: -500     # Frequency minimum [km/s]
+# map_freq_max: 500      # Frequency maximum [km/s]
+# n_map_bins: 100        # Number of frequency bins for group flux maps
+# output_flux_avg_map: true  # Output angle-averaged spectral flux
+# freq_min: -500         # Frequency minimum [km/s]
+# freq_max: 500          # Frequency maximum [km/s]
+# n_bins: 100            # Number of frequency bins for group flux avgs
+# output_radial_map: true # Output radial surface brightness group maps
+# n_side_radial: 3       # Healpix resolution for group radial maps
+# map_radius_kpc: 500    # Radial group maps radius [kpc]
+# min_map_radius_pc: 0.5 # Minimum radial distance for group maps [pc]
+# n_map_pixels: 120      # Number of radial pixels for group radial maps
+# output_radial_avg: true # Output angle-averaged radial surface brightness
+# radius_kpc: 500        # Radial group avgs radius [kpc]
+# min_radius_pc: 0.5     # Minimum radial distance for group avgs [pc]
+# n_pixels: 120          # Number of radial pixels for group radial avgs
+# radial_flows:          # Group flow statistics
+#   radial_logspace_bbox: [-3, 1, 41] # Logarithmically spaced radial bins [Rvir]
+# focus_radial_on_emission: true
+# shift_radial_on_emission: true
+
+# Information about sources
+cosmological: true            # Indicates whether the simulation is cosmological
+recombinations: true          # Include recombination emission
+T_floor_rec: 7000             # Apply a recombination temperature floor [K]
+collisions: true              # Include collisional excitation
+# collisions_limiter: 10        # Limited by photoheating rate
+# output_collisions: true       # Output collisional excitation data
+# dust_model: SMC               # Dust model: SMC, MW, etc.
+dust_model_graphite: /home/arsmith/colt/tables/graphite_dust.hdf5
+dust_model_silicate: /home/arsmith/colt/tables/silicate_dust.hdf5
+dust_model_PAH: /home/arsmith/colt/tables/PAH_dust.hdf5
+f_PAH: 0.01                   # Fraction of carbonaceous dust in PAHs
+line: Balmer-alpha            # Name of the line (default "Lyman-alpha")
+v_turb_kms: 10                # Microturbulent velocity [km/s]
+output_mcrt_emission: true    # Output intrinsic emission without transport (mcrt)
+# output_mcrt_attenuation: true # Output attenuated emission without scattering (mcrt)
+# output_proj_emission: true    # Output intrinsic emission without transport (proj)
+# output_proj_attenuation: true # Output attenuated emission without scattering (proj)
+# pixel_rtol: 1e-2              # Relative tolerence per pixel
+
+# n_photons: 1000000            # Number of photon packets (10^6)
+# n_photons: 10000000           # Number of photon packets (10^7)
+n_photons: 100000000          # Number of photon packets (10^8)
+# n_photons: 2000000000         # Number of photon packets (10^9)
+j_exp: 0.75                   # Luminosity boosting exponent
+
+# Information about escape
+output_photons: false         # Output escaped photon packets
+# photon_file: photons          # Output a separate photon file
+spherical_escape: true        # Photons escape from a sphere
+escape_radius_bbox: 0.75      # Escape radius relative to the bbox
+emission_radius_bbox: 0.5     # Emission radius relative to the bbox
+
+# Information about cameras
+freq_range: [-500, 500]       # Camera frequency range [km/s]
+n_bins: 500                   # Number of frequency bins
+image_radius_bbox: 0.5        # Image radius relative to the bbox (1 Rvir)
+n_pixels: 512                 # Number of image pixels
+poly_cameras: tetrahedron     # Polygon-based camera configuration
+# n_exp: 0                      # Camera healpix directions exponent
+# cameras:                      # Add camera directions manually
+#   - [0,0,1]
+#output_cubes: true            # Surface brightness cubes (defualt: false)
+output_freq_stds: true        # Output frequency standard deviations (default: false)
+output_freq2_images: true     # Frequency moment images (default: false)
+
+# focus_cameras_on_emission: true      # Focus cameras on emission
+radial_image_radius_bbox: 0.75       # Radial image radius [bounding box]
+n_radial_pixels: 512                 # Number of radial image pixels
+# radial_pixel_arcsec: 0.01            # Observed angular width of each radial image pixel [arcseconds]
+output_radial_images: true           # Output radial surface brightness images [erg/s/cm^2/arcsec^2]
+output_radial_cubes: true            # Output radial spectral data cubes [erg/s/cm^2/arcsec^2/angstrom]
+
+#verbose: true                 # Verbose output for tests and debugging
