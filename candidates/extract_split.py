@@ -139,6 +139,7 @@ def interpolate_colt_movie_multi(c1, c2, gas_fields, star_fields=None, n_split=4
             # For ids missing in c1, fill data1_full with data2_full values (keep constant)
             missing_mask_1 = np.arange(len(id_collective)) >= len(id1)
             data1_full[missing_mask_1] = data2_full[missing_mask_1]
+            interp_data_dict[field] = interpolate_field(data1_full, data2_full, n_split=n_split)
         elif field == 'is_HR':
             interp = np.logical_and(data1_full, data2_full)
             interp_data = np.zeros((n_split+1, data1_full.shape[0]), dtype=bool)
@@ -191,6 +192,7 @@ def interpolate_colt_movie_multi(c1, c2, gas_fields, star_fields=None, n_split=4
                     # For ids missing in c1, fill data1_full with data2_full values (keep constant)
                     missing_mask_1 = np.arange(len(id_collective_star)) >= len(idstar1)
                     data1_full[missing_mask_1] = data2_full[missing_mask_1]
+                    interp_data_dict[field] = interpolate_field(data1_full, data2_full, n_split=n_split)
                 elif field == 'age_star':
                     # Preallocate interpolated array (frames along axis 0)
                     interp_data = np.zeros((n_split + 1, data1_full.shape[0]), dtype=data1.dtype)
