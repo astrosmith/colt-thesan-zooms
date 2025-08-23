@@ -1,0 +1,142 @@
+# COLT config file
+--- !mcrt                     # Monte Carlo radiative transfer module
+
+init_dir: ics                 # Initial conditions directory (default: "ics")
+init_base: colt               # Initial conditions base name (optional)
+output_dir: output            # Output directory name (default: "output")
+# output_dir: output_fdust_10   # Output directory name (default: "output")
+# f_dust: 0.1                   # Fraction of metals locked in dust grains
+# output_dir: output_fdust_20   # Output directory name (default: "output")
+# f_dust: 0.2                   # Fraction of metals locked in dust grains
+# output_dir: output_fdust_40   # Output directory name (default: "output")
+# f_dust: 0.4                   # Fraction of metals locked in dust grains
+output_base: halo-OII-3727-3730 # Output file base name (default: "colt")
+abundances_base: states-no-UVB # Output a separate abundances file
+
+# output_cells: true            # Output cell emission and escape
+
+# Group information
+group_base: halo              # Group catalog base name (default: init_base)
+select_group: true            # Specified halo is a group
+use_all_groups: true          # Use all groups in the catalog file
+use_group_catalog: true       # Use group catalog file
+filter_group_catalog: true    # Filter group catalog file
+focus_groups_on_emission: true # Center of luminosity position and velocity
+# output_groups: true           # Output group statistics
+output_groups_obs: true       # Output group statistics for observations
+output_groups_vir: true       # Output group statistics for virial quantities
+output_groups_gal: true       # Output group statistics for galaxy quantities
+# output_map_groups: true       # Output escape fraction maps
+output_map2_groups: true      # Output escape fraction maps (and statistics)
+output_freq2_map_groups: true # Output frequency^2 group maps
+n_side_groups: 5              # Healpix resolution for group maps
+# output_flux_map_groups: true  # Output spectral flux group maps
+# n_side_flux_groups: 3         # Healpix resolution for group flux maps
+# map_freq_min_groups: -500     # Frequency minimum [km/s]
+# map_freq_max_groups: 500      # Frequency maximum [km/s]
+# n_map_bins_groups: 100        # Number of frequency bins for group flux maps
+output_flux_avg_groups: true  # Output angle-averaged spectral flux
+freq_min_groups: -500         # Frequency minimum [km/s]
+freq_max_groups: 500          # Frequency maximum [km/s]
+n_bins_groups: 100            # Number of frequency bins for group flux avgs
+# output_radial_map_groups: true # Output radial surface brightness group maps
+# n_side_radial_groups: 3       # Healpix resolution for group radial maps
+# map_radius_kpc_groups: 500    # Radial group maps radius [kpc]
+# min_map_radius_pc_groups: 0.5 # Minimum radial distance for group maps [pc]
+# n_map_pixels_groups: 120      # Number of radial pixels for group radial maps
+output_radial_avg_groups: true # Output angle-averaged radial surface brightness
+radius_kpc_groups: 500        # Radial group avgs radius [kpc]
+min_radius_pc_groups: 0.5     # Minimum radial distance for group avgs [pc]
+n_pixels_groups: 120          # Number of radial pixels for group radial avgs
+group_flows:                  # Group flow statistics
+  radial_logspace_Rvir: [-3, 1, 41] # Logarithmically spaced radial bins [Rvir]
+
+# Subhalo information
+subhalo_base: halo            # Subhalo catalog base name (default: init_base)
+# select_subhalo: true          # Specified halo is a subhalo
+use_all_subhalos: true        # Use all subhalos in the catalog file
+use_subhalo_catalog: true     # Use subhalo catalog file
+# filter_subhalo_catalog: true  # Filter subhalo catalog file
+focus_subhalos_on_emission: true # Center of luminosity position and velocity
+# output_subhalos: true         # Output subhalo statistics
+output_subhalos_obs: true     # Output subhalo statistics for observations
+output_subhalos_vir: true     # Output subhalo statistics for virial quantities
+output_subhalos_gal: true     # Output subhalo statistics for galaxy quantities
+# output_map_subhalos: true     # Output escape fraction maps
+output_map2_subhalos: true    # Output escape fraction maps (and statistics)
+output_freq2_map_subhalos: true # Output frequency^2 subhalo maps
+n_side_subhalos: 5            # Healpix resolution for subhalo maps
+# output_flux_map_subhalos: true # Output spectral flux subhalo maps
+# n_side_flux_subhalos: 3       # Healpix resolution for subhalo flux maps
+# map_freq_min_subhalos: -500   # Frequency minimum [km/s]
+# map_freq_max_subhalos: 500    # Frequency maximum [km/s]
+# n_map_bins_subhalos: 100      # Number of frequency bins for subhalo flux maps
+output_flux_avg_subhalos: true # Output angle-averaged spectral flux
+freq_min_subhalos: -500       # Frequency minimum [km/s]
+freq_max_subhalos: 500        # Frequency maximum [km/s]
+n_bins_subhalos: 100          # Number of frequency bins for subhalo flux avgs
+# output_radial_map_subhalos: true # Output radial surface brightness subhalo maps
+# n_side_radial_subhalos: 3     # Healpix resolution for subhalo radial maps
+# map_radius_kpc_subhalos: 500  # Radial subhalo maps radius [kpc]
+# min_map_radius_pc_subhalos: 0.5 # Minimum radial distance for subhalo maps [pc]
+# n_map_pixels_subhalos: 120    # Number of radial pixels for subhalo radial maps
+output_radial_avg_subhalos: true # Output angle-averaged radial surface brightness
+radius_kpc_subhalos: 500      # Radial subhalo avgs radius [kpc]
+min_radius_pc_subhalos: 0.5   # Minimum radial distance for subhalo avgs [pc]
+n_pixels_subhalos: 120        # Number of radial pixels for subhalo radial avgs
+subhalo_flows:                # Subhalo flow statistics
+  radial_logspace_Rvir: [-3, 1, 41] # Logarithmically spaced radial bins [Rvir]
+
+# focus_radial_on_emission: true
+# shift_radial_on_emission: true
+
+# Information about sources
+cosmological: true            # Indicates whether the simulation is cosmological
+recombinations: false         # Include recombination emission
+# T_floor_rec: 7000             # Apply a recombination temperature floor [K]
+collisions: true              # Include collisional excitation
+# collisions_limiter: 10        # Limited by photoheating rate
+# output_collisions: true       # Output collisional excitation data
+dust_model: SMC               # Dust model: SMC, MW, etc.
+# dust_model_graphite: /home/arsmith/colt/tables/graphite_dust.hdf5
+# dust_model_silicate: /home/arsmith/colt/tables/silicate_dust.hdf5
+# dust_model_PAH: /home/arsmith/colt/tables/PAH_dust.hdf5
+# f_PAH: 0.01                   # Fraction of carbonaceous dust in PAHs
+line: OII-3727-3730           # Name of the line (default "Lyman-alpha")
+v_turb_kms: 10                # Microturbulent velocity [km/s]
+# output_mcrt_emission: true    # Output intrinsic emission without transport (mcrt)
+# output_mcrt_attenuation: true # Output attenuated emission without scattering (mcrt)
+# output_proj_emission: true    # Output intrinsic emission without transport (proj)
+# output_proj_attenuation: true # Output attenuated emission without scattering (proj)
+# pixel_rtol: 1e-2              # Relative tolerence per pixel
+
+n_photons: 10000            # Number of photon packets (10^4)
+# n_photons: 1000000            # Number of photon packets (10^6)
+# n_photons: 10000000           # Number of photon packets (10^7)
+# n_photons: 100000000          # Number of photon packets (10^8)
+# n_photons: 2000000000         # Number of photon packets (10^9)
+j_exp: 0.75                   # Luminosity boosting exponent
+max_streaming_kpc: 50         # Maximum free-streaming distance [kpc]
+
+# Information about escape
+output_photons: false         # Output escaped photon packets
+# photon_file: photons          # Output a separate photon file
+#spherical_escape: true        # Photons escape from a sphere
+#escape_radius_Rvir: 1         # Escape radius relative to the virial radius
+#emission_radius_Rvir: 1       # Emission radius relative to the virial radius
+
+# Information about cameras
+freq_min: -500                # Frequency minimum [km/s]
+freq_max: 500                 # Frequency maximum [km/s]
+n_bins: 500                   # Number of frequency bins
+# image_radius_Rvir: 1          # Image radius relative to the virial radius
+# image_radius_bbox: 0.5        # Image radius relative to the bbox
+# n_pixels: 512                 # Number of image pixels
+# n_exp: 0                      # Camera healpix directions exponent
+# cameras:                      # Add camera directions manually
+#   - [0,0,1]
+#output_cubes: true            # Surface brightness cubes (defualt: false)
+# output_freq_stds: true        # Output frequency standard deviations (default: false)
+# output_freq2_images: true     # Frequency moment images (default: false)
+
+#verbose: true                 # Verbose output for tests and debugging
