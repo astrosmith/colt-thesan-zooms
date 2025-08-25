@@ -1,0 +1,106 @@
+# COLT config file
+--- !projections              # Ray-based projections module
+
+init_dir: ics_movie           # Initial conditions directory (default: "ics")
+init_base: colt               # Initial conditions base name (optional)
+output_dir: output_movie      # Output directory name (default: "output")
+output_base: proj_all         # Output file base name (default: "colt")
+abundances_base: states-no-UVB # Output a separate abundances file
+snap_padding: 4               # Leading zeros for snapshot number formatting
+
+cosmological: true            # Indicates whether the simulation is cosmological
+perspective: true             # Perspective camera projections
+stepback_factor: 0.5          # Perspective stepback factor (relative to radius)
+override_volume: true         # Override projection volume normalization
+avoid_edges: false            # Avoid ray-tracing through edge cells
+# adaptive: true                # Adaptive convergence projections
+# pixel_rtol: 1e-3              # Relative tolerence per pixel
+
+field_weight_pairs:
+  - [rho, avg]
+  - [rho2, avg]
+  - [Z, mass]
+  - [D, mass]
+  - [T, mass]
+  - [x_HI, n_H]
+  - [x_HeI, n_He]
+  - [x_HeII, n_He]
+  - [x_CI, n_C]
+  - [x_CII, n_C]
+  - [x_CIII, n_C]
+  - [x_CIV, n_C]
+  - [x_NI, n_N]
+  - [x_NII, n_N]
+  - [x_NIII, n_N]
+  - [x_NIV, n_N]
+  - [x_NV, n_N]
+  - [x_OI, n_O]
+  - [x_OII, n_O]
+  - [x_OIII, n_O]
+  - [x_OIV, n_O]
+  - [x_NeI, n_Ne]
+  - [x_NeII, n_Ne]
+  - [x_NeIII, n_Ne]
+  - [x_NeIV, n_Ne]
+  - [x_MgI, n_Mg]
+  - [x_MgII, n_Mg]
+  - [x_MgIII, n_Mg]
+  - [x_SiI, n_Si]
+  - [x_SiII, n_Si]
+  - [x_SiIII, n_Si]
+  - [x_SiIV, n_Si]
+  - [x_SI, n_S]
+  - [x_SII, n_S]
+  - [x_SIII, n_S]
+  - [x_SIV, n_S]
+  - [x_SV, n_S]
+  - [x_SVI, n_S]
+  - [x_FeI, n_Fe]
+  - [x_FeII, n_Fe]
+  - [x_FeIII, n_Fe]
+  - [x_FeIV, n_Fe]
+  - [x_FeV, n_Fe]
+  - [x_FeVI, n_Fe]
+  # - [SFR, sum]
+  - [T_dust, mass]
+  - [v2, mass]
+  - [v2_LOS, mass]
+  - [v_LOS, mass]
+  - [v_x, mass]
+  - [v_y, mass]
+
+#fade_in_length_bbox: 1        # Fade in length relative to the bbox
+#fade_in_length_bbox: 0.4     # Fade in length relative to the bbox
+fade_in_length_bbox: 0        # Fade in length relative to the bbox
+#fade_in_width_bbox: 0.25      # Fade in width relative to the bbox
+fade_in_width_bbox: 0.25      # Fade in width relative to the bbox
+fade_out_length_bbox: 1       # Fade in length relative to the bbox
+fade_out_width_bbox: 0.25     # Fade in width relative to the bbox
+#image_radius_bbox: 1          # Image radius relative to the bbox
+#image_radius_bbox: 0.25       # Image radius relative to the bbox
+image_radii_bbox: [0.45,0.25] # Image radius relative to the bbox
+proj_radius_bbox: 0.6         # Projection depth relative to the bbox
+#image_radius_bbox: 4.         # Image radius relative to the bbox
+#proj_radius_bbox: 16.         # Projection depth relative to the bbox
+proj_sphere: true             # Project through a spherical volume
+# nx_pixels: 1280                 #Number of image pixels
+# ny_pixels: 720
+# nx_pixels: 3840               # Number of image pixels
+# ny_pixels: 2160
+nx_pixels: 640                 #Number of image pixels
+ny_pixels: 360
+# n_pixels: 3840                # Number of image pixels
+#n_pixels: 1280                # Number of image pixels
+#n_pixels: 2160                # Number of image pixels
+camera_north: [0,0,1]         # Camera north orientation
+# camera_north: [0,0,0]         # Camera north orientation
+# n_rot: 360                    # Add camera directions manually
+# phi_start: 0                  # Starting azimuthal angle [deg]
+# phi_end: 360                  # Ending azimuthal angle [deg]
+n_rot: 4                      # Add camera directions manually
+phi_start: 0                  # Starting azimuthal angle [deg]
+phi_end: 2                    # Ending azimuthal angle [deg]
+rotate_with_snaps: true       # Flag to offset rotations by the snapshot number
+rotation_axis: [0,0,1]
+
+# verbose: true                 # Verbose output for tests and debugging
