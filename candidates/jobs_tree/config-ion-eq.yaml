@@ -1,9 +1,9 @@
 # COLT config file
 --- !ionization               # MCRT ionization equilibrium module
 
-init_dir: ics                 # Initial conditions directory (default: "ics")
-init_base: colt               # Initial conditions base name (optional)
-output_dir: output            # Output directory name (default: "output")
+init_dir: ics_tree              # Initial conditions directory (default: "ics")
+init_base: colt                 # Initial conditions base name (optional)
+output_dir: output_tree         # Output directory name (default: "output")
 # output_dir: output_fdust_10   # Output directory name (default: "output")
 # f_dust: 0.1                   # Fraction of metals locked in dust grains
 # output_dir: output_fdust_20   # Output directory name (default: "output")
@@ -18,41 +18,41 @@ output_ion_stats_H: true      # Ionization statistics for hydrogen
 output_ion_stats_He: true     # Ionization statistics for helium
 output_ion_stats_dust: true   # Ionization statistics for dust
 
-# Group information
-group_base: halo              # Group catalog base name (default: init_base)
-select_group: true            # Specified halo is a group
-use_all_groups: true          # Use all groups in the catalog file
-use_group_catalog: true       # Use group catalog file
-filter_group_catalog: true    # Filter group catalog file
-focus_groups_on_emission: true # Center of luminosity position and velocity
-# output_groups: true           # Output group statistics
-output_groups_obs: true       # Output group statistics for observations
-output_groups_vir: true       # Output group statistics for virial quantities
-output_groups_gal: true       # Output group statistics for galaxy quantities
-# output_map_groups: true       # Output escape fraction maps
-output_map2_groups: true      # Output escape fraction maps (and statistics)
-n_side_groups: 5              # Healpix resolution for group maps
-group_flows:                  # Group flow statistics
-  radial_logspace_Rvir: [-3, 1, 41] # Logarithmically spaced radial bins [Rvir]
-  freq_edge_names: [HI, HeI, HeII, max] # Coarse frequency bin edge names
+# # Group information
+# group_base: halo              # Group catalog base name (default: init_base)
+# select_group: true            # Specified halo is a group
+# use_all_groups: true          # Use all groups in the catalog file
+# use_group_catalog: true       # Use group catalog file
+# filter_group_catalog: true    # Filter group catalog file
+# focus_groups_on_emission: true # Center of luminosity position and velocity
+# # output_groups: true           # Output group statistics
+# output_groups_obs: true       # Output group statistics for observations
+# output_groups_vir: true       # Output group statistics for virial quantities
+# output_groups_gal: true       # Output group statistics for galaxy quantities
+# # output_map_groups: true       # Output escape fraction maps
+# output_map2_groups: true      # Output escape fraction maps (and statistics)
+# n_side_groups: 5              # Healpix resolution for group maps
+# group_flows:                  # Group flow statistics
+#   radial_logspace_Rvir: [-3, 1, 41] # Logarithmically spaced radial bins [Rvir]
+#   freq_edge_names: [HI, HeI, HeII, max] # Coarse frequency bin edge names
 
-# Subhalo information
-subhalo_base: halo            # Subhalo catalog base name (default: init_base)
-# select_subhalo: true          # Specified halo is a subhalo
-use_all_subhalos: true        # Use all subhalos in the catalog file
-use_subhalo_catalog: true     # Use subhalo catalog file
-# filter_subhalo_catalog: true  # Filter subhalo catalog file
-focus_subhalos_on_emission: true # Center of luminosity position and velocity
-# output_subhalos: true         # Output subhalo statistics
-output_subhalos_obs: true     # Output subhalo statistics for observations
-output_subhalos_vir: true     # Output subhalo statistics for virial quantities
-output_subhalos_gal: true     # Output subhalo statistics for galaxy quantities
-# output_map_subhalos: true     # Output escape fraction maps
-output_map2_subhalos: true    # Output escape fraction maps (and statistics)
-n_side_subhalos: 5            # Healpix resolution for subhalo maps
-subhalo_flows:                # Subhalo flow statistics
-  radial_logspace_Rvir: [-3, 1, 41] # Logarithmically spaced radial bins [Rvir]
-  freq_edge_names: [HI, HeI, HeII, max] # Coarse frequency bin edge names
+# # Subhalo information
+# subhalo_base: halo            # Subhalo catalog base name (default: init_base)
+# # select_subhalo: true          # Specified halo is a subhalo
+# use_all_subhalos: true        # Use all subhalos in the catalog file
+# use_subhalo_catalog: true     # Use subhalo catalog file
+# # filter_subhalo_catalog: true  # Filter subhalo catalog file
+# focus_subhalos_on_emission: true # Center of luminosity position and velocity
+# # output_subhalos: true         # Output subhalo statistics
+# output_subhalos_obs: true     # Output subhalo statistics for observations
+# output_subhalos_vir: true     # Output subhalo statistics for virial quantities
+# output_subhalos_gal: true     # Output subhalo statistics for galaxy quantities
+# # output_map_subhalos: true     # Output escape fraction maps
+# output_map2_subhalos: true    # Output escape fraction maps (and statistics)
+# n_side_subhalos: 5            # Healpix resolution for subhalo maps
+# subhalo_flows:                # Subhalo flow statistics
+#   radial_logspace_Rvir: [-3, 1, 41] # Logarithmically spaced radial bins [Rvir]
+#   freq_edge_names: [HI, HeI, HeII, max] # Coarse frequency bin edge names
 
 # focus_radial_on_emission: true
 # shift_radial_on_emission: true

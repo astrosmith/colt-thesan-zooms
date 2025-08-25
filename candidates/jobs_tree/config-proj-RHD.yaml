@@ -1,16 +1,16 @@
 # COLT config file
 --- !projections              # Ray-based projections module
 
-init_dir: ics                 # Initial conditions directory (default: "ics")
+init_dir: ics_tree                 # Initial conditions directory (default: "ics")
 init_base: colt               # Initial conditions base name (optional)
-output_dir: output            # Output directory name (default: "output")
+output_dir: output_tree            # Output directory name (default: "output")
 output_base: halo_proj_RHD    # Output file base name (default: "colt")
 
 # Information about sources
-group_base: halo              # Group catalog base name (default: init_base)
-select_group: true            # Specified halo is a group
-use_all_groups: true          # Use all groups in the catalog file
-use_group_catalog: true       # Use group catalog file
+# group_base: halo              # Group catalog base name (default: init_base)
+# select_group: true            # Specified halo is a group
+# use_all_groups: true          # Use all groups in the catalog file
+# use_group_catalog: true       # Use group catalog file
 avoid_edges: false            # Avoid ray-tracing through edge cells
 field_weight_pairs:           # Projection field-weight pairs
   - [rho, avg]
