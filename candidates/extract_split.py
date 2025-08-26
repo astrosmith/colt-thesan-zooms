@@ -148,6 +148,7 @@ def interpolate_colt_movie_multi(c1, c2, gas_fields, star_fields=None, n_split=4
             for i in range(1, n_split):
                 interp_data[i, :] = interp
             interp_data_dict[field] = interp_data
+            mask_HR = interp_data
         elif interpolate_mass and field == 'rho':
             V1 = c1['V'][:]
             V2 = c2['V'][:]
@@ -161,6 +162,13 @@ def interpolate_colt_movie_multi(c1, c2, gas_fields, star_fields=None, n_split=4
         else:
             # Interpolate this field
             interp_data_dict[field] = interpolate_field(data1_full, data2_full, n_split=n_split)
+
+    ## Masking with is_HR for high res cells
+    HR_gas = np.all(mask_HR, axis=0)
+    id_collective = id_collective[HR_gas]
+    for field in gas_fields:
+        # Keep only columns (stars) with all non-negative ages
+        interp_data_dict[field] = interp_data_dict[field][:, HR_gas]
 
     if star_fields is not None:
         idstar1 = c1['id_star'][:] if 'id_star' in c1 else None
