@@ -97,9 +97,9 @@ radial_image_radius_bbox: 0.5 # Radial image radius relative to the bbox (2 Rvir
 n_radial_pixels: 512          # Number of radial image pixels
 poly_cameras: tetrahedron     # Polygon-based camera configuration
 
-# output_escape_fractions: false # Output camera escape fractions
-# output_bin_escape_fractions: false # Output bin escape fractions
-# output_images: false           # Output surface brightness images
+output_escape_fractions: true # Output camera escape fractions
+# output_bin_escape_fractions: true # Output bin escape fractions
+output_images: true           # Output surface brightness images
 # output_bin_images: false       # Output bin SB images
 
 #verbose: true                 # Verbose output for tests and debugging
