@@ -89,7 +89,7 @@ job_sets=(
 # "job='N'; group='g5229300'; runs=('noExt_z8'); first_snap=0; last_snap=0"      # 0-189  ->  0-0
 # Fiducial:
 # "job='F'; group='g5760'; runs=('z4'); first_snap=5; last_snap=188"             # 0-188  ->  5-188  [8e8]
-"job='G'; group='g10304'; runs=('z4'); first_snap=0; last_snap=188"            # 0-188  ->  0-188  [8e8]
+#"job='G'; group='g10304'; runs=('z4'); first_snap=0; last_snap=188"            # 0-188  ->  0-188  [8e8]
 # "job='H'; group='g33206'; runs=('z8'); first_snap=4; last_snap=188"            # 0-188  ->  4-188  [4e8]
 # "job='H'; group='g33206'; runs=('z4'); first_snap=6; last_snap=189"            # 0-189  ->  6-189  [4e8]
 # "job='I'; group='g37591'; runs=('z8'); first_snap=6; last_snap=188"            # 0-188  ->  6-188  [4e8]
@@ -97,7 +97,7 @@ job_sets=(
 # "job='J'; group='g137030'; runs=('z8'); first_snap=2; last_snap=188"           # 0-188  ->  2-188  [2e8]
 # "job='J'; group='g137030'; runs=('z4'); first_snap=10; last_snap=188"          # 0-188  ->  10-188 [2e8]
 # "job='K'; group='g500531'; runs=('z8'); first_snap=10; last_snap=188"          # 0-188  ->  10-188 [1e8]
-# "job='K'; group='g500531'; runs=('z4'); first_snap=16; last_snap=189"          # 0-189  ->  16-189 [1e8]
+"job='K'; group='g500531'; runs=('z4'); first_snap=16; last_snap=189"          # 0-189  ->  16-189 [1e8]
 # "job='L'; group='g519761'; runs=('z8'); first_snap=46; last_snap=189"          # 0-189  ->  46-189 [1e8]
 # "job='L'; group='g519761'; runs=('z4'); first_snap=51; last_snap=189"          # 0-189  ->  51-189 [1e8]
 # "job='M'; group='g2274036'; runs=('z8'); first_snap=27; last_snap=189"         # 0-189  ->  27-189 [1e8]

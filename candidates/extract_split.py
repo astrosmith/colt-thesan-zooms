@@ -100,7 +100,7 @@ def interpolate_field(r_1, r_2, n_split=3):
     r_interp = interp(t_vals)
     return r_interp
 
-def interpolate_colt_movie_multi(c1, c2, gas_fields, star_fields=None, n_split=4):
+def interpolate_colt_movie_multi(c1, c2, gas_fields, star_fields=None, n_split=4, f_cut=0.3):
     global file_count
     id1 = c1['id'][:]
     id2 = c2['id'][:]
@@ -148,7 +148,7 @@ def interpolate_colt_movie_multi(c1, c2, gas_fields, star_fields=None, n_split=4
             for i in range(1, n_split):
                 interp_data[i, :] = interp
             interp_data_dict[field] = interp_data
-            mask_HR = interp_data
+            # mask_HR = interp_data
         elif interpolate_mass and field == 'rho':
             V1 = c1['V'][:]
             V2 = c2['V'][:]
@@ -164,11 +164,18 @@ def interpolate_colt_movie_multi(c1, c2, gas_fields, star_fields=None, n_split=4
             interp_data_dict[field] = interpolate_field(data1_full, data2_full, n_split=n_split)
 
     ## Masking with is_HR for high res cells
-    HR_gas = np.all(mask_HR, axis=0)
-    id_collective = id_collective[HR_gas]
-    for field in gas_fields:
-        # Keep only columns (stars) with all non-negative ages
-        interp_data_dict[field] = interp_data_dict[field][:, HR_gas]
+    # HR_gas = np.all(mask_HR, axis=0)
+    # id_collective = id_collective[HR_gas]
+    # for field in gas_fields:
+    #     # Keep only columns (stars) with all non-negative ages
+    #     interp_data_dict[field] = interp_data_dict[field][:, HR_gas]
+
+    if f_cut < 1.:
+        for i in range(n_split+1):
+            mask = np.sum(interp_data_dict['r'][i,:]**2, axis=1) < (f_cut * interp_r_box[i])**2
+            id_collective = id_collective[mask]
+            for field in gas_fields:
+                interp_data_dict[field] = interp_data_dict[field][:, mask]
 
     if star_fields is not None:
         idstar1 = c1['id_star'][:] if 'id_star' in c1 else None
@@ -252,6 +259,12 @@ def interpolate_colt_movie_multi(c1, c2, gas_fields, star_fields=None, n_split=4
             for field in star_fields:
                 # Keep only columns (stars) with all non-negative ages
                 interp_data_dict[field] = interp_data_dict[field][:, valid_stars]
+            if f_cut < 1.:
+                for i in range(n_split+1):
+                    mask = np.sum(interp_data_dict['r_star'][i,:]**2, axis=1) < (f_cut * interp_r_box[i])**2
+                    id_collective_star = id_collective_star[mask]
+                    for field in star_fields:
+                        interp_data_dict[field] = interp_data_dict[field][:, mask]
         else:
             id_collective_star = None
     else:
@@ -357,7 +370,7 @@ for i in progressbar(range(n_snaps-1)):
         cosmo = FlatLambdaCDM(H0=H0, Om0=Omega0, Tcmb0=2.725)
         t_fixed = 1e3 * cosmo.age(np.array([z1, z2])).value  # [Myr]
         dt_fixed = np.abs(t_fixed[:-1] - t_fixed[1:])[0]  # [Myr]
-        dt_min = 2.  # [Myr]
+        dt_min = 1.5  # [Myr]
         n_add = np.floor(dt_fixed / dt_min).astype(np.int32)
         n_stars_tot = (c1.attrs['n_stars'] if 'n_stars' in c1.attrs else 0) + (c2.attrs['n_stars'] if 'n_stars' in c2.attrs else 0)
         gas_fields_to_interpolate = np.concatenate((gas_fields, state_fields)) if copy_states else gas_fields

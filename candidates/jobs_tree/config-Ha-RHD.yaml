@@ -78,7 +78,7 @@ emission_radius_bbox: 0.5     # Emission radius relative to the bbox
 # Information about cameras
 freq_range: [-500, 500]       # Camera frequency range [km/s]
 n_bins: 500                   # Number of frequency bins
-image_radius_bbox: 0.5        # Image radius relative to the bbox (1 Rvir)
+image_radius_bbox: 0.25       # Image radius relative to the bbox (1 Rvir)
 n_pixels: 512                 # Number of image pixels
 poly_cameras: tetrahedron     # Polygon-based camera configuration
 # n_exp: 0                      # Camera healpix directions exponent
@@ -89,8 +89,8 @@ output_freq_stds: true        # Output frequency standard deviations (default: f
 output_freq2_images: true     # Frequency moment images (default: false)
 
 # focus_cameras_on_emission: true      # Focus cameras on emission
-radial_image_radius_bbox: 0.75       # Radial image radius [bounding box]
-n_radial_pixels: 512                 # Number of radial image pixels
+radial_image_radius_bbox: 0.5 # Radial image radius [bounding box]
+n_radial_pixels: 512          # Number of radial image pixels
 # radial_pixel_arcsec: 0.01            # Observed angular width of each radial image pixel [arcseconds]
 output_radial_images: true           # Output radial surface brightness images [erg/s/cm^2/arcsec^2]
 output_radial_cubes: true            # Output radial spectral data cubes [erg/s/cm^2/arcsec^2/angstrom]

@@ -22,15 +22,17 @@ field_weight_pairs:
 
 #fade_in_length_bbox: 1        # Fade in length relative to the bbox
 #fade_in_length_bbox: 0.4     # Fade in length relative to the bbox
-fade_in_length_bbox: 0.1875   # Fade in length relative to the bbox
+fade_in_length_bbox: 0        # Fade in length relative to the bbox
 #fade_in_width_bbox: 0.25      # Fade in width relative to the bbox
-fade_in_width_bbox: 0.25      # Fade in width relative to the bbox
-fade_out_length_bbox: 0.875   # Fade in length relative to the bbox
-fade_out_width_bbox: 0.25     # Fade in width relative to the bbox
+fade_in_width_bbox: 0.3      # Fade in width relative to the bbox
+#fade_out_length_bbox: 0.875   # Fade in length relative to the bbox
+#fade_out_width_bbox: 0.25     # Fade in width relative to the bbox
+radial_fade_out_length_bbox: 0.6 # Fade in length relative to the bbox
+radial_fade_out_width_bbox: 0.2 # Fade in width relative to the bbox
 #image_radius_bbox: 1          # Image radius relative to the bbox
 #image_radius_bbox: 0.25       # Image radius relative to the bbox
-image_radii_bbox: [0.45,0.25] # Image radius relative to the bbox
-proj_radius_bbox: 0.6         # Projection depth relative to the bbox
+image_radii_bbox: [0.32,0.18] # Image radius relative to the bbox
+proj_radius_bbox: 0.5          # Projection depth relative to the bbox
 #image_radius_bbox: 4.         # Image radius relative to the bbox
 #proj_radius_bbox: 16.         # Projection depth relative to the bbox
 proj_sphere: true             # Project through a spherical volume
@@ -50,7 +52,7 @@ camera_north: [0,0,1]         # Camera north orientation
 # phi_end: 360                  # Ending azimuthal angle [deg]
 n_rot: 3                      # Add camera directions manually
 phi_start: 0                  # Starting azimuthal angle [deg]
-phi_end: 1.5                  # Ending azimuthal angle [deg]
+phi_end: 1                    # Ending azimuthal angle [deg]
 rotate_with_snaps: true       # Flag to offset rotations by the snapshot number
 rotation_axis: [0,0,1]
 
