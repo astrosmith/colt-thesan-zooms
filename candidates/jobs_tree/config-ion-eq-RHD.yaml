@@ -10,20 +10,15 @@ output_dir: output_tree         # Output directory name (default: "output")
 # f_dust: 0.2                   # Fraction of metals locked in dust grains
 # output_dir: output_fdust_40   # Output directory name (default: "output")
 # f_dust: 0.4                   # Fraction of metals locked in dust grains
-output_base: halo-ion-eq-RHD  # Output file base name (default: "colt")
+output_base: ion-eq-RHD         # Output file base name (default: "colt")
 # abundances_base: states-no-UVB       # Output a separate abundances file
 
 output_stars: true            # Output star emission and escape
-# output_ion_stats_H: true      # Ionization statistics for hydrogen
-# output_ion_stats_He: true     # Ionization statistics for helium
-# output_ion_stats_dust: true   # Ionization statistics for dust
+output_ion_stats_H: true      # Ionization statistics for hydrogen
+output_ion_stats_He: true     # Ionization statistics for helium
+output_ion_stats_dust: true   # Ionization statistics for dust
 
 # # Group information
-# group_base: halo              # Group catalog base name (default: init_base)
-# select_group: true            # Specified halo is a group
-# use_all_groups: true          # Use all groups in the catalog file
-# use_group_catalog: true       # Use group catalog file
-# filter_group_catalog: true    # Filter group catalog file
 # focus_groups_on_emission: true # Center of luminosity position and velocity
 # # output_groups: true           # Output group statistics
 # output_groups_obs: true       # Output group statistics for observations
@@ -36,23 +31,21 @@ output_stars: true            # Output star emission and escape
 #   radial_logspace_Rvir: [-3, 1, 41] # Logarithmically spaced radial bins [Rvir]
 #   freq_edge_names: [HI, HeI, HeII, max] # Coarse frequency bin edge names
 
-# # Subhalo information
-# subhalo_base: halo            # Subhalo catalog base name (default: init_base)
-# # select_subhalo: true          # Specified halo is a subhalo
-# use_all_subhalos: true        # Use all subhalos in the catalog file
-# use_subhalo_catalog: true     # Use subhalo catalog file
-# # filter_subhalo_catalog: true  # Filter subhalo catalog file
-# focus_subhalos_on_emission: true # Center of luminosity position and velocity
-# # output_subhalos: true         # Output subhalo statistics
-# output_subhalos_obs: true     # Output subhalo statistics for observations
-# output_subhalos_vir: true     # Output subhalo statistics for virial quantities
-# output_subhalos_gal: true     # Output subhalo statistics for galaxy quantities
-# # output_map_subhalos: true     # Output escape fraction maps
-# output_map2_subhalos: true    # Output escape fraction maps (and statistics)
-# n_side_subhalos: 5            # Healpix resolution for subhalo maps
-# subhalo_flows:                # Subhalo flow statistics
-#   radial_logspace_Rvir: [-3, 1, 41] # Logarithmically spaced radial bins [Rvir]
-#   freq_edge_names: [HI, HeI, HeII, max] # Coarse frequency bin edge names
+output_map: true              # Output escape fraction maps
+output_map2: true             # Output escape fraction maps (and statistics)
+n_side_map: 5                 # Healpix resolution for maps (try 10 later)
+output_radial_map: true       # Output radial surface brightness maps
+n_side_radial: 3              # Healpix resolution for radial maps (try 5 later)
+map_radius_bbox: 0.75         # Radial maps radius [bounding box]
+min_map_radius_pc: 0.5        # Minimum radial distance for maps [pc]
+n_map_pixels: 120             # Number of radial pixels for radial maps
+output_radial_avg: true       # Output angle-averaged radial surface brightness
+# radius_kpc: 500             # Radial avgs radius [kpc]
+# min_radius_pc: 0.5          # Minimum radial distance for avgs [pc]
+# n_radial_pixels: 120              # Number of radial pixels for radial avgs
+radial_flow:                  # Radial flow statistics
+  radial_logspace_pc: [0, 5, 51] # Logarithmically spaced radial bins [pc]
+  freq_edge_names: [HI, HeI, HeII, max] # Coarse frequency bin edge names
 
 # focus_radial_on_emission: true
 # shift_radial_on_emission: true
@@ -75,8 +68,8 @@ max_bin_dex: 0.05             # Minimum frequency bin width in dex
 
 # n_photons: 1000000            # Number of photon packets (10^6)
 # n_photons: 10000000           # Number of photon packets (10^7)
-n_photons: 800000000          # Number of photon packets (10^8)
-# n_photons: 2000000000         # Number of photon packets (10^9)
+n_photons: 100000000          # Number of photon packets (10^8)
+# n_photons: 1000000000         # Number of photon packets (10^9)
 max_iter: 1                   # Maximum number of iterations
 max_error: 0.001              # Relative error for convergence
 
@@ -87,19 +80,20 @@ output_abundances: false      # Output abundances (x_HI etc)
 # output_photoionization: true  # Output photoionization rates
 output_photoheating: false    # Output photoheating rates
 # photoheating_file: photoheating # Output a separate photoheating file
-#spherical_escape: true        # Photons escape from a sphere
-#escape_radius_Rvir: 1         # Escape radius relative to the virial radius
-#emission_radius_Rvir: 1       # Emission radius relative to the virial radius
+spherical_escape: true        # Photons escape from a sphere
+escape_radius_bbox: 0.75      # Escape radius relative to the bbox
+emission_radius_bbox: 0.5     # Emission radius relative to the bbox
 
 # Information about cameras
-#image_radius_Rvir: 1          # Image radius relative to the virial radius
-#n_pixels: 128                 # Number of image pixels
-#cameras:                      # Add camera directions manually
-#  - [0,0,1]
+image_radius_bbox: 0.25       # Image radius relative to the bbox (1 Rvir)
+n_pixels: 512                 # Number of image pixels
+radial_image_radius_bbox: 0.5 # Radial image radius relative to the bbox (2 Rvir)
+n_radial_pixels: 512          # Number of radial image pixels
+poly_cameras: tetrahedron     # Polygon-based camera configuration
 
-# output_escape_fractions: false # Output camera escape fractions
-# output_bin_escape_fractions: false # Output bin escape fractions
-# output_images: false           # Output surface brightness images
-# output_bin_images: false       # Output bin SB images
+output_escape_fractions: true # Output camera escape fractions
+output_bin_escape_fractions: true # Output bin escape fractions
+output_images: true           # Output surface brightness images
+output_bin_images: true       # Output bin SB images
 
 #verbose: true                 # Verbose output for tests and debugging

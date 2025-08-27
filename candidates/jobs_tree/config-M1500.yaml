@@ -10,7 +10,7 @@ output_dir: output_tree         # Output directory name (default: "output")
 # f_dust: 0.2                   # Fraction of metals locked in dust grains
 # output_dir: output_fdust_40   # Output directory name (default: "output")
 # f_dust: 0.4                   # Fraction of metals locked in dust grains
-output_base: halo-M1500-RHD   # Output file base name (default: "colt")
+output_base: M1500-RHD          # Output file base name (default: "colt")
 # abundances_base: states       # Output a separate abundances file
 
 output_stars: true            # Output star emission and escape
@@ -38,7 +38,7 @@ output_map: true              # Output escape fraction maps
 output_map2: true             # Output escape fraction maps (and statistics)
 n_side_map: 5                 # Healpix resolution for maps (try 10 later)
 output_radial_map: true       # Output radial surface brightness maps
-n_side_radial_map: 3          # Healpix resolution for radial maps (try 5 later)
+n_side_radial: 3              # Healpix resolution for radial maps (try 5 later)
 map_radius_bbox: 0.75         # Radial maps radius [bounding box]
 min_map_radius_pc: 0.5        # Minimum radial distance for maps [pc]
 n_map_pixels: 120             # Number of radial pixels for radial maps
@@ -46,9 +46,9 @@ output_radial_avg: true       # Output angle-averaged radial surface brightness
 # radius_kpc: 500             # Radial avgs radius [kpc]
 # min_radius_pc: 0.5          # Minimum radial distance for avgs [pc]
 # n_radial_pixels: 120              # Number of radial pixels for radial avgs
-# flows:                      # Group flow statistics
-#   radial_logspace_Rvir: [-3, 1, 41] # Logarithmically spaced radial bins [Rvir]
-#   freq_edge_names: [min, max] # Coarse frequency bin edge names
+radial_flow:                  # Radial flow statistics
+  radial_logspace_pc: [0, 5, 51] # Logarithmically spaced radial bins [pc]
+  freq_edge_names: [min, max] # Coarse frequency bin edge names
 
 # focus_radial_on_emission: true
 # shift_radial_on_emission: true
@@ -74,8 +74,8 @@ max_bin_angstrom: 1475        # Highest energy bin edge [angstrom]
 
 # n_photons: 1000000            # Number of photon packets (10^6)
 # n_photons: 10000000           # Number of photon packets (10^7)
-# n_photons: 100000000          # Number of photon packets (10^8)
-n_photons: 2000000000         # Number of photon packets (10^9)
+n_photons: 100000000          # Number of photon packets (10^8)
+# n_photons: 1000000000         # Number of photon packets (10^9)
 max_iter: 1                   # Maximum number of iterations
 max_error: 0.001              # Relative error for convergence
 

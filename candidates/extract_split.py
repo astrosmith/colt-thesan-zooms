@@ -100,7 +100,7 @@ def interpolate_field(r_1, r_2, n_split=3):
     r_interp = interp(t_vals)
     return r_interp
 
-def interpolate_colt_movie_multi(c1, c2, gas_fields, star_fields=None, n_split=4, f_cut=0.3):
+def interpolate_colt_movie_multi(c1, c2, gas_fields, star_fields=None, n_split=4, f_cut=0.55):
     global file_count
     id1 = c1['id'][:]
     id2 = c2['id'][:]

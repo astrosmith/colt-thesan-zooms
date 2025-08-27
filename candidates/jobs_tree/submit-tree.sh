@@ -123,7 +123,7 @@ for job_set in "${job_sets[@]}"; do
     post_dir=${zoom_dir}/${group}/${run}/postprocessing
     colt_dir=${base_dir}/${group}/${run}
 
-    cp config-tree*.yaml ${colt_dir}/.
+    cp config-*.yaml ${colt_dir}/.
     cp job-tree.sh ${colt_dir}/.
 
     cd ${colt_dir}

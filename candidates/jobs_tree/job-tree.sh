@@ -3,12 +3,12 @@
 # SBATCH --job-name=colt
 #SBATCH --output=tree-%a-%A.out
 # SBATCH --array=87
-#SBATCH --array=0-188
-# SBATCH --array=8-188:10
+# SBATCH --array=0-188
+#SBATCH --array=100-180:10
 # SBATCH --array=108-188:20
 # SBATCH --array=188
-# SBATCH --partition=sched_mit_mvogelsb,sched_mit_mki,sched_mit_mki_preempt
-#SBATCH --partition=sched_mit_mki,sched_mit_mki_preempt
+#SBATCH --partition=sched_mit_mvogelsb,sched_mit_mki,sched_mit_mki_preempt
+# SBATCH --partition=sched_mit_mki,sched_mit_mki_preempt
 # SBATCH --partition=sched_mit_mvogelsb,sched_mit_mki
 # SBATCH --partition=sched_mit_mki,sched_mit_mki_preempt
 # SBATCH --partition=sched_mit_mki_r8
@@ -85,8 +85,11 @@ run() {
 # $call $colt-line config-halo-OIII-5008.yaml $SLURM_ARRAY_TASK_ID
 # $call $colt-flows config-halo-ion-eq.yaml $SLURM_ARRAY_TASK_ID
 
-$call $colt-tree-proj config-tree-proj-rho.yaml $SLURM_ARRAY_TASK_ID
-$call $colt-tree-proj config-tree-proj-all.yaml $SLURM_ARRAY_TASK_ID
+# $call $colt-tree-proj config-tree-proj-rho.yaml $SLURM_ARRAY_TASK_ID
+# $call $colt-tree-proj config-tree-proj-all.yaml $SLURM_ARRAY_TASK_ID
+$call $colt-tree-flows config-M1500.yaml $SLURM_ARRAY_TASK_ID
+$call $colt-tree-flows config-ion-eq-RHD.yaml $SLURM_ARRAY_TASK_ID
+# $call $colt-tree-flows config-ion-eq.yaml $SLURM_ARRAY_TASK_ID
 
 # setup_runs
 # run ion-eq-pre7
