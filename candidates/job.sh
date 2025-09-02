@@ -16,9 +16,9 @@
 #SBATCH --mail-user=arsmith@mit.edu
 
 run() {
-    # time python -u group_centering.py $1  # Group centering for movies
-    # time python -u group_radius.py $1  # Group centering for movies
-    # time python -u extract.py $1  # Extract data
+    time python -u group_centering.py $1  # Group centering for movies
+    time python -u group_radius.py $1  # Group centering for movies
+    time python -u extract.py $1  # Extract data
     time python -u extract_split.py $1  # Extract data (split)
 }
 
