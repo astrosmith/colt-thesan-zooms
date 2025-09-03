@@ -1,20 +1,19 @@
 # COLT config file
 --- !ionization               # MCRT ionization equilibrium module
 
-init_dir: ics_tree              # Initial conditions directory (default: "ics")
-init_base: colt                 # Initial conditions base name (optional)
-output_dir: output_tree         # Output directory name (default: "output")
-# output_dir: output_fdust_10   # Output directory name (default: "output")
-# f_dust: 0.1                   # Fraction of metals locked in dust grains
-# output_dir: output_fdust_20   # Output directory name (default: "output")
-# f_dust: 0.2                   # Fraction of metals locked in dust grains
-# output_dir: output_fdust_40   # Output directory name (default: "output")
-# f_dust: 0.4                   # Fraction of metals locked in dust grains
-output_base: M1500          # Output file base name (default: "colt")
-# abundances_base: states       # Output a separate abundances file
+init_dir: ics_tree            # Initial conditions directory (default: "ics")
+init_base: colt               # Initial conditions base name (optional)
+output_dir: output_tree       # Output directory name (default: "output")
+# output_dir: output_fdust_10 # Output directory name (default: "output")
+# f_dust: 0.1                 # Fraction of metals locked in dust grains
+# output_dir: output_fdust_20 # Output directory name (default: "output")
+# f_dust: 0.2                 # Fraction of metals locked in dust grains
+# output_dir: output_fdust_40 # Output directory name (default: "output")
+# f_dust: 0.4                 # Fraction of metals locked in dust grains
+output_base: M1500            # Output file base name (default: "colt")
+# abundances_base: states     # Output a separate abundances file
 
 output_stars: true            # Output star emission and escape
-output_ion_stats_dust: true   # Ionization statistics for dust
 output_ion_stats_dust: true   # Ionization statistics for dust
 output_ion_stats_gas: true    # Ionization statistics for gas
 
@@ -38,19 +37,19 @@ output_ion_stats_gas: true    # Ionization statistics for gas
 
 # n_exp_map: 3                  # Healpix exponent for the line-of-sight map
 # map_pixel_arcsec: 0.05        # Pixel size for line-of-sight map [arcsec]
-output_map: true                # Output escape fraction maps
-output_map2: true               # Output escape fraction maps (and statistics)
-n_side_map: 10                  # Healpix resolution for maps (try 10 later)
-output_radial_map: true         # Output radial surface brightness maps
-n_side_radial: 5                # Healpix resolution for radial maps (try 5 later)
-map_radius_bbox: 0.75           # Radial maps radius [bounding box]
-# output_bin_radial_map: true   #Output a line-of-sight healpix map of radial spectral data cubes
+output_map: true              # Output escape fraction maps
+output_map2: true             # Output escape fraction maps (and statistics)
+n_side_map: 10                # Healpix resolution for maps (try 10 later)
+output_radial_map: true       # Output radial surface brightness maps
+n_side_radial: 5              # Healpix resolution for radial maps (try 5 later)
+map_radius_bbox: 0.75         # Radial maps radius [bounding box]
+# output_bin_radial_map: true   # Output a line-of-sight healpix map of radial spectral data cubes
 # min_map_radius_pc: 0.5        # Minimum radial distance for maps [pc]
 n_map_pixels: 120             # Number of radial pixels for radial maps
 output_radial_avg: true       # Output angle-averaged radial surface brightness
-# radius_kpc: 500             # Radial avgs radius [kpc]
-# min_radius_pc: 0.5          # Minimum radial distance for avgs [pc]
-# n_radial_pixels: 120              # Number of radial pixels for radial avgs
+# radius_kpc: 500               # Radial avgs radius [kpc]
+# min_radius_pc: 0.5            # Minimum radial distance for avgs [pc]
+# n_radial_pixels: 120          # Number of radial pixels for radial avgs
 radial_flow:                  # Radial flow statistics
   radial_logspace_pc: [0, 5, 51] # Logarithmically spaced radial bins [pc]
   freq_edge_names: [min, max] # Coarse frequency bin edge names
@@ -78,8 +77,8 @@ max_bin_angstrom: 1475        # Highest energy bin edge [angstrom]
 # max_streaming_kpc: 50         # Maximum free-streaming distance [kpc]
 
 # n_photons: 1000000            # Number of photon packets (10^6)
-# n_photons: 10000000           # Number of photon packets (10^7)
-n_photons: 100000000          # Number of photon packets (10^8)
+n_photons: 10000000           # Number of photon packets (10^7)
+# n_photons: 100000000          # Number of photon packets (10^8)
 # n_photons: 1000000000         # Number of photon packets (10^9)
 max_iter: 1                   # Maximum number of iterations
 max_error: 0.001              # Relative error for convergence
@@ -88,7 +87,7 @@ max_error: 0.001              # Relative error for convergence
 output_photons: false         # Output escaped photon packets
 # photon_file: photons          # Output a separate photon file
 output_abundances: false      # Output abundances (x_HI etc)
-output_photoionization: true  # Output photoionization rates
+# output_photoionization: true  # Output photoionization rates
 output_photoheating: false    # Output photoheating rates
 # photoheating_file: photoheating # Output a separate photoheating file
 spherical_escape: true        # Photons escape from a sphere
@@ -109,6 +108,6 @@ output_bin_images: true       # Output bin SB images
 output_radial_images: true    # Output radial surface brightness images
 output_bin_radial_images: true  #Output bin radial surface brightness images.
 output_mcrt_emission: true     # Output intrinsic emission without transport based on MCRT sampling
-# output_mcrt_attenuation: true   # Output attenuated emission without scattering based on MCRT sampling 
+# output_mcrt_attenuation: true   # Output attenuated emission without scattering based on MCRT sampling
 
 #verbose: true                 # Verbose output for tests and debugging
