@@ -11,7 +11,7 @@
 # SBATCH --constraint=centos7
 #SBATCH --mem-per-cpu=3000 # 3GB of memory per CPU
 #SBATCH --export=ALL
-#SBATCH --time=24:00:00
+#SBATCH --time=48:00:00
 #SBATCH --mail-type=END
 #SBATCH --mail-user=arsmith@mit.edu
 
@@ -44,8 +44,8 @@ run() {
 # run g37591/z4
 # run g137030/z8
 # run g137030/z4
-# run g500531/z8
-run g500531/z4
+run g500531/z8
+# run g500531/z4
 # run g519761/z8
 # run g519761/z4
 # run g2274036/z8

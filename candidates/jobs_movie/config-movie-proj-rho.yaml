@@ -23,11 +23,11 @@ field_weight_pairs:
 #fade_in_length_bbox: 1        # Fade in length relative to the bbox
 #fade_in_length_bbox: 0.4     # Fade in length relative to the bbox
 #fade_in_width_bbox: 0.25      # Fade in width relative to the bbox
-# fade_in_length_bbox: 0        # Fade in length relative to the bbox
-# fade_in_width_bbox: 0.05      # Fade in width relative to the bbox
+fade_in_length_bbox: 0        # Fade in length relative to the bbox
+fade_in_width_bbox: 0.025      # Fade in width relative to the bbox
 #fade_out_length_bbox: 0.875   # Fade in length relative to the bbox
 #fade_out_width_bbox: 0.25     # Fade in width relative to the bbox
-radial_fade_out_length_bbox: 0.4375 # Fade in length relative to the bbox
+radial_fade_out_length_bbox: 0.625 # Fade in length relative to the bbox
 radial_fade_out_width_bbox: 0.125 # Fade in width relative to the bbox
 #image_radius_bbox: 1          # Image radius relative to the bbox
 #image_radius_bbox: 0.25       # Image radius relative to the bbox
@@ -36,7 +36,7 @@ proj_radius_bbox: 0.5          # Projection depth relative to the bbox
 #image_radius_bbox: 4.         # Image radius relative to the bbox
 #proj_radius_bbox: 16.         # Projection depth relative to the bbox
 proj_sphere: true             # Project through a spherical volume
-shape_factor: 1.25            # Extraction shape factor for the projection sphere
+shape_factor: 2               # Extraction shape factor for the projection sphere
 # nx_pixels: 1280                 #Number of image pixels
 # ny_pixels: 720
 nx_pixels: 3840               # Number of image pixels
@@ -53,7 +53,7 @@ camera_north: [0,0,1]         # Camera north orientation
 # phi_end: 360                  # Ending azimuthal angle [deg]
 n_rot: 3                      # Add camera directions manually
 phi_start: 0                  # Starting azimuthal angle [deg]
-phi_end: 1                    # Ending azimuthal angle [deg]
+phi_end: 0.5                  # Ending azimuthal angle [deg]
 rotate_with_snaps: true       # Flag to offset rotations by the snapshot number
 rotation_axis: [0,0,1]
 
