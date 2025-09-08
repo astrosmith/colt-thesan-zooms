@@ -23,7 +23,7 @@ cand_dir = f'{zoom_dir}/{sim}/postprocessing/candidates'
 colt_dir = f'{zoom_dir}-COLT/{sim}/ics'
 # colt_dir = f'/orcd/data/mvogelsb/005/Lab/Thesan-Zooms-COLT/{sim}/ics'
 states = 'states-no-UVB'  # States prefix
-copy_states = False  # Copy ionization states to the new colt file
+copy_states = True  # Copy ionization states to the new colt file
 interpolate_mass = True  # Interpolate mass fields
 os.makedirs(f'{colt_dir}_tree', exist_ok=True)  # Ensure the new colt directory exists
 ics_movie_dir = f'{colt_dir}_movie'
@@ -189,8 +189,20 @@ def interpolate_colt_movie_multi(c1, c2, gas_fields, star_fields=None, n_split=4
             valid_positions = sort_idx_id2[pos_in_id2[matches_mask]]
 
             for field in star_fields:
-                data1 = c1[field][:]
-                data2 = c2[field][:]
+                if field in state_fields:
+                    try:
+                        with h5py.File(f'{colt_dir}/{states}_{snap_1:03d}.hdf5', 'r') as s1:
+                            data1 = s1[field][:]
+                    except Exception as e:
+                        failed_states.append(snap_1)
+                    try:
+                        with h5py.File(f'{colt_dir}/{states}_{snap_2:03d}.hdf5', 'r') as s2:
+                            data2 = s2[field][:]
+                    except Exception as e:
+                        failed_states.append(snap_2)
+                else:
+                    data1 = c1[field][:]
+                    data2 = c2[field][:]
 
                 # Preallocate full arrays
                 data1_full = np.zeros((len(id_collective_star),) + data1.shape[1:], dtype=data1.dtype)
@@ -377,17 +389,17 @@ for i in progressbar(range(n_snaps-1)):
         star_fields_to_interpolate = star_fields if n_stars_tot > 0 else None
         file_count = interpolate_colt_movie_multi(c1, c2, gas_fields=gas_fields_to_interpolate, star_fields=star_fields_to_interpolate, n_split=n_add+1)
 
-    # Ionization states
-    if copy_states:
-        try:
-            states_file = f'{colt_dir}/{states}_{snap:03d}.hdf5'
-            new_states_file = f'{colt_dir}_tree/{states}_{snap:04d}.hdf5'
-            with h5py.File(states_file, 'r') as f, h5py.File(new_states_file, 'w') as g:
-                for field in state_fields:
-                    g.create_dataset(field, data=f[field][:][gas_mask])
-                if 'G_ion' in state_fields: g['G_ion'].attrs['units'] = b'erg/s'
-        except Exception as e:
-            failed_states.append(snap)
+#     # Ionization states
+#     if copy_states:
+#         try:
+#             states_file = f'{colt_dir}/{states}_{snap:03d}.hdf5'
+#             new_states_file = f'{colt_dir}_tree/{states}_{snap:04d}.hdf5'
+#             with h5py.File(states_file, 'r') as f, h5py.File(new_states_file, 'w') as g:
+#                 for field in state_fields:
+#                     g.create_dataset(field, data=f[field][:][gas_mask])
+#                 if 'G_ion' in state_fields: g['G_ion'].attrs['units'] = b'erg/s'
+#         except Exception as e:
+#             failed_states.append(snap)
 
-if len(failed_states) > 0:
-    print(f'Failed to copy ionization states for snapshots: {failed_states}')
+# if len(failed_states) > 0:
+#     print(f'Failed to copy ionization states for snapshots: {failed_states}')
