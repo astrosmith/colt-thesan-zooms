@@ -29,6 +29,7 @@ interpolate_mass = True  # Interpolate mass fields
 # Overwrite for local testing
 #dist_dir = '.'
 #colt_dir = '.'
+# tree_dir = colt_dir  # Where the data is read from
 tree_dir = f'{colt_dir}_tree'  # Where the data is read from
 movie_dir = f'{colt_dir}_movie'  # Where the movie files are written to
 os.makedirs(movie_dir, exist_ok=True)  # Ensure the new colt directory exists
@@ -49,6 +50,10 @@ state_fields = ['x_HI', 'x_HII', 'x_HeI', 'x_CII', 'x_CIII', 'x_NI', 'x_NII', 'x
 star_fields = ['Z_star', 'age_star', 'm_star', 'm_init_star', 'v_star','r_star' ,'id_star']
 units = {'r': b'cm', 'v': b'cm/s', 'e_int': b'cm^2/s^2', 'T_dust': b'K', 'rho': b'g/cm^3', 'm': b'g', 'V': b'cm^3', 'SFR': b'Msun/yr',
          'r_star': b'cm', 'v_star': b'cm/s', 'm_star': b'Msun', 'm_init_star': b'Msun', 'age_star': b'Gyr'}
+# Remove gas fields that are in states
+for field in state_fields:
+    if field in gas_fields:
+        gas_fields.remove(field)
 
 no_interp = ['D', 'D_Si','T_dust','x_e', 'e_int',
              'X', 'Y', 'Z', 'Z_C', 'Z_Fe', 'Z_Mg', 'Z_N', 'Z_Ne', 'Z_O', 'Z_S', 'Z_Si',
