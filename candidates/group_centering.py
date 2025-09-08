@@ -22,9 +22,10 @@ colt_dir = f'{zoom_dir}-COLT/{sim}/ics'
 # colt_dir = f'/orcd/data/mvogelsb/005/Lab/Thesan-Zooms-COLT/{sim}/ics'
 os.makedirs(f'{colt_dir}_tree', exist_ok=True) # Ensure the new colt directory exists
 
-M_sun = 1.988435e33 # Solar mass in g
-pc = 3.085677581467192e18 # Parsec in cm
-kpc = 1e3 * pc # Kiloparsec in cm
+M_sun = 1.988435e33  # Solar mass in g
+pc = 3.085677581467192e18  # Parsec in cm
+kpc = 1e3 * pc  # Kiloparsec in cm
+f_vir = 1.  # Fraction for virial radius extraction
 
 # Overwrite for local testing
 #colt_dir = '.'
@@ -106,7 +107,7 @@ for i in progressbar(range(n_snaps)):
     with h5py.File(colt_file, 'r') as f:
         # Read gas and star coordinates for the radial masks
         gas_pos = r = f['r'][:] - r_virs[i] # Gas position [cm]
-        r_box = 2. * R_virs[i] # Radial cut = 2 * virial radius
+        r_box = f_vir * R_virs[i] # Radial cut = 2 * virial radius
         gas_mask = (np.sum(r**2, axis=1) < r_box**2) # Sphere cut
         n_cells = np.int32(np.count_nonzero(gas_mask)) # Number of cells
         gas_flag = (n_cells >= 0)  # Gas flag

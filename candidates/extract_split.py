@@ -25,26 +25,27 @@ colt_dir = f'{zoom_dir}-COLT/{sim}/ics'
 states = 'states-no-UVB'  # States prefix
 copy_states = True  # Copy ionization states to the new colt file
 interpolate_mass = True  # Interpolate mass fields
-os.makedirs(f'{colt_dir}_tree', exist_ok=True)  # Ensure the new colt directory exists
-ics_movie_dir = f'{colt_dir}_movie'
-os.makedirs(ics_movie_dir, exist_ok=True)  # Ensure the new colt directory exists
 
 # Overwrite for local testing
 #dist_dir = '.'
 #colt_dir = '.'
+tree_dir = f'{colt_dir}_tree'  # Where the data is read from
+movie_dir = f'{colt_dir}_movie'  # Where the movie files are written to
+os.makedirs(movie_dir, exist_ok=True)  # Ensure the new colt directory exists
 
 # List of fields to be interpolated
 gas_fields = ['D', 'D_Si', 'SFR', 'T_dust', 'X', 'Y', 'Z', 'Z_C', 'Z_Fe', 'Z_Mg', 'Z_N', 'Z_Ne', 'Z_O', 'Z_S', 'Z_Si',
               'e_int', 'is_HR', 'r', 'rho', 'v', 'x_H2', 'x_HI', 'x_HeI', 'x_HeII', 'x_e', 'id']
-state_fields = ['G_ion', 'x_e', 'x_HI', 'x_HII', 'x_HeI', 'x_HeII',
-                'x_CI', 'x_CII', 'x_CIII', 'x_CIV',
-                'x_NI', 'x_NII', 'x_NIII', 'x_NIV', 'x_NV',
-                'x_OI', 'x_OII', 'x_OIII', 'x_OIV',
-                'x_NeI', 'x_NeII', 'x_NeIII', 'x_NeIV',
-                'x_MgI', 'x_MgII', 'x_MgIII',
-                'x_SiI', 'x_SiII', 'x_SiIII', 'x_SiIV',
-                'x_SI', 'x_SII', 'x_SIII', 'x_SIV', 'x_SV', 'x_SVI',
-                'x_FeI', 'x_FeII', 'x_FeIII', 'x_FeIV', 'x_FeV', 'x_FeVI']
+# state_fields = ['G_ion', 'x_e', 'x_HI', 'x_HII', 'x_HeI', 'x_HeII',
+#                 'x_CI', 'x_CII', 'x_CIII', 'x_CIV',
+#                 'x_NI', 'x_NII', 'x_NIII', 'x_NIV', 'x_NV',
+#                 'x_OI', 'x_OII', 'x_OIII', 'x_OIV',
+#                 'x_NeI', 'x_NeII', 'x_NeIII', 'x_NeIV',
+#                 'x_MgI', 'x_MgII', 'x_MgIII',
+#                 'x_SiI', 'x_SiII', 'x_SiIII', 'x_SiIV',
+#                 'x_SI', 'x_SII', 'x_SIII', 'x_SIV', 'x_SV', 'x_SVI',
+#                 'x_FeI', 'x_FeII', 'x_FeIII', 'x_FeIV', 'x_FeV', 'x_FeVI']
+state_fields = ['x_HI', 'x_HII', 'x_HeI', 'x_CII', 'x_CIII', 'x_NI', 'x_NII', 'x_OI', 'x_OII', 'x_NeI', 'x_NeII', 'x_MgII', 'x_SiII', 'x_SII']
 star_fields = ['Z_star', 'age_star', 'm_star', 'm_init_star', 'v_star','r_star' ,'id_star']
 units = {'r': b'cm', 'v': b'cm/s', 'e_int': b'cm^2/s^2', 'T_dust': b'K', 'rho': b'g/cm^3', 'm': b'g', 'V': b'cm^3', 'SFR': b'Msun/yr',
          'r_star': b'cm', 'v_star': b'cm/s', 'm_star': b'Msun', 'm_init_star': b'Msun', 'age_star': b'Gyr'}
@@ -100,7 +101,7 @@ def interpolate_field(r_1, r_2, n_split=3):
     r_interp = interp(t_vals)
     return r_interp
 
-def interpolate_colt_movie_multi(c1, c2, gas_fields, star_fields=None, n_split=4, f_cut=1.):
+def interpolate_colt_movie_multi(c1, c2, gas_fields, star_fields=None, n_split=4, f_cut=1., s1=None, s2=None):
     global file_count
     id1 = c1['id'][:]
     id2 = c2['id'][:]
@@ -122,8 +123,12 @@ def interpolate_colt_movie_multi(c1, c2, gas_fields, star_fields=None, n_split=4
     interp_r_box = interpolate_field(c1.attrs['r_box'], c2.attrs['r_box'], n_split=n_split)
 
     for field in gas_fields:
-        data1 = c1[field][:]
-        data2 = c2[field][:]
+        if field in state_fields and s1 is not None and s2 is not None:
+            data1 = s1[field][:]
+            data2 = s2[field][:]
+        else:
+            data1 = c1[field][:]
+            data2 = c2[field][:]
 
         # Preallocate full arrays
         data1_full = np.zeros((len(id_collective),) + data1.shape[1:], dtype=data1.dtype)
@@ -148,7 +153,7 @@ def interpolate_colt_movie_multi(c1, c2, gas_fields, star_fields=None, n_split=4
             for i in range(1, n_split):
                 interp_data[i, :] = interp
             interp_data_dict[field] = interp_data
-            # mask_HR = interp_data
+            mask_HR = interp_data
         elif interpolate_mass and field == 'rho':
             V1 = c1['V'][:]
             V2 = c2['V'][:]
@@ -164,11 +169,10 @@ def interpolate_colt_movie_multi(c1, c2, gas_fields, star_fields=None, n_split=4
             interp_data_dict[field] = interpolate_field(data1_full, data2_full, n_split=n_split)
 
     ## Masking with is_HR for high res cells
-    # HR_gas = np.all(mask_HR, axis=0)
-    # id_collective = id_collective[HR_gas]
-    # for field in gas_fields:
-    #     # Keep only columns (stars) with all non-negative ages
-    #     interp_data_dict[field] = interp_data_dict[field][:, HR_gas]
+    HR_gas = np.all(mask_HR, axis=0)
+    id_collective = id_collective[HR_gas]
+    for field in gas_fields:
+        interp_data_dict[field] = interp_data_dict[field][:, HR_gas]
 
     if f_cut < 1.:
         for i in range(n_split+1):
@@ -189,20 +193,8 @@ def interpolate_colt_movie_multi(c1, c2, gas_fields, star_fields=None, n_split=4
             valid_positions = sort_idx_id2[pos_in_id2[matches_mask]]
 
             for field in star_fields:
-                if field in state_fields:
-                    try:
-                        with h5py.File(f'{colt_dir}/{states}_{snap_1:03d}.hdf5', 'r') as s1:
-                            data1 = s1[field][:]
-                    except Exception as e:
-                        failed_states.append(snap_1)
-                    try:
-                        with h5py.File(f'{colt_dir}/{states}_{snap_2:03d}.hdf5', 'r') as s2:
-                            data2 = s2[field][:]
-                    except Exception as e:
-                        failed_states.append(snap_2)
-                else:
-                    data1 = c1[field][:]
-                    data2 = c2[field][:]
+                data1 = c1[field][:]
+                data2 = c2[field][:]
 
                 # Preallocate full arrays
                 data1_full = np.zeros((len(id_collective_star),) + data1.shape[1:], dtype=data1.dtype)
@@ -287,14 +279,14 @@ def interpolate_colt_movie_multi(c1, c2, gas_fields, star_fields=None, n_split=4
         for i in range(0, n_split + 1):
             if not interpolate_mass:
                 if i == 0 :
-                    make_softlink(c1.filename, f'{ics_movie_dir}/colt_{i:04d}.hdf5')
+                    make_softlink(c1.filename, f'{movie_dir}/colt_{i:04d}.hdf5')
                     files_added.append(i)
                     continue
                 if i == n_split:
-                    make_softlink(c2.filename, f'{ics_movie_dir}/colt_{i:04d}.hdf5')
+                    make_softlink(c2.filename, f'{movie_dir}/colt_{i:04d}.hdf5')
                     files_added.append(i)
                     continue
-            with h5py.File(f'{ics_movie_dir}/colt_{i:04d}.hdf5', 'w') as f:
+            with h5py.File(f'{movie_dir}/colt_{i:04d}.hdf5', 'w') as f:
                 f.attrs['n_cells'] = np.int32(len(id_collective))  # Number of cells
                 f.attrs['n_stars'] = np.int32(len(id_collective_star) if id_collective_star is not None else 0)  # Number of star particles
                 f.attrs['redshift'] = interp_z[i]  # Current simulation redshift
@@ -323,10 +315,10 @@ def interpolate_colt_movie_multi(c1, c2, gas_fields, star_fields=None, n_split=4
             if i == 0:
                 continue  # Skip first frame if continuing
             if not interpolate_mass and i == n_split:
-                make_softlink(c2.filename, f'{ics_movie_dir}/colt_{last_file_no + i :04d}.hdf5')
+                make_softlink(c2.filename, f'{movie_dir}/colt_{last_file_no + i :04d}.hdf5')
                 files_added.append(last_file_no + i)
                 continue
-            with h5py.File(f'{ics_movie_dir}/colt_{last_file_no + i :04d}.hdf5', 'w') as f:
+            with h5py.File(f'{movie_dir}/colt_{last_file_no + i :04d}.hdf5', 'w') as f:
                 f.attrs['n_cells'] = np.int32(len(id_collective))  # Number of cells
                 f.attrs['n_stars'] = np.int32(len(id_collective_star) if id_collective_star is not None else 0)  # Number of star particles
                 f.attrs['redshift'] = interp_z[i]  # Current simulation redshift
@@ -368,12 +360,11 @@ if False:
 
 n_snaps = len(snaps)
 file_count = np.array([])
-failed_states = [] # List of snapshots where ionization states failed to copy
 for i in progressbar(range(n_snaps-1)):
     snap = snaps[i]
     snap_1, snap_2 = snap, snap + 1
-    colt_1 = f'{colt_dir}/colt_{snap_1:03d}.hdf5'
-    colt_2 = f'{colt_dir}/colt_{snap_2:03d}.hdf5'
+    colt_1 = f'{tree_dir}/colt_{snap_1:03d}.hdf5'
+    colt_2 = f'{tree_dir}/colt_{snap_2:03d}.hdf5'
     with h5py.File(colt_1, 'r') as c1, h5py.File(colt_2, 'r') as c2:
         h = c1.attrs['h100']
         H0 = 100. * h
@@ -387,19 +378,11 @@ for i in progressbar(range(n_snaps-1)):
         n_stars_tot = (c1.attrs['n_stars'] if 'n_stars' in c1.attrs else 0) + (c2.attrs['n_stars'] if 'n_stars' in c2.attrs else 0)
         gas_fields_to_interpolate = np.concatenate((gas_fields, state_fields)) if copy_states else gas_fields
         star_fields_to_interpolate = star_fields if n_stars_tot > 0 else None
-        file_count = interpolate_colt_movie_multi(c1, c2, gas_fields=gas_fields_to_interpolate, star_fields=star_fields_to_interpolate, n_split=n_add+1)
-
-#     # Ionization states
-#     if copy_states:
-#         try:
-#             states_file = f'{colt_dir}/{states}_{snap:03d}.hdf5'
-#             new_states_file = f'{colt_dir}_tree/{states}_{snap:04d}.hdf5'
-#             with h5py.File(states_file, 'r') as f, h5py.File(new_states_file, 'w') as g:
-#                 for field in state_fields:
-#                     g.create_dataset(field, data=f[field][:][gas_mask])
-#                 if 'G_ion' in state_fields: g['G_ion'].attrs['units'] = b'erg/s'
-#         except Exception as e:
-#             failed_states.append(snap)
-
-# if len(failed_states) > 0:
-#     print(f'Failed to copy ionization states for snapshots: {failed_states}')
+        try:
+            if not copy_states: 1/0  # Skip states interpolation
+            states_1 = f'{tree_dir}/{states}_{snap_1:03d}.hdf5'
+            states_2 = f'{tree_dir}/{states}_{snap_2:03d}.hdf5'
+            with h5py.File(states_1, 'r') as s1, h5py.File(states_2, 'r') as s2:
+                file_count = interpolate_colt_movie_multi(c1, c2, gas_fields=gas_fields_to_interpolate, star_fields=star_fields_to_interpolate, n_split=n_add+1, s1=s1, s2=s2)
+        except (FileNotFoundError, KeyError, ZeroDivisionError):
+            file_count = interpolate_colt_movie_multi(c1, c2, gas_fields=gas_fields, star_fields=star_fields_to_interpolate, n_split=n_add+1)
