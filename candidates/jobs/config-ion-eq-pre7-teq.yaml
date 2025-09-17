@@ -36,15 +36,16 @@ output_dT_dt: true            # Output cooling times
 use_temperature_equilibrium: true  # Use temperature equilibrium
 # max_cooling_time_yr: 1000000.   # Limit temperature equilibrium
 courant_limited_cooling: true  # Courant limited cooling
-use_internal_energy: true     # Use internal energy
+use_internal_energy: false    # Use internal energy
 T_rtol: 0.001
-T_stab_factor: 1.5
+T_stab_factor: 5
 T_floor: 300
 
 # Information about escape
 output_photons: false         # Output escaped photon packets
 #photon_file: photons          # Output a separate photon file
 output_abundances: true       # Output abundances (x_HI etc)
+output_photoheating: true     # Output photoheating rates
 #spherical_escape: true        # Photons escape from a sphere
 #escape_radius_bbox: 0.9       # Escape radius relative to the bbox
 #emission_radius_bbox: 0.75    # Emission radius relative to the bbox
