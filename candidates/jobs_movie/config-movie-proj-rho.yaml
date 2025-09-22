@@ -35,8 +35,10 @@ image_radii_bbox: [0.5,0.28125] # Image radius relative to the bbox
 proj_radius_bbox: 0.5          # Projection depth relative to the bbox
 #image_radius_bbox: 4.         # Image radius relative to the bbox
 #proj_radius_bbox: 16.         # Projection depth relative to the bbox
-proj_sphere: true             # Project through a spherical volume
-shape_factor: 2               # Extraction shape factor for the projection sphere
+
+# proj_sphere: true             # Project through a spherical volume
+# shape_factor: 2               # Extraction shape factor for the projection sphere
+
 # nx_pixels: 1280                 #Number of image pixels
 # ny_pixels: 720
 nx_pixels: 3840               # Number of image pixels
