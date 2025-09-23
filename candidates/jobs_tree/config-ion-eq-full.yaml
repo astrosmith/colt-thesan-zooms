@@ -26,6 +26,9 @@ n_photons: 100000000          # Number of photon packets (10^8)
 max_iter: 1                   # Maximum number of iterations
 max_error: 0.001              # Relative error for convergence
 
+output_mcrt_emission: true    # Output intrinsic emission without transport (mcrt)
+# output_mcrt_attenuation: true # Output attenuated emission without scattering (mcrt)
+
 # Information about escape
 output_photons: false         # Output escaped photon packets
 # photon_file: photons          # Output a separate photon file
@@ -36,10 +39,18 @@ output_photoheating: true     # Output photoheating rates
 spherical_escape: true        # Photons escape from a sphere
 escape_radius_bbox: 0.9       # Escape radius relative to the bbox
 emission_radius_bbox: 0.75    # Emission radius relative to the bbox
+output_escape_fractions: true # Output camera escape fractions
+output_bin_escape_fractions: true # Output bin escape fractions
 
-# Information about cameras
+# Images 
 image_radius_bbox: 0.5        # Image radius relative to the bbox (1 Rvir)
 n_pixels: 512                 # Number of image pixels
+
+# SB Images
+#output_images: true           # Output surface brightness images
+# output_bin_images: true       # Output bin SB images
+
+# Information about cameras
 # n_exp: 0                      # Camera healpix directions exponent
 cameras:                      # Add camera directions manually
   - [0,0,1]
@@ -49,29 +60,26 @@ cameras:                      # Add camera directions manually
   - [1,0,0]
   - [-1,0,0]
 
-output_escape_fractions: true # Output camera escape fractions
-output_bin_escape_fractions: true # Output bin escape fractions
-output_images: true           # Output surface brightness images
-# output_bin_images: true       # Output bin SB images
-output_mcrt_emission: true    # Output intrinsic emission without transport (mcrt)
-# output_mcrt_attenuation: true # Output attenuated emission without scattering (mcrt)
-
+# UVB and self-shielding
 # UVB_model: FG11               # UV background (Faucher-Giguere 2011 model)
 # self_shielding: true          # Self-shielding (Rahmati 2012 model)
 # read_molecular_fraction: true # Read x_H2 from the input file
 
+# Ionization age and frequency bins
 #output_ion_age_freq_gas: true        # Activate gas flag
 #output_ion_age_freq_dust: true       # Activate dust flag
 #output_ion_age_freq_hydrogen: true   # Activate hydrogen flag
 #output_ion_age_freq_oxygen: true     # Activate oxygen flag
 # NO! # output_ion_age_freq: true            # Activates all relevant output flags
 
+# Cell Age and Frequency Binning Options
 # cell_age_freq:                # Parameters for cell_age_freq output
 #   age_edges_Myr: [0, 10, 100, 2000, 1e5] # Stellar age bin edges [Myr]
 #   freq_edge_names: [SI, HI, HeI, HeII, max] # Coarse frequency bin edge names
 #   # age_edges_Myr: [0, 1, 10, 100, 250, 500, 750, 2000, 1e5] # Stellar age bin edges [Myr]
 #   # freq_edge_names: [SI, HI, NI, SII, HeI, NII, OII, OIII, max] # Coarse frequency bin edge names
 
+# Radial Age and Frequency Binning Options
 # radial_age_freq:              # Parameters for radial_age_freq output
 #   # radial_linspace_pc: [0, 1e4, 10] # Linearly spaced radial bins [pc]
 #   radial_logspace_pc: [0, 5, 50] # Logarithmically spaced radial bins [pc]
@@ -79,6 +87,7 @@ output_mcrt_emission: true    # Output intrinsic emission without transport (mcr
 #   age_edges_Myr: [0, 1, 10, 100, 250, 500, 750, 2000, 1e5] # Stellar age bin edges [Myr]
 #   freq_edge_names: [SI, HI, NI, SII, HeI, NII, OII, OIII, max] # Coarse frequency bin edge names
 
+# Distance and Age and Frequency Binning Options
 # distance_age_freq:            # Parameters for distance_age_freq output
 #   # distance_linspace_pc: [0, 1e4, 10] # Linearly spaced distance bins [pc]
 #   distance_logspace_pc: [0, 5, 50] # Logarithmically spaced distance bins [pc]

@@ -10,7 +10,7 @@ output_dir: output_tree         # Output directory name (default: "output")
 # f_dust: 0.2                   # Fraction of metals locked in dust grains
 # output_dir: output_fdust_40   # Output directory name (default: "output")
 # f_dust: 0.4                   # Fraction of metals locked in dust grains
-output_base: halo-ion-eq      # Output file base name (default: "colt")
+output_base: ion-eq      # Output file base name (default: "colt")
 abundances_base: states-no-UVB # Output a separate abundances file
 
 output_stars: true            # Output star emission and escape
@@ -90,15 +90,16 @@ output_photoheating: false    # Output photoheating rates
 #spherical_escape: true        # Photons escape from a sphere
 #escape_radius_Rvir: 1         # Escape radius relative to the virial radius
 #emission_radius_Rvir: 1       # Emission radius relative to the virial radius
+# output_escape_fractions: false # Output camera escape fractions
+# output_bin_escape_fractions: false # Output bin escape fractions
 
-# Information about cameras
+# Information about cameras and Images
 #image_radius_Rvir: 1          # Image radius relative to the virial radius
 #n_pixels: 128                 # Number of image pixels
 #cameras:                      # Add camera directions manually
 #  - [0,0,1]
 
-# output_escape_fractions: false # Output camera escape fractions
-# output_bin_escape_fractions: false # Output bin escape fractions
+# SB Images
 # output_images: false           # Output surface brightness images
 # output_bin_images: false       # Output bin SB images
 

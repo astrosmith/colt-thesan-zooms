@@ -35,17 +35,22 @@ output_ion_stats_gas: true    # Ionization statistics for gas
 #   radial_logspace_Rvir: [-3, 1, 41] # Logarithmically spaced radial bins [Rvir]
 #   freq_edge_names: [min, max] # Coarse frequency bin edge names
 
+#Maps
 # n_exp_map: 3                  # Healpix exponent for the line-of-sight map
 # map_pixel_arcsec: 0.05        # Pixel size for line-of-sight map [arcsec]
 output_map: true              # Output escape fraction maps
 output_map2: true             # Output escape fraction maps (and statistics)
 n_side_map: 10                # Healpix resolution for maps (try 10 later)
+
+# Radial Maps
 output_radial_map: true       # Output radial surface brightness maps
 n_side_radial: 5              # Healpix resolution for radial maps (try 5 later)
 map_radius_bbox: 0.75         # Radial maps radius [bounding box]
 # output_bin_radial_map: true   # Output a line-of-sight healpix map of radial spectral data cubes
 # min_map_radius_pc: 0.5        # Minimum radial distance for maps [pc]
 n_map_pixels: 120             # Number of radial pixels for radial maps
+
+# Radial averages
 output_radial_avg: true       # Output angle-averaged radial surface brightness
 # radius_kpc: 500               # Radial avgs radius [kpc]
 # min_radius_pc: 0.5            # Minimum radial distance for avgs [pc]
@@ -83,6 +88,9 @@ n_photons: 10000000           # Number of photon packets (10^7)
 max_iter: 1                   # Maximum number of iterations
 max_error: 0.001              # Relative error for convergence
 
+output_mcrt_emission: true     # Output intrinsic emission without transport based on MCRT sampling
+# output_mcrt_attenuation: true   # Output attenuated emission without scattering based on MCRT sampling
+
 # Information about escape
 output_photons: false         # Output escaped photon packets
 # photon_file: photons          # Output a separate photon file
@@ -93,21 +101,26 @@ output_photoheating: false    # Output photoheating rates
 spherical_escape: true        # Photons escape from a sphere
 escape_radius_bbox: 0.75      # Escape radius relative to the bbox
 emission_radius_bbox: 0.5     # Emission radius relative to the bbox
-
-# Information about cameras
-image_radius_bbox: 0.25       # Image radius relative to the bbox (1 Rvir)
-n_pixels: 512                 # Number of image pixels
-radial_image_radius_bbox: 0.5 # Radial image radius relative to the bbox (2 Rvir)
-n_radial_pixels: 512          # Number of radial image pixels
-poly_cameras: tetrahedron     # Polygon-based camera configuration
-
 output_escape_fractions: true # Output camera escape fractions
 output_bin_escape_fractions: true # Output bin escape fractions
+
+# Images 
+image_radius_bbox: 0.25       # Image radius relative to the bbox (1 Rvir)
+n_pixels: 512                 # Number of image pixels
+
+# Radial Images
+radial_image_radius_bbox: 0.5 # Radial image radius relative to the bbox (2 Rvir)
+n_radial_pixels: 512          # Number of radial image pixels
+
+# Information about cameras
+poly_cameras: tetrahedron     # Polygon-based camera configuration
+
+# SB Images
 output_images: true           # Output surface brightness images
 output_bin_images: true       # Output bin SB images
+
+# Radial SB images
 output_radial_images: true    # Output radial surface brightness images
 output_bin_radial_images: true  #Output bin radial surface brightness images.
-output_mcrt_emission: true     # Output intrinsic emission without transport based on MCRT sampling
-# output_mcrt_attenuation: true   # Output attenuated emission without scattering based on MCRT sampling
 
 #verbose: true                 # Verbose output for tests and debugging

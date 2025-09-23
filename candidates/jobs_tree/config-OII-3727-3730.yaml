@@ -10,7 +10,7 @@ output_dir: output_tree            # Output directory name (default: "output")
 # f_dust: 0.2                   # Fraction of metals locked in dust grains
 # output_dir: output_fdust_40   # Output directory name (default: "output")
 # f_dust: 0.4                   # Fraction of metals locked in dust grains
-output_base: halo-OII-3727-3730 # Output file base name (default: "colt")
+output_base: OII-3727-3730 # Output file base name (default: "colt")
 abundances_base: states-no-UVB # Output a separate abundances file
 
 # output_cells: true            # Output cell emission and escape
@@ -125,18 +125,22 @@ output_photons: false         # Output escaped photon packets
 #escape_radius_Rvir: 1         # Escape radius relative to the virial radius
 #emission_radius_Rvir: 1       # Emission radius relative to the virial radius
 
-# Information about cameras
+# Frequency
+# output_freq_stds: true      # Output frequency standard deviations (default: false)
 freq_min: -500                # Frequency minimum [km/s]
 freq_max: 500                 # Frequency maximum [km/s]
 n_bins: 500                   # Number of frequency bins
+
+# Information about cameras and Images
+# output_freq2_images: true     # Frequency moment images (default: false)
 # image_radius_Rvir: 1          # Image radius relative to the virial radius
 # image_radius_bbox: 0.5        # Image radius relative to the bbox
 # n_pixels: 512                 # Number of image pixels
 # n_exp: 0                      # Camera healpix directions exponent
 # cameras:                      # Add camera directions manually
 #   - [0,0,1]
+
+# Spectral data cubes
 #output_cubes: true            # Surface brightness cubes (defualt: false)
-# output_freq_stds: true        # Output frequency standard deviations (default: false)
-# output_freq2_images: true     # Frequency moment images (default: false)
 
 #verbose: true                 # Verbose output for tests and debugging

@@ -6,6 +6,7 @@ init_base: colt               # Initial conditions base name (optional)
 output_dir: output_tree       # Output directory name (default: "output")
 output_base: proj_rho         # Output file base name (default: "colt")
 
+# Information on simulation
 cosmological: true            # Indicates whether the simulation is cosmological
 perspective: true             # Perspective camera projections
 stepback_factor: 0.5          # Perspective stepback factor (relative to radius)
@@ -14,10 +15,12 @@ avoid_edges: false            # Avoid ray-tracing through edge cells
 # adaptive: true                # Adaptive convergence projections
 # pixel_rtol: 1e-3              # Relative tolerence per pixel
 
+# Information about fields
 field_weight_pairs:
   - [rho, avg]
   - [rho2, avg]
 
+# Information about Fade
 #fade_in_length_bbox: 1        # Fade in length relative to the bbox
 #fade_in_length_bbox: 0.4     # Fade in length relative to the bbox
 fade_in_length_bbox: 0        # Fade in length relative to the bbox
@@ -25,6 +28,8 @@ fade_in_length_bbox: 0        # Fade in length relative to the bbox
 fade_in_width_bbox: 0.25      # Fade in width relative to the bbox
 fade_out_length_bbox: 1       # Fade in length relative to the bbox
 fade_out_width_bbox: 0.25     # Fade in width relative to the bbox
+
+# Image information
 #image_radius_bbox: 1          # Image radius relative to the bbox
 #image_radius_bbox: 0.25       # Image radius relative to the bbox
 image_radii_bbox: [0.45,0.25] # Image radius relative to the bbox
@@ -41,6 +46,8 @@ ny_pixels: 2160
 # n_pixels: 3840                # Number of image pixels
 #n_pixels: 1280                # Number of image pixels
 #n_pixels: 2160                # Number of image pixels
+
+# Camera information
 camera_north: [0,0,1]         # Camera north orientation
 # camera_north: [0,0,0]         # Camera north orientation
 # n_rot: 360                    # Add camera directions manually

@@ -31,14 +31,19 @@ output_ion_stats_dust: true   # Ionization statistics for dust
 #   radial_logspace_Rvir: [-3, 1, 41] # Logarithmically spaced radial bins [Rvir]
 #   freq_edge_names: [HI, HeI, HeII, max] # Coarse frequency bin edge names
 
+# Maps
 output_map: true              # Output escape fraction maps
 output_map2: true             # Output escape fraction maps (and statistics)
 n_side_map: 5                 # Healpix resolution for maps (try 10 later)
+
+# Radial Maps
 output_radial_map: true       # Output radial surface brightness maps
 n_side_radial: 3              # Healpix resolution for radial maps (try 5 later)
 map_radius_bbox: 0.75         # Radial maps radius [bounding box]
 min_map_radius_pc: 0.5        # Minimum radial distance for maps [pc]
 n_map_pixels: 120             # Number of radial pixels for radial maps
+
+# Radial Averages
 output_radial_avg: true       # Output angle-averaged radial surface brightness
 # radius_kpc: 500             # Radial avgs radius [kpc]
 # min_radius_pc: 0.5          # Minimum radial distance for avgs [pc]
@@ -83,16 +88,21 @@ output_photoheating: false    # Output photoheating rates
 spherical_escape: true        # Photons escape from a sphere
 escape_radius_bbox: 0.75      # Escape radius relative to the bbox
 emission_radius_bbox: 0.5     # Emission radius relative to the bbox
-
-# Information about cameras
-image_radius_bbox: 0.25       # Image radius relative to the bbox (1 Rvir)
-n_pixels: 512                 # Number of image pixels
-radial_image_radius_bbox: 0.5 # Radial image radius relative to the bbox (2 Rvir)
-n_radial_pixels: 512          # Number of radial image pixels
-poly_cameras: tetrahedron     # Polygon-based camera configuration
-
 output_escape_fractions: true # Output camera escape fractions
 output_bin_escape_fractions: true # Output bin escape fractions
+
+# Information about cameras
+poly_cameras: tetrahedron     # Polygon-based camera configuration
+
+# Images
+image_radius_bbox: 0.25       # Image radius relative to the bbox (1 Rvir)
+n_pixels: 512                 # Number of image pixels
+
+# Radial Images
+radial_image_radius_bbox: 0.5 # Radial image radius relative to the bbox (2 Rvir)
+n_radial_pixels: 512          # Number of radial image pixels
+
+# SB Images
 output_images: true           # Output surface brightness images
 output_bin_images: true       # Output bin SB images
 

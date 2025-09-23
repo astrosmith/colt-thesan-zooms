@@ -6,6 +6,7 @@ init_base: colt               # Initial conditions base name (optional)
 output_dir: output_tree       # Output directory name (default: "output")
 output_base: SiII-1190        # Output file base name (default: "colt")
 
+# Information about sources
 cosmological: true            # Indicates whether the simulation is cosmological
 line: SiII-1190-1193            # Name of the line (default "Lyman-alpha")
 v_turb_kms: 10                # Microturbulent velocity [km/s]
@@ -16,52 +17,6 @@ v_turb_kms: 10                # Microturbulent velocity [km/s]
 #output_proj_emission: true    # Output intrinsic emission without transport (proj)
 #output_proj_attenuation: true # Output attenuated emission without scattering (proj)
 # pixel_rtol: 1e-2              # Relative tolerence per pixel
-
-# Information about sources
-# n_photons: 1000000            # Number of photon packets (10^6)
-# n_photons: 10000000           # Number of photon packets (10^7)
-n_photons: 100000000          # Number of photon packets (10^8)
-# n_photons: 2000000000         # Number of photon packets (10^9)
-j_exp: 0.75                    # Luminosity boosting exponent
-continuum: true               # Include UV continuum emission
-continuum_range: [-2000, 2500] # Continuum velocity offset range [km/s]
-source_model: BPASS-IMF-135-100 # Spectral source model
-
-# Information about escape
-output_photons: false         # Output escaped photon packets
-#output_photons: true          # Output escaped photon packets
-#photon_file: photons          # Output a separate photon file
-spherical_escape: true        # Photons escape from a sphere
-escape_radius_bbox: 0.75      # Escape radius relative to the bbox
-emission_radius_bbox: 0.5     # Emission radius relative to the bbox
-
-# Information about cameras
-freq_range: [-2000, 2500]     # Camera frequency range [km/s]
-n_bins: 225                   # Number of frequency bins
-image_radius_bbox: 0.5        # Image radius relative to the bbox (1 Rvir)
-n_pixels: 512                 # Number of image pixels
-# n_exp: 0                      # Camera healpix directions exponent
-cameras:                      # Add camera directions manually
-  - [0,0,1]
-  # - [0,0,-1]
-  - [0,1,0]
-  # - [0,-1,0]
-  - [1,0,0]
-  # - [-1,0,0]
-#adjust_camera_frequency: true # Recenter the rest frame frequency
-#freq_offset_dir: Ha           # Frequency offset directory
-#freq_offset_base: Ha          # Frequency offset file base
-#output_cubes: true            # Surface brightness cubes (defualt: false)
-#output_freq_stds: true        # Output frequency standard deviations (default: false)
-#output_freq2_images: true     # Frequency moment images (default: false)
-
-focus_cameras_on_emission: true      # Focus cameras on emission
-radial_image_radius_bbox: 0.75       # Radial image radius [bounding box]
-n_radial_pixels: 512                 # Number of radial image pixels
-# radial_pixel_arcsec: 0.01            # Observed angular width of each radial image pixel [arcseconds]
-output_radial_images: true           # Output radial surface brightness images [erg/s/cm^2/arcsec^2]
-output_radial_cubes: true            # Output radial spectral data cubes [erg/s/cm^2/arcsec^2/angstrom]
-
 output_mcrt_emission: true
 
 # thermal_ionization: true   # Set ionization states based on threshold temperatures
@@ -79,5 +34,61 @@ dust_model: SMC                # Dust model: SMC, MW, etc.
 # read_hydrogen_fraction: true   # Read X from the input file
 # constant_temperature: 1e5
 # SiII_fraction: 1               # Enforce a constant SiII fraction: x_SiII
+
+# n_photons: 1000000            # Number of photon packets (10^6)
+# n_photons: 10000000           # Number of photon packets (10^7)
+n_photons: 100000000          # Number of photon packets (10^8)
+# n_photons: 2000000000         # Number of photon packets (10^9)
+j_exp: 0.75                    # Luminosity boosting exponent
+continuum: true               # Include UV continuum emission
+continuum_range: [-2000, 2500] # Continuum velocity offset range [km/s]
+source_model: BPASS-IMF-135-100 # Spectral source model
+
+# Information about escape
+output_photons: false         # Output escaped photon packets
+#output_photons: true          # Output escaped photon packets
+#photon_file: photons          # Output a separate photon file
+spherical_escape: true        # Photons escape from a sphere
+escape_radius_bbox: 0.75      # Escape radius relative to the bbox
+emission_radius_bbox: 0.5     # Emission radius relative to the bbox
+
+# Information about cameras and Images
+#output_freq2_images: true     # Frequency moment images (default: false)
+image_radius_bbox: 0.5        # Image radius relative to the bbox (1 Rvir)
+n_pixels: 512                 # Number of image pixels
+# n_exp: 0                      # Camera healpix directions exponent
+cameras:                      # Add camera directions manually
+  - [0,0,1]
+  # - [0,0,-1]
+  - [0,1,0]
+  # - [0,-1,0]
+  - [1,0,0]
+  # - [-1,0,0]
+#adjust_camera_frequency: true # Recenter the rest frame frequency
+focus_cameras_on_emission: true      # Focus cameras on emission
+
+# Frequency
+#output_freq_stds: true        # Output frequency standard deviations (default: false)
+freq_range: [-2000, 2500]     # Camera frequency range [km/s]
+n_bins: 225                   # Number of frequency bins
+#freq_offset_dir: Ha           # Frequency offset directory
+#freq_offset_base: Ha          # Frequency offset file base
+
+# Spectral data cubes
+#output_cubes: true            # Surface brightness cubes (defualt: false)
+
+# Radial images
+radial_image_radius_bbox: 0.75       # Radial image radius [bounding box]
+n_radial_pixels: 512                 # Number of radial image pixels
+# radial_pixel_arcsec: 0.01            # Observed angular width of each radial image pixel [arcseconds]
+
+# Spectral SB radial images
+output_radial_images: true           # Output radial surface brightness images [erg/s/cm^2/arcsec^2]
+
+# Spectral SB radial cubes
+output_radial_cubes: true            # Output radial spectral data cubes [erg/s/cm^2/arcsec^2/angstrom]
+
+
+
 
 # verbose: true                 # Verbose output for tests and debugging

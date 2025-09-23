@@ -7,6 +7,7 @@ output_dir: output_tree       # Output directory name (default: "output")
 output_base: proj_all         # Output file base name (default: "colt")
 abundances_base: states-no-UVB # Output a separate abundances file
 
+# Information on simulation
 cosmological: true            # Indicates whether the simulation is cosmological
 perspective: true             # Perspective camera projections
 stepback_factor: 0.5          # Perspective stepback factor (relative to radius)
@@ -15,6 +16,7 @@ avoid_edges: false            # Avoid ray-tracing through edge cells
 # adaptive: true                # Adaptive convergence projections
 # pixel_rtol: 1e-3              # Relative tolerence per pixel
 
+# Information about fields
 field_weight_pairs:
   - [rho, avg]
   - [rho2, avg]
@@ -68,6 +70,7 @@ field_weight_pairs:
   - [v_x, mass]
   - [v_y, mass]
 
+# Information about Fade
 #fade_in_length_bbox: 1        # Fade in length relative to the bbox
 #fade_in_length_bbox: 0.4     # Fade in length relative to the bbox
 fade_in_length_bbox: 0        # Fade in length relative to the bbox
@@ -75,6 +78,8 @@ fade_in_length_bbox: 0        # Fade in length relative to the bbox
 fade_in_width_bbox: 0.25      # Fade in width relative to the bbox
 fade_out_length_bbox: 1       # Fade in length relative to the bbox
 fade_out_width_bbox: 0.25     # Fade in width relative to the bbox
+
+# Image information
 #image_radius_bbox: 1          # Image radius relative to the bbox
 #image_radius_bbox: 0.25       # Image radius relative to the bbox
 image_radii_bbox: [0.45,0.25] # Image radius relative to the bbox
@@ -91,6 +96,8 @@ ny_pixels: 360
 # n_pixels: 3840                # Number of image pixels
 #n_pixels: 1280                # Number of image pixels
 #n_pixels: 2160                # Number of image pixels
+
+# Information about cameras
 camera_north: [0,0,1]         # Camera north orientation
 # camera_north: [0,0,0]         # Camera north orientation
 # n_rot: 360                    # Add camera directions manually
