@@ -7,58 +7,102 @@ output_dir: output_tree       # Output directory name (default: "output")
 output_base: ion-eq           # Output file base name (default: "colt")
 abundances_base: states-no-UVB       # Output a separate abundances file
 
+output_stars: true            # Output star emission and escape
+output_ion_stats_H: true      # Ionization statistics for hydrogen
+output_ion_stats_He: true     # Ionization statistics for helium
+output_ion_stats_dust: true   # Ionization statistics for dust
+
+# # Group information
+# focus_groups_on_emission: true # Center of luminosity position and velocity
+# # output_groups: true           # Output group statistics
+# output_groups_obs: true       # Output group statistics for observations
+# output_groups_vir: true       # Output group statistics for virial quantities
+# output_groups_gal: true       # Output group statistics for galaxy quantities
+# # output_map_groups: true       # Output escape fraction maps
+# output_map2_groups: true      # Output escape fraction maps (and statistics)
+# n_side_groups: 5              # Healpix resolution for group maps
+# group_flows:                  # Group flow statistics
+#   radial_logspace_Rvir: [-3, 1, 41] # Logarithmically spaced radial bins [Rvir]
+#   freq_edge_names: [SI, HI, NI, SII, HeI, NII, OII, OIII, max] # Coarse frequency bin edge names
+
+# Maps
+output_map: true              # Output escape fraction maps
+output_map2: true             # Output escape fraction maps (and statistics)
+n_side_map: 10                # Healpix resolution for maps (try 10 later)
+
+# Radial Maps
+output_radial_map: true       # Output radial surface brightness maps
+output_bin_radial_map: true   # Output radial surface brightness maps
+n_side_radial: 5              # Healpix resolution for radial maps (try 5 later)
+map_radius_bbox: 0.75         # Radial maps radius [bounding box]
+# min_map_radius_pc: 0.5        # Minimum radial distance for maps [pc]
+n_map_pixels: 120             # Number of radial pixels for radial maps
+
+# Radial Averages
+output_radial_avg: true       # Output angle-averaged radial surface brightness
+# radius_kpc: 500             # Radial avgs radius [kpc]
+# min_radius_pc: 0.5          # Minimum radial distance for avgs [pc]
+# n_radial_pixels: 120              # Number of radial pixels for radial avgs
+radial_flow:                  # Radial flow statistics
+  radial_logspace_pc: [0, 5, 51] # Logarithmically spaced radial bins [pc]
+  freq_edge_names: [SI, HI, NI, SII, HeI, NII, OII, OIII, max] # Coarse frequency bin edge names
+
+# focus_radial_on_emission: true
+# shift_radial_on_emission: true
+
 # Information about sources
+cosmological: true            # Indicates whether the simulation is cosmological
 source_file_Z_age: /home/arsmith/colt/tables/bpass-spectra-bin-imf_chab100.hdf5
-dust_model: /home/arsmith/colt/tables/SMC_WeingartnerDraine.hdf5
-# source_model: BPASS-CHAB-100  # Spectral source model
-# dust_model: SMC               # Dust model: SMC, MW, etc.
+# dust_model: /home/arsmith/colt/tables/Draine-SMC.hdf5
+dust_model_graphite: /home/arsmith/colt/tables/graphite_dust.hdf5
+dust_model_silicate: /home/arsmith/colt/tables/silicate_dust.hdf5
+dust_model_PAH: /home/arsmith/colt/tables/PAH_dust.hdf5
+f_PAH: 0.01                   # Fraction of carbonaceous dust in PAHs
 j_exp: 0.75                   # Luminosity boosting exponent
-# ion_max_eV: 100               # Maximum ionization threshold to include [eV]
 metal_ions: true              # Include all metal ions
+helium_ions: true             # Include all helium ions
 ion_bins: true                # Include all active ion bins
 nu_exp: 2                     # Frequency boosting exponent
 min_HI_bin_cdf: 0.8           # Minimum CDF value for >= 13.6 eV bins
 max_bin_dex: 0.05             # Minimum frequency bin width in dex
-# use_internal_energy: true     # Set temperature from the internal energy
 
-n_photons: 1000000            # Number of photon packets (10^6)
+# n_photons: 1000000            # Number of photon packets (10^6)
+# n_photons: 10000000           # Number of photon packets (10^7)
 n_photons: 100000000          # Number of photon packets (10^8)
+# n_photons: 1000000000         # Number of photon packets (10^9)
 max_iter: 1                   # Maximum number of iterations
 max_error: 0.001              # Relative error for convergence
 
-output_mcrt_emission: true    # Output intrinsic emission without transport (mcrt)
-# output_mcrt_attenuation: true # Output attenuated emission without scattering (mcrt)
+output_mcrt_emission: true     # Output intrinsic emission without transport based on MCRT sampling
+# output_mcrt_attenuation: true   # Output attenuated emission without scattering based on MCRT sampling
 
 # Information about escape
 output_photons: false         # Output escaped photon packets
 # photon_file: photons          # Output a separate photon file
 output_abundances: false      # Output abundances (x_HI etc)
 # output_photoionization: true  # Output photoionization rates
-output_photoheating: true     # Output photoheating rates
+output_photoheating: false    # Output photoheating rates
 # photoheating_file: photoheating # Output a separate photoheating file
 spherical_escape: true        # Photons escape from a sphere
-escape_radius_bbox: 0.9       # Escape radius relative to the bbox
-emission_radius_bbox: 0.75    # Emission radius relative to the bbox
+escape_radius_bbox: 0.25      # Escape radius relative to the bbox
+emission_radius_bbox: 0.25    # Emission radius relative to the bbox
 output_escape_fractions: true # Output camera escape fractions
 output_bin_escape_fractions: true # Output bin escape fractions
 
-# Images 
-image_radius_bbox: 0.5        # Image radius relative to the bbox (1 Rvir)
-n_pixels: 512                 # Number of image pixels
+# Information about cameras
+poly_cameras: tetrahedron     # Polygon-based camera configuration
 
 # SB Images
-#output_images: true           # Output surface brightness images
-# output_bin_images: true       # Output bin SB images
+output_images: true           # Output surface brightness images
+output_bin_images: true       # Output bin SB images
+image_radius_bbox: 0.25       # Image radius relative to the bbox (1 Rvir)
+n_pixels: 512                 # Number of image pixels
 
-# Information about cameras
-# n_exp: 0                      # Camera healpix directions exponent
-cameras:                      # Add camera directions manually
-  - [0,0,1]
-  - [0,0,-1]
-  - [0,1,0]
-  - [0,-1,0]
-  - [1,0,0]
-  - [-1,0,0]
+# Radial SB Images
+output_radial_images: true    # Output radial surface brightness images
+output_bin_radial_images: true # Output bin radial SB images
+radial_image_radius_bbox: 0.5 # Radial image radius relative to the bbox (2 Rvir)
+n_radial_pixels: 512          # Number of radial image pixels
 
 # UVB and self-shielding
 # UVB_model: FG11               # UV background (Faucher-Giguere 2011 model)

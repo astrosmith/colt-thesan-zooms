@@ -82,8 +82,8 @@ max_bin_angstrom: 1475        # Highest energy bin edge [angstrom]
 # max_streaming_kpc: 50         # Maximum free-streaming distance [kpc]
 
 # n_photons: 1000000            # Number of photon packets (10^6)
-n_photons: 10000000           # Number of photon packets (10^7)
-# n_photons: 100000000          # Number of photon packets (10^8)
+# n_photons: 10000000           # Number of photon packets (10^7)
+n_photons: 100000000          # Number of photon packets (10^8)
 # n_photons: 1000000000         # Number of photon packets (10^9)
 max_iter: 1                   # Maximum number of iterations
 max_error: 0.001              # Relative error for convergence
@@ -104,23 +104,19 @@ emission_radius_bbox: 0.5     # Emission radius relative to the bbox
 output_escape_fractions: true # Output camera escape fractions
 output_bin_escape_fractions: true # Output bin escape fractions
 
-# Images 
-image_radius_bbox: 0.25       # Image radius relative to the bbox (1 Rvir)
-n_pixels: 512                 # Number of image pixels
-
-# Radial Images
-radial_image_radius_bbox: 0.5 # Radial image radius relative to the bbox (2 Rvir)
-n_radial_pixels: 512          # Number of radial image pixels
-
 # Information about cameras
 poly_cameras: tetrahedron     # Polygon-based camera configuration
 
 # SB Images
 output_images: true           # Output surface brightness images
-output_bin_images: true       # Output bin SB images
+output_bin_images: false      # Output bin SB images
+image_radius_bbox: 0.25       # Image radius relative to the bbox (1 Rvir)
+n_pixels: 512                 # Number of image pixels
 
-# Radial SB images
+# Radial SB Images
 output_radial_images: true    # Output radial surface brightness images
-output_bin_radial_images: true  #Output bin radial surface brightness images.
+output_bin_radial_images: false # Output bin radial SB images
+radial_image_radius_bbox: 0.5 # Radial image radius relative to the bbox (2 Rvir)
+n_radial_pixels: 512          # Number of radial image pixels
 
 #verbose: true                 # Verbose output for tests and debugging

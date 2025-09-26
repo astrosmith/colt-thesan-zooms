@@ -34,13 +34,14 @@ output_ion_stats_dust: true   # Ionization statistics for dust
 # Maps
 output_map: true              # Output escape fraction maps
 output_map2: true             # Output escape fraction maps (and statistics)
-n_side_map: 5                 # Healpix resolution for maps (try 10 later)
+n_side_map: 10                # Healpix resolution for maps (try 10 later)
 
 # Radial Maps
 output_radial_map: true       # Output radial surface brightness maps
-n_side_radial: 3              # Healpix resolution for radial maps (try 5 later)
+output_bin_radial_map: true   # Output radial surface brightness maps
+n_side_radial: 5              # Healpix resolution for radial maps (try 5 later)
 map_radius_bbox: 0.75         # Radial maps radius [bounding box]
-min_map_radius_pc: 0.5        # Minimum radial distance for maps [pc]
+# min_map_radius_pc: 0.5        # Minimum radial distance for maps [pc]
 n_map_pixels: 120             # Number of radial pixels for radial maps
 
 # Radial Averages
@@ -78,6 +79,9 @@ n_photons: 100000000          # Number of photon packets (10^8)
 max_iter: 1                   # Maximum number of iterations
 max_error: 0.001              # Relative error for convergence
 
+output_mcrt_emission: true     # Output intrinsic emission without transport based on MCRT sampling
+# output_mcrt_attenuation: true   # Output attenuated emission without scattering based on MCRT sampling
+
 # Information about escape
 output_photons: false         # Output escaped photon packets
 # photon_file: photons          # Output a separate photon file
@@ -86,24 +90,24 @@ output_abundances: false      # Output abundances (x_HI etc)
 output_photoheating: false    # Output photoheating rates
 # photoheating_file: photoheating # Output a separate photoheating file
 spherical_escape: true        # Photons escape from a sphere
-escape_radius_bbox: 0.75      # Escape radius relative to the bbox
-emission_radius_bbox: 0.5     # Emission radius relative to the bbox
+escape_radius_bbox: 0.25      # Escape radius relative to the bbox
+emission_radius_bbox: 0.25    # Emission radius relative to the bbox
 output_escape_fractions: true # Output camera escape fractions
 output_bin_escape_fractions: true # Output bin escape fractions
 
 # Information about cameras
 poly_cameras: tetrahedron     # Polygon-based camera configuration
 
-# Images
-image_radius_bbox: 0.25       # Image radius relative to the bbox (1 Rvir)
-n_pixels: 512                 # Number of image pixels
-
-# Radial Images
-radial_image_radius_bbox: 0.5 # Radial image radius relative to the bbox (2 Rvir)
-n_radial_pixels: 512          # Number of radial image pixels
-
 # SB Images
 output_images: true           # Output surface brightness images
 output_bin_images: true       # Output bin SB images
+image_radius_bbox: 0.25       # Image radius relative to the bbox (1 Rvir)
+n_pixels: 512                 # Number of image pixels
+
+# Radial SB Images
+output_radial_images: true    # Output radial surface brightness images
+output_bin_radial_images: true # Output bin radial SB images
+radial_image_radius_bbox: 0.5 # Radial image radius relative to the bbox (2 Rvir)
+n_radial_pixels: 512          # Number of radial image pixels
 
 #verbose: true                 # Verbose output for tests and debugging
