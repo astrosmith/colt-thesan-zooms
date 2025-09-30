@@ -38,7 +38,7 @@ use_temperature_equilibrium: true  # Use temperature equilibrium
 courant_limited_cooling: true  # Courant limited cooling
 use_internal_energy: false     # Use internal energy
 T_rtol: 0.001
-T_stab_factor: 2
+T_stab_factor: 1.3
 T_floor: 300
 
 # Information about escape

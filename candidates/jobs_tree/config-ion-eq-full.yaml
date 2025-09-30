@@ -4,8 +4,8 @@
 init_dir: ics_tree            # Initial conditions directory (default: "ics")
 init_base: colt               # Initial conditions base name (optional)
 output_dir: output_tree       # Output directory name (default: "output")
-output_base: ion-eq           # Output file base name (default: "colt")
-abundances_base: states-no-UVB       # Output a separate abundances file
+output_base: ion-eq-full      # Output file base name (default: "colt")
+abundances_base: states-no-UVB # Output a separate abundances file
 
 output_stars: true            # Output star emission and escape
 output_ion_stats_H: true      # Ionization statistics for hydrogen
