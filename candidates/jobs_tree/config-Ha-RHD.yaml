@@ -36,8 +36,8 @@ output_mcrt_emission: true    # Output intrinsic emission without transport (mcr
 # pixel_rtol: 1e-2              # Relative tolerence per pixel
 
 # n_photons: 1000000            # Number of photon packets (10^6)
-n_photons: 10000000           # Number of photon packets (10^7)
-# n_photons: 100000000          # Number of photon packets (10^8)
+# n_photons: 10000000           # Number of photon packets (10^7)
+n_photons: 100000000          # Number of photon packets (10^8)
 # n_photons: 2000000000         # Number of photon packets (10^9)
 j_exp: 0.75                   # Luminosity boosting exponent
 
@@ -68,33 +68,33 @@ image_radius_bbox: 0.25       # Image radius relative to the bbox (1 Rvir)
 n_pixels: 512                 # Number of image pixels
 
 # Radial images
-output_radial_images: true           # Output radial surface brightness images [erg/s/cm^2/arcsec^2]
+output_radial_images: true    # Output radial surface brightness images [erg/s/cm^2/arcsec^2]
 radial_image_radius_bbox: 0.5 # Radial image radius relative to the bbox (2 Rvir)
 n_radial_pixels: 512          # Number of radial image pixels
 
 # Spectral radial images
-output_radial_cubes: true            # Output radial spectral data cubes [erg/s/cm^2/arcsec^2/angstrom]
-radial_cubes_radius_bbox: 0.5 # Radial cube radius relative to the bbox (2 Rvir)
-n_radial_cubes_pixels: 512          # Number of radial cube pixels
-cube_freq_range: [-500, 500]       # Camera frequency range [km/s]
-cube_n_bins: 500                   # Number of frequency bins
+output_radial_cubes: true     # Output radial spectral data cubes [erg/s/cm^2/arcsec^2/angstrom]
+radial_cube_radius_bbox: 0.5  # Radial cube radius relative to the bbox (2 Rvir)
+n_radial_cube_pixels: 512     # Number of radial cube pixels
+radial_cube_freq_range: [-500, 500] # Camera frequency range [km/s]
+n_radial_cube_bins: 500       # Number of frequency bins
 
 # Spectral data cubes
 # output_cubes: true            # Surface brightness cubes (defualt: false)
 # ...
 
 # Maps
-output_map: true           # Output escape fraction maps
-output_map2: true          # Output escape fraction maps (and statistics)
-output_freq2_map: true     # Output frequency^2 group maps
-n_side_map: 5              # Healpix resolution for group maps
+output_map: true              # Output escape fraction maps
+output_map2: true             # Output escape fraction maps (and statistics)
+output_freq2_map: true        # Output frequency^2 group maps
+n_side_map: 5                 # Healpix resolution for group maps
 
 # Flux maps
-output_flux_map: true  # Output spectral flux group maps
-n_side_flux: 3         # Healpix resolution for group flux maps
-map_freq_min: -500     # Frequency minimum [km/s]
-map_freq_max: 500      # Frequency maximum [km/s]
-n_map_bins: 100        # Number of frequency bins for group flux maps
+output_flux_map: true         # Output spectral flux group maps
+n_side_flux: 3                # Healpix resolution for group flux maps
+map_freq_min: -500            # Frequency minimum [km/s]
+map_freq_max: 500             # Frequency maximum [km/s]
+n_map_bins: 100               # Number of frequency bins for group flux maps
 
 # Radial maps
 output_radial_map: true       # Output radial surface brightness group maps
@@ -104,10 +104,15 @@ map_radius_bbox: 0.75         # Radial maps radius [bounding box]
 n_map_pixels: 120             # Number of radial pixels for radial maps
 
 # Radial averages
-# output_radial_avg: true       # Output angle-averaged radial surface brightness
+output_radial_avg: true       # Output angle-averaged radial surface brightness
+# radius_kpc: 500               # Radial avgs radius [kpc]
+# min_radius_pc: 0.5            # Minimum radial distance for avgs [pc]
+# n_radial_pixels: 120          # Number of radial pixels for radial avgs
+radial_flow:                  # Radial flow statistics
+  radial_logspace_pc: [0, 5, 51] # Logarithmically spaced radial bins [pc]
 
 # Spectral radial averages
-# output_radial_cube_avg: true  # Output angle-averaged radial spectral surface brightness
+output_radial_cube_avg: true  # Output angle-averaged radial spectral surface brightness
 # radius_kpc: 500             # Radial avgs radius [kpc]
 # min_radius_pc: 0.5          # Minimum radial distance for avgs [pc]
 # n_radial_pixels: 120              # Number of radial pixels for radial avgs
