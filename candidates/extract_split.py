@@ -25,6 +25,8 @@ colt_dir = f'{zoom_dir}-COLT/{sim}/ics'
 states = 'states-no-UVB'  # States prefix
 copy_states = True  # Copy ionization states to the new colt file
 interpolate_mass = True  # Interpolate mass fields
+jerk_interp = True  # Use linear interpolation
+MYR_TO_S = 1e6 * 3.154e7  # Myr → seconds
 
 # Overwrite for local testing
 #dist_dir = '.'
@@ -54,11 +56,10 @@ units = {'r': b'cm', 'v': b'cm/s', 'e_int': b'cm^2/s^2', 'T_dust': b'K', 'rho': 
 for field in state_fields:
     if field in gas_fields:
         gas_fields.remove(field)
-
+pos_fields = ['r', 'v', 'v_star', 'r_star']
 no_interp = ['D', 'D_Si','T_dust','x_e', 'e_int',
              'X', 'Y', 'Z', 'Z_C', 'Z_Fe', 'Z_Mg', 'Z_N', 'Z_Ne', 'Z_O', 'Z_S', 'Z_Si',
-             'r', 'v', 'v_star', 'r_star','x_H2', 'Z_star',
-             'x_HI', 'x_HII', 'x_HeI', 'x_HeII',
+             'x_H2', 'Z_star','x_HI', 'x_HII', 'x_HeI', 'x_HeII',
              'x_CI', 'x_CII', 'x_CIII', 'x_CIV',
              'x_NI', 'x_NII', 'x_NIII', 'x_NIV', 'x_NV',
              'x_OI', 'x_OII', 'x_OIII', 'x_OIV',
@@ -106,6 +107,88 @@ def interpolate_field(r_1, r_2, n_split=3):
     r_interp = interp(t_vals)
     return r_interp
 
+def jerk_interpolate(p0, v0, p1, v1, n_split, dt_myr, alpha=0.5):
+    p0 = np.asarray(p0, dtype=float)
+    p1 = np.asarray(p1, dtype=float)
+    v0 = np.asarray(v0, dtype=float)
+    v1 = np.asarray(v1, dtype=float)
+
+    dt = dt_myr * MYR_TO_S
+    frames = n_split + 1
+
+    N, D = p0.shape
+    pos = np.zeros((frames, N, D), dtype=float)
+    vel = np.zeros((frames, N, D), dtype=float)
+
+    # Masks
+    both_mask  = (np.linalg.norm(p0, axis=1) > 0) & (np.linalg.norm(p1, axis=1) > 0)
+    only0_mask = (np.linalg.norm(p0, axis=1) > 0) & ~both_mask
+    only1_mask = (np.linalg.norm(p1, axis=1) > 0) & ~both_mask
+
+    tvals = np.linspace(0.0, dt, frames)[:, None, None]  # shape (frames,1,1)
+
+    # ---- Case 1: IDs present in both snapshots (true jerk interpolation) ----
+    if np.any(both_mask):
+        dx = p1[both_mask] - p0[both_mask]
+        a1 = (6 * dx - 2 * (2 * v0[both_mask] + v1[both_mask]) * dt) / dt**2
+        j  = (6 * ((v0[both_mask] + v1[both_mask]) * dt - 2 * dx)) / dt**3
+
+        vel[:, both_mask] = v0[both_mask] + a1*tvals + 0.5*j*tvals**2
+        pos[:, both_mask] = (
+            p0[both_mask]
+            + v0[both_mask]*tvals
+            + 0.5*a1*tvals**2
+            + (1.0/6.0)*j*tvals**3
+        )
+
+    # ---- Case 2: IDs only in snapshot 1 (half-drift stop forward) ----
+    if np.any(only0_mask):
+        p1_fake = p0[only0_mask] + alpha * v0[only0_mask] * dt
+        v1_fake = np.zeros_like(v0[only0_mask])
+
+        dx = p1_fake - p0[only0_mask]
+        a1 = (6 * dx - 2 * (2*v0[only0_mask] + v1_fake) * dt) / dt**2
+        j  = (6 * ((v0[only0_mask] + v1_fake) * dt - 2 * dx)) / dt**3
+
+        vel[:, only0_mask] = v0[only0_mask] + a1*tvals + 0.5*j*tvals**2
+        pos[:, only0_mask] = (
+            p0[only0_mask]
+            + v0[only0_mask]*tvals
+            + 0.5*a1*tvals**2
+            + (1.0/6.0)*j*tvals**3
+        )
+
+    # ---- Case 3: IDs only in snapshot 2 (half-drift stop backward + birth mask) ----
+    if np.any(only1_mask):
+        p0_fake = p1[only1_mask] - alpha * v1[only1_mask] * dt
+        v0_fake = np.zeros_like(v1[only1_mask])
+
+        dx = p1[only1_mask] - p0_fake
+        a1 = (6 * dx - 2 * (2*v0_fake + v1[only1_mask]) * dt) / dt**2
+        j  = (6 * ((v0_fake + v1[only1_mask]) * dt - 2 * dx)) / dt**3
+
+        # full interpolation arrays
+        vel_block = v0_fake + a1*tvals + 0.5*j*tvals**2
+        pos_block = (
+            p0_fake
+            + v0_fake*tvals
+            + 0.5*a1*tvals**2
+            + (1.0/6.0)*j*tvals**3
+        )
+
+        # Birth mask logic
+        born = np.zeros(only1_mask.sum(), dtype=bool)
+        for i in range(frames):
+            born_now = np.all(pos_block[i] > 0, axis=1)
+            born = born | born_now
+            pos_block[i, ~born] = 0.0
+            vel_block[i, ~born] = 0.0
+
+        pos[:, only1_mask] = pos_block
+        vel[:, only1_mask] = vel_block
+
+    return pos, vel
+
 def interpolate_colt_movie_multi(c1, c2, gas_fields, star_fields=None, n_split=4, f_cut=1., s1=None, s2=None):
     global file_count
     id1 = c1['id'][:]
@@ -141,6 +224,30 @@ def interpolate_colt_movie_multi(c1, c2, gas_fields, star_fields=None, n_split=4
         # Fill from c1 and c2
         data1_full[:len(id1)] = data1
         data2_full[matches_mask] = data2[valid_positions]
+        if jerk_interp and field in pos_fields:
+            # Use jerk interpolation for positions and velocities
+            if field in ['r', 'v']:
+                p0, v0 = c1['r'][:], c1['v'][:]
+                p1, v1 = c2['r'][:], c2['v'][:]
+                p0_full = np.zeros((len(id_collective),) + data1.shape[1:], dtype=data1.dtype)
+                p1_full = np.zeros_like(data1_full)
+                v0_full = np.zeros((len(id_collective),) + data1.shape[1:], dtype=data1.dtype)
+                v1_full = np.zeros_like(data1_full)
+                # Fill from c1 and c2
+                p0_full[:len(id1)] = p0
+                # print(p0_full.shape)
+                p1_full[matches_mask] = p1[valid_positions]
+                # print(p1_full.shape)
+                v0_full[:len(id1)] = v0
+                v1_full[matches_mask] = v1[valid_positions]
+                if field == 'r':
+                    dt_myr = np.abs(cosmo.age(z1).value - cosmo.age(z2).value) * 1e3  # [Myr]
+                    pos_interp, vel_interp = jerk_interpolate(p0_full, v0_full, p1_full, v1_full, n_split=n_split, dt_myr=dt_myr)
+                    interp_data_dict['r'] = pos_interp
+                    interp_data_dict['v'] = vel_interp
+                    continue                    
+                else:
+                    continue
 
         if field in no_interp:
             # For ids missing in c2, fill data2_full with data1_full values (keep constant)
@@ -209,6 +316,31 @@ def interpolate_colt_movie_multi(c1, c2, gas_fields, star_fields=None, n_split=4
                 data1_full[:len(idstar1)] = data1
                 data2_full[matches_mask] = data2[valid_positions]
 
+                if jerk_interp and field in pos_fields:
+                    # Use jerk interpolation for positions and velocities
+                    if field in ['r_star', 'v_star']:
+                        p0, v0 = c1['r_star'][:], c1['v_star'][:]
+                        p1, v1 = c2['r_star'][:], c2['v_star'][:]
+                        p0_full = np.zeros((len(id_collective_star),) + data1.shape[1:], dtype=data1.dtype)
+                        p1_full = np.zeros_like(data1_full)
+                        v0_full = np.zeros((len(id_collective_star),) + data1.shape[1:], dtype=data1.dtype)
+                        v1_full = np.zeros_like(data1_full)
+                        # Fill from c1 and c2
+                        p0_full[:len(idstar1)] = p0
+                        # print(p0_full.shape)
+                        p1_full[matches_mask] = p1[valid_positions]
+                        # print(p1_full.shape)
+                        v0_full[:len(idstar1)] = v0
+                        v1_full[matches_mask] = v1[valid_positions]
+                        if field == 'r_star':
+                            dt_myr = np.abs(cosmo.age(z1).value - cosmo.age(z2).value) * 1e3  # [Myr]
+                            pos_interp, vel_interp = jerk_interpolate(p0_full, v0_full, p1_full, v1_full, n_split=n_split, dt_myr=dt_myr)
+                            interp_data_dict['r_star'] = pos_interp
+                            interp_data_dict['v_star'] = vel_interp
+                            continue                    
+                        else:
+                            continue
+                        
                 if field in no_interp:
                     # For ids missing in c2, fill data2_full with data1_full values (keep constant)
                     missing_mask = ~matches_mask
