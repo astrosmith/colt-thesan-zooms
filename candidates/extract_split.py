@@ -517,6 +517,7 @@ file_count = np.array([])
 for i in progressbar(range(n_snaps-1)):
     snap = snaps[i]
     snap_1, snap_2 = snap, snap + 1
+    GroupPos1, GroupPos2 = GroupPos[i], GroupPos[i+1] 
     colt_1 = f'{tree_dir}/colt_{snap_1:03d}.hdf5'
     colt_2 = f'{tree_dir}/colt_{snap_2:03d}.hdf5'
     with h5py.File(colt_1, 'r') as c1, h5py.File(colt_2, 'r') as c2:
