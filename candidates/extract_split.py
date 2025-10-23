@@ -26,8 +26,10 @@ states = 'states-no-UVB'  # States prefix
 copy_states = True  # Copy ionization states to the new colt file
 interpolate_mass = True  # Interpolate mass fields
 jerk_interp = True  # Use linear interpolation
+UnitLength_in_cm = 3.08568e+21 # 1 kpc in cm [from Candidates files]
 MYR_TO_S = 1e6 * 3.154e7  # Myr → seconds
 
+use_smoothed = True # Use smoothed GroupPos
 # Overwrite for local testing
 #dist_dir = '.'
 #colt_dir = '.'
@@ -141,51 +143,20 @@ def jerk_interpolate(p0, v0, p1, v1, n_split, dt_myr, alpha=0.5):
             + (1.0/6.0)*j*tvals**3
         )
 
-    # ---- Case 2: IDs only in snapshot 1 (half-drift stop forward) ----
+    # ---- Case 2: IDs only in snapshot 1 ----
     if np.any(only0_mask):
-        p1_fake = p0[only0_mask] + alpha * v0[only0_mask] * dt
-        v1_fake = np.zeros_like(v0[only0_mask])
-
-        dx = p1_fake - p0[only0_mask]
-        a1 = (6 * dx - 2 * (2*v0[only0_mask] + v1_fake) * dt) / dt**2
-        j  = (6 * ((v0[only0_mask] + v1_fake) * dt - 2 * dx)) / dt**3
-
-        vel[:, only0_mask] = v0[only0_mask] + a1*tvals + 0.5*j*tvals**2
-        pos[:, only0_mask] = (
-            p0[only0_mask]
-            + v0[only0_mask]*tvals
-            + 0.5*a1*tvals**2
-            + (1.0/6.0)*j*tvals**3
-        )
-
-    # ---- Case 3: IDs only in snapshot 2 (half-drift stop backward + birth mask) ----
+        a = -v0[only0_mask] / dt  # constant acceleration
+        tvals = np.linspace(0, dt, frames)[:, None, None]  # (frames,1,1)
+        vel[:, only0_mask] = v0[only0_mask] + a * tvals
+        pos[:, only0_mask] = p0[only0_mask] + v0[only0_mask]*tvals + 0.5*a*tvals**2
+        
+    # ---- Case 3: IDs only in snapshot 2 ----
     if np.any(only1_mask):
-        p0_fake = p1[only1_mask] - alpha * v1[only1_mask] * dt
-        v0_fake = np.zeros_like(v1[only1_mask])
-
-        dx = p1[only1_mask] - p0_fake
-        a1 = (6 * dx - 2 * (2*v0_fake + v1[only1_mask]) * dt) / dt**2
-        j  = (6 * ((v0_fake + v1[only1_mask]) * dt - 2 * dx)) / dt**3
-
-        # full interpolation arrays
-        vel_block = v0_fake + a1*tvals + 0.5*j*tvals**2
-        pos_block = (
-            p0_fake
-            + v0_fake*tvals
-            + 0.5*a1*tvals**2
-            + (1.0/6.0)*j*tvals**3
-        )
-
-        # Birth mask logic
-        born = np.zeros(only1_mask.sum(), dtype=bool)
-        for i in range(frames):
-            born_now = np.all(pos_block[i] > 0, axis=1)
-            born = born | born_now
-            pos_block[i, ~born] = 0.0
-            vel_block[i, ~born] = 0.0
-
-        pos[:, only1_mask] = pos_block
-        vel[:, only1_mask] = vel_block
+        a = v1[only1_mask] / dt
+        tvals = np.linspace(0, dt, frames)[:, None, None]
+        vel[:, only1_mask] = a * tvals
+        p0_fake = p1[only1_mask] - 0.5 * v1[only1_mask] * dt
+        pos[:, only1_mask] = p0_fake + 0.5 * a * tvals**2 + vel[:, only1_mask] * tvals
 
     return pos, vel
 
@@ -227,24 +198,42 @@ def interpolate_colt_movie_multi(c1, c2, gas_fields, star_fields=None, n_split=4
         if jerk_interp and field in pos_fields:
             # Use jerk interpolation for positions and velocities
             if field in ['r', 'v']:
-                p0, v0 = c1['r'][:], c1['v'][:]
-                p1, v1 = c2['r'][:], c2['v'][:]
-                p0_full = np.zeros((len(id_collective),) + data1.shape[1:], dtype=data1.dtype)
-                p1_full = np.zeros_like(data1_full)
-                v0_full = np.zeros((len(id_collective),) + data1.shape[1:], dtype=data1.dtype)
-                v1_full = np.zeros_like(data1_full)
+                p1, v1 = c1['r'][:], c1['v'][:]
+                p2, v2 = c2['r'][:], c2['v'][:]
+                p1_full = np.zeros((len(id_collective),) + data1.shape[1:], dtype=data1.dtype)
+                p2_full = np.zeros_like(p1_full)
+                v1_full = np.zeros((len(id_collective),) + data1.shape[1:], dtype=data1.dtype)
+                v2_full = np.zeros_like(v1_full)
                 # Fill from c1 and c2
-                p0_full[:len(id1)] = p0
-                # print(p0_full.shape)
-                p1_full[matches_mask] = p1[valid_positions]
-                # print(p1_full.shape)
-                v0_full[:len(id1)] = v0
-                v1_full[matches_mask] = v1[valid_positions]
+                p1_full[:len(id1)] = p1
+                p2_full[matches_mask] = p2[valid_positions]
+                v1_full[:len(id1)] = v1
+                v2_full[matches_mask] = v2[valid_positions]
                 if field == 'r':
+                    ## p1,p0,v1,v0 in cm and cm/s
                     dt_myr = np.abs(cosmo.age(z1).value - cosmo.age(z2).value) * 1e3  # [Myr]
-                    pos_interp, vel_interp = jerk_interpolate(p0_full, v0_full, p1_full, v1_full, n_split=n_split, dt_myr=dt_myr)
+                    dt_s = dt_myr * MYR_TO_S
+                    # Before interpolating, we shift everything to frame of reference of snap1
+                    p1_full /= conv_fact1  # ckpc/h
+                    p2_full /= conv_fact2  # ckpc/h
+                    p1_full += GroupPos1   # ckpc/h but in BoxUnits
+                    p2_full += GroupPos2   # ckpc/h but in BoxUnits
+                    # Assuming vc = v, since we ignore Hubble flow
+                    v1_full /= conv_fact1  # ckpc/h/s 
+                    v2_full /= conv_fact2  # ckpc/h/s
+
+                    pos_interp, vel_interp = jerk_interpolate(p1_full, v1_full, p2_full, v2_full, n_split=n_split, dt_myr=dt_myr)
+                    
+                    # # Shift back to original frame of reference
+                    GroupPos_interp = np.linspace(GroupPos1, GroupPos2, n_split +1)[:,None, :]
+                    a_arr = np.linspace(1./(z1+1.), 1./(z2+1.), n_split+1)[:,None, None]
+                    
+                    pos_interp -= GroupPos_interp
+                    pos_interp *= a_arr * UnitLength_in_cm / h1
+                    vel_interp *= a_arr / h1 * UnitLength_in_cm
+
                     interp_data_dict['r'] = pos_interp
-                    interp_data_dict['v'] = vel_interp
+                    interp_data_dict['v'] = vel_interp 
                     continue                    
                 else:
                     continue
@@ -317,26 +306,43 @@ def interpolate_colt_movie_multi(c1, c2, gas_fields, star_fields=None, n_split=4
                 data2_full[matches_mask] = data2[valid_positions]
 
                 if jerk_interp and field in pos_fields:
-                    # Use jerk interpolation for positions and velocities
                     if field in ['r_star', 'v_star']:
-                        p0, v0 = c1['r_star'][:], c1['v_star'][:]
-                        p1, v1 = c2['r_star'][:], c2['v_star'][:]
-                        p0_full = np.zeros((len(id_collective_star),) + data1.shape[1:], dtype=data1.dtype)
-                        p1_full = np.zeros_like(data1_full)
-                        v0_full = np.zeros((len(id_collective_star),) + data1.shape[1:], dtype=data1.dtype)
-                        v1_full = np.zeros_like(data1_full)
+                        p1, v1 = c1['r_star'][:], c1['v_star'][:]
+                        p2, v2 = c2['r_star'][:], c2['v_star'][:]
+
+                        p1_full = np.zeros((len(id_collective_star),) + data1.shape[1:], dtype=data1.dtype)
+                        p2_full = np.zeros_like(p1_full)
+                        v1_full = np.zeros((len(id_collective_star),) + data1.shape[1:], dtype=data1.dtype)
+                        v2_full = np.zeros_like(v1_full)
                         # Fill from c1 and c2
-                        p0_full[:len(idstar1)] = p0
-                        # print(p0_full.shape)
-                        p1_full[matches_mask] = p1[valid_positions]
-                        # print(p1_full.shape)
-                        v0_full[:len(idstar1)] = v0
-                        v1_full[matches_mask] = v1[valid_positions]
+                        p1_full[:len(idstar1)] = p1
+                        p2_full[matches_mask] = p2[valid_positions]
+                        v1_full[:len(idstar1)] = v1
+                        v2_full[matches_mask] = v2[valid_positions]
                         if field == 'r_star':
+                            ## p1,p0,v1,v0 in cm and cm/s [originally]
                             dt_myr = np.abs(cosmo.age(z1).value - cosmo.age(z2).value) * 1e3  # [Myr]
-                            pos_interp, vel_interp = jerk_interpolate(p0_full, v0_full, p1_full, v1_full, n_split=n_split, dt_myr=dt_myr)
+                            dt_s = dt_myr * MYR_TO_S
+                            # Before interpolating, we shift everything to frame of reference of snap1
+                            p1_full /= conv_fact1  # ckpc/h
+                            p2_full /= conv_fact2  # ckpc/h
+                            p1_full += GroupPos1   # ckpc/h but in BoxUnits
+                            p2_full += GroupPos2   # ckpc/h but in BoxUnits
+                            # Assuming vc = v, since we ignore Hubble flow
+                            v1_full /= conv_fact1  # ckpc/h/s 
+                            v2_full /= conv_fact2  # ckpc/h/s
+
+                            pos_interp, vel_interp = jerk_interpolate(p1_full, v1_full, p2_full, v2_full, n_split=n_split, dt_myr=dt_myr)
+                            
+                            # # Shift back to original frame of reference
+                            GroupPos_interp = np.linspace(GroupPos1, GroupPos2, n_split +1)[:,None, :]
+                            a_arr = np.linspace(1./(z1+1.), 1./(z2+1.), n_split+1)[:,None, None]
+                            
+                            pos_interp -= GroupPos_interp
+                            pos_interp *= a_arr * UnitLength_in_cm/ h1
+                            vel_interp *= a_arr / h1 * UnitLength_in_cm
                             interp_data_dict['r_star'] = pos_interp
-                            interp_data_dict['v_star'] = vel_interp
+                            interp_data_dict['v_star'] = vel_interp 
                             continue                    
                         else:
                             continue
@@ -486,6 +492,17 @@ tree_file = f'/orcd/data/mvogelsb/004/Thesan-Zooms/analyze/trees/{sim}/tree.hdf5
 # tree_file = f'{zoom_dir}/{sim}/output/tree.hdf5'
 with h5py.File(tree_file, 'r') as f:
     snaps = f['Snapshots'][:] # Snapshots in the tree
+    zs = f['Redshifts'][:] # Redshifts in the tree
+    if not use_smoothed:
+        # group_ids = f['Group']['GroupID'][:] # Group ID in the tree
+        # subhalo_ids = f['Subhalo']['SubhaloID'][:] # Subhalo ID in the tree
+        # R_virs = f['Group']['Group_R_Crit200'][:] # Group virial radii in the tree [ckpc/h]
+        GroupPos = f['Group']['GroupPos'][:] # Group positions in the tree [ckpc/h]
+    else:
+        with h5py.File(colt_dir + '/center.hdf5', 'r') as sf:
+            g = sf['Smoothed']
+            GroupPos = g['TargetPos'][:]  # Use smoothed versions
+            # R_virs = g['R_Crit200'][:]  #[ckpc/h]
 
 if False:
     mask = np.zeros(len(snaps), dtype=bool)
@@ -507,6 +524,9 @@ for i in progressbar(range(n_snaps-1)):
         H0 = 100. * h
         Omega0 = c1.attrs['Omega0']
         z1, z2 = c1.attrs['redshift'], c2.attrs['redshift']
+        a1, a2 = 1./ (1.+z1), 1./(1.+z2) 
+        h1, h2 = c1.attrs['h100'], c2.attrs['h100']
+        conv_fact1, conv_fact2 = a1 * UnitLength_in_cm / h1, a2 * UnitLength_in_cm / h2
         cosmo = FlatLambdaCDM(H0=H0, Om0=Omega0, Tcmb0=2.725)
         t_fixed = 1e3 * cosmo.age(np.array([z1, z2])).value  # [Myr]
         dt_fixed = np.abs(t_fixed[:-1] - t_fixed[1:])[0]  # [Myr]
