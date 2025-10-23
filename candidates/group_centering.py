@@ -19,7 +19,7 @@ if __name__ == '__main__':
 # Derived global variables
 cand_dir = f'{zoom_dir}/{sim}/postprocessing/candidates'
 colt_dir = f'{zoom_dir}-COLT/{sim}/ics'
-# colt_dir = f'/orcd/data/mvogelsb/005/Lab/Thesan-Zooms-COLT/{sim}/ics'
+colt_dir = f'/orcd/data/mvogelsb/005/Lab/Thesan-Zooms-COLT/{sim}/ics'
 os.makedirs(f'{colt_dir}_tree', exist_ok=True) # Ensure the new colt directory exists
 
 M_sun = 1.988435e33  # Solar mass in g

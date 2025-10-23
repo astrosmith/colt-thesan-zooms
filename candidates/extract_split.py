@@ -20,8 +20,8 @@ if __name__ == '__main__':
 
 # Derived global variables
 cand_dir = f'{zoom_dir}/{sim}/postprocessing/candidates'
-colt_dir = f'{zoom_dir}-COLT/{sim}/ics'
-# colt_dir = f'/orcd/data/mvogelsb/005/Lab/Thesan-Zooms-COLT/{sim}/ics'
+#colt_dir = f'{zoom_dir}-COLT/{sim}/ics'
+colt_dir = f'/orcd/data/mvogelsb/005/Lab/Thesan-Zooms-COLT/{sim}/ics'
 states = 'states-no-UVB'  # States prefix
 copy_states = True  # Copy ionization states to the new colt file
 interpolate_mass = True  # Interpolate mass fields
@@ -499,7 +499,7 @@ with h5py.File(tree_file, 'r') as f:
         # R_virs = f['Group']['Group_R_Crit200'][:] # Group virial radii in the tree [ckpc/h]
         GroupPos = f['Group']['GroupPos'][:] # Group positions in the tree [ckpc/h]
     else:
-        with h5py.File(colt_dir + '/center.hdf5', 'r') as sf:
+        with h5py.File(tree_dir + '/center.hdf5', 'r') as sf:
             g = sf['Smoothed']
             GroupPos = g['TargetPos'][:]  # Use smoothed versions
             # R_virs = g['R_Crit200'][:]  #[ckpc/h]
