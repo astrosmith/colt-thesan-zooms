@@ -1,7 +1,9 @@
 import numpy as np
 import h5py, os, errno, platform, subprocess
 from scipy.interpolate import interp1d
-from astropy.cosmology import FlatLambdaCDM
+from astropy.cosmology import FlatLambdaCDM, z_at_value
+import astropy.units as u
+from scipy.signal import savgol_filter
 
 # Configurable global variables
 if platform.system() == 'Darwin':
@@ -27,7 +29,7 @@ copy_states = True  # Copy ionization states to the new colt file
 interpolate_mass = True  # Interpolate mass fields
 jerk_interp = True  # Use linear interpolation
 UnitLength_in_cm = 3.08568e+21 # 1 kpc in cm [from Candidates files]
-MYR_TO_S = 1e6 * 3.154e7  # Myr → seconds
+MYR_TO_S = u.Myr.to(u.s)  # Myr -> s
 
 use_smoothed = True # Use smoothed GroupPos
 # Overwrite for local testing
@@ -100,6 +102,22 @@ def progressbar(it, prefix="", size=100, file=sys.stdout):
     file.write("\n")
     file.flush()
 
+def smooth(x, y):
+    """Smooth the data."""
+    x_smooth, y_smooth = savgol_filter((x, y), 15, 3)
+    interp = interp1d(x_smooth, y_smooth, fill_value='extrapolate')
+    return interp(x)  # Interpolate the smoot+hed data back to the original x values
+
+def smooth_split(x, y, x_split):
+    """Smooth the data."""
+    x_smooth, y_smooth = savgol_filter((x, y), 15, 3)
+    interp = interp1d(x_smooth, y_smooth, fill_value='extrapolate', kind='cubic')
+    return interp(x_split)  # Interpolate the smoothed data back to the original x values
+
+def smooth_pos(x, pos):
+    """Smooth position data."""
+    return np.array([smooth(x, pos[:,0]), smooth(x, pos[:,1]), smooth(x, pos[:,2])]).T
+
 def interpolate_field(r_1, r_2, n_split=3):
     r_1 = np.asarray(r_1)
     r_2 = np.asarray(r_2)
@@ -109,13 +127,13 @@ def interpolate_field(r_1, r_2, n_split=3):
     r_interp = interp(t_vals)
     return r_interp
 
-def jerk_interpolate(p0, v0, p1, v1, n_split, dt_myr, alpha=0.5):
+def jerk_interpolate(p0, v0, p1, v1, n_split, dt_s):
     p0 = np.asarray(p0, dtype=float)
     p1 = np.asarray(p1, dtype=float)
     v0 = np.asarray(v0, dtype=float)
     v1 = np.asarray(v1, dtype=float)
 
-    dt = dt_myr * MYR_TO_S
+    dt = dt_s
     frames = n_split + 1
 
     N, D = p0.shape
@@ -160,7 +178,7 @@ def jerk_interpolate(p0, v0, p1, v1, n_split, dt_myr, alpha=0.5):
 
     return pos, vel
 
-def interpolate_colt_movie_multi(c1, c2, gas_fields, star_fields=None, n_split=4, f_cut=1., s1=None, s2=None):
+def interpolate_colt_movie_multi(c1, c2, z_split, box_pos_dense, R_virs_dense, gas_fields, star_fields=None, n_split=4, f_cut=1., s1=None, s2=None):
     global file_count
     id1 = c1['id'][:]
     id2 = c2['id'][:]
@@ -177,9 +195,7 @@ def interpolate_colt_movie_multi(c1, c2, gas_fields, star_fields=None, n_split=4
 
     # Dictionary to store interpolated arrays for each field
     interp_data_dict = {}
-    # Interpolated redshift array
-    interp_z = interpolate_field(z1, z2, n_split=n_split)
-    interp_r_box = interpolate_field(c1.attrs['r_box'], c2.attrs['r_box'], n_split=n_split)
+    interp_r_box = R_virs_dense
 
     for field in gas_fields:
         if field in state_fields and s1 is not None and s2 is not None:
@@ -222,15 +238,15 @@ def interpolate_colt_movie_multi(c1, c2, gas_fields, star_fields=None, n_split=4
                     v1_full /= conv_fact1  # ckpc/h/s 
                     v2_full /= conv_fact2  # ckpc/h/s
 
-                    pos_interp, vel_interp = jerk_interpolate(p1_full, v1_full, p2_full, v2_full, n_split=n_split, dt_myr=dt_myr)
+                    pos_interp, vel_interp = jerk_interpolate(p1_full, v1_full, p2_full, v2_full, n_split=n_split, dt_s=dt_s)
                     
                     # # Shift back to original frame of reference
-                    GroupPos_interp = np.linspace(GroupPos1, GroupPos2, n_split +1)[:,None, :]
-                    a_arr = np.linspace(1./(z1+1.), 1./(z2+1.), n_split+1)[:,None, None]
-                    
-                    pos_interp -= GroupPos_interp
-                    pos_interp *= a_arr * UnitLength_in_cm / h1
-                    vel_interp *= a_arr / h1 * UnitLength_in_cm
+                    GroupPos_dense = box_pos_dense[:,None,:]
+                    a_arr = 1./(z_split+1.)[:,None, None]
+                    conv_const = UnitLength_in_cm / h
+                    pos_interp -= GroupPos_dense
+                    pos_interp *= a_arr * conv_const
+                    vel_interp *= a_arr * conv_const
 
                     interp_data_dict['r'] = pos_interp
                     interp_data_dict['v'] = vel_interp 
@@ -332,15 +348,16 @@ def interpolate_colt_movie_multi(c1, c2, gas_fields, star_fields=None, n_split=4
                             v1_full /= conv_fact1  # ckpc/h/s 
                             v2_full /= conv_fact2  # ckpc/h/s
 
-                            pos_interp, vel_interp = jerk_interpolate(p1_full, v1_full, p2_full, v2_full, n_split=n_split, dt_myr=dt_myr)
+                            pos_interp, vel_interp = jerk_interpolate(p1_full, v1_full, p2_full, v2_full, n_split=n_split, dt_s=dt_s)
                             
                             # # Shift back to original frame of reference
-                            GroupPos_interp = np.linspace(GroupPos1, GroupPos2, n_split +1)[:,None, :]
-                            a_arr = np.linspace(1./(z1+1.), 1./(z2+1.), n_split+1)[:,None, None]
+                            GroupPos_dense = box_pos_dense[:,None,:]
+                            a_arr = 1./(z_split+1.)[:,None, None]
                             
-                            pos_interp -= GroupPos_interp
-                            pos_interp *= a_arr * UnitLength_in_cm/ h1
-                            vel_interp *= a_arr / h1 * UnitLength_in_cm
+                            pos_interp -= GroupPos_dense
+                            conv_const = UnitLength_in_cm / h
+                            pos_interp *= a_arr * conv_const
+                            vel_interp *= a_arr * conv_const
                             interp_data_dict['r_star'] = pos_interp
                             interp_data_dict['v_star'] = vel_interp 
                             continue                    
@@ -375,7 +392,7 @@ def interpolate_colt_movie_multi(c1, c2, gas_fields, star_fields=None, n_split=4
                         )[1:-1, :]
 
                     # Compute cosmic times at interpolation redshifts (Gyr)
-                    t_interp = cosmo.age(interp_z).value
+                    t_interp = cosmo.age(z_split).value
                     dt = t_interp[1:] - t_interp[0]   # time since snap1
                     dt2 = t_interp[-1] - t_interp[:-1]  # time until snap2
 
@@ -432,7 +449,7 @@ def interpolate_colt_movie_multi(c1, c2, gas_fields, star_fields=None, n_split=4
             with h5py.File(f'{movie_dir}/colt_{i:04d}.hdf5', 'w') as f:
                 f.attrs['n_cells'] = np.int32(len(id_collective))  # Number of cells
                 f.attrs['n_stars'] = np.int32(len(id_collective_star) if id_collective_star is not None else 0)  # Number of star particles
-                f.attrs['redshift'] = interp_z[i]  # Current simulation redshift
+                f.attrs['redshift'] = z_split[i]  # Current simulation redshift
                 f.attrs['Omega0'] = c1.attrs['Omega0']  # Matter density [rho_crit_0]
                 f.attrs['OmegaB'] = c1.attrs['OmegaB']  # Baryon density [rho_crit_0]
                 f.attrs['h100'] = c1.attrs['h100']  # Hubble constant [100 km/s/Mpc]
@@ -464,7 +481,7 @@ def interpolate_colt_movie_multi(c1, c2, gas_fields, star_fields=None, n_split=4
             with h5py.File(f'{movie_dir}/colt_{last_file_no + i :04d}.hdf5', 'w') as f:
                 f.attrs['n_cells'] = np.int32(len(id_collective))  # Number of cells
                 f.attrs['n_stars'] = np.int32(len(id_collective_star) if id_collective_star is not None else 0)  # Number of star particles
-                f.attrs['redshift'] = interp_z[i]  # Current simulation redshift
+                f.attrs['redshift'] = z_split[i]  # Current simulation redshift
                 f.attrs['Omega0'] = c1.attrs['Omega0']  # Matter density [rho_crit_0]
                 f.attrs['OmegaB'] = c1.attrs['OmegaB']  # Baryon density [rho_crit_0]
                 f.attrs['h100'] = c1.attrs['h100']  # Hubble constant [100 km/s/Mpc]
@@ -496,13 +513,17 @@ with h5py.File(tree_file, 'r') as f:
     if not use_smoothed:
         # group_ids = f['Group']['GroupID'][:] # Group ID in the tree
         # subhalo_ids = f['Subhalo']['SubhaloID'][:] # Subhalo ID in the tree
-        # R_virs = f['Group']['Group_R_Crit200'][:] # Group virial radii in the tree [ckpc/h]
+        R_virs = f['Group']['Group_R_Crit200'][:] # Group virial radii in the tree [ckpc/h]
         GroupPos = f['Group']['GroupPos'][:] # Group positions in the tree [ckpc/h]
     else:
         with h5py.File(tree_dir + '/center.hdf5', 'r') as sf:
             g = sf['Smoothed']
-            GroupPos = g['TargetPos'][:]  # Use smoothed versions
-            # R_virs = g['R_Crit200'][:]  #[ckpc/h]
+            redshift = sf['Redshifts'][:]
+            TargetPos = g['TargetPos'][:]  # Use smoothed versions
+            SmoothPos = smooth_pos(redshift, TargetPos) # Smooth the data
+            # print(np.max(np.abs(SmoothPos - GroupPos), axis=0))
+            R_virs = g['R_Crit200'][:]  #[ckpc/h]
+            SmoothR_virs = smooth(redshift, R_virs) # Smooth the data
 
 if False:
     mask = np.zeros(len(snaps), dtype=bool)
@@ -533,6 +554,12 @@ for i in progressbar(range(n_snaps-1)):
         dt_fixed = np.abs(t_fixed[:-1] - t_fixed[1:])[0]  # [Myr]
         dt_min = 1.5  # [Myr]
         n_add = np.floor(dt_fixed / dt_min).astype(np.int32)
+        t_split = interpolate_field(t_fixed[0], t_fixed[1], n_add+1)
+        z_split = z_at_value(cosmo.age, t_split * u.Myr)
+        pos_dense = np.zeros((n_add+2, 3))
+        for d in range(3):
+            pos_dense[:,d] = smooth_split(redshift, SmoothPos[:,d], z_split)
+        r_box_dense = smooth_split(redshift, R_virs, z_split)
         n_stars_tot = (c1.attrs['n_stars'] if 'n_stars' in c1.attrs else 0) + (c2.attrs['n_stars'] if 'n_stars' in c2.attrs else 0)
         gas_fields_to_interpolate = np.concatenate((gas_fields, state_fields)) if copy_states else gas_fields
         star_fields_to_interpolate = star_fields if n_stars_tot > 0 else None
@@ -541,6 +568,6 @@ for i in progressbar(range(n_snaps-1)):
             states_1 = f'{tree_dir}/{states}_{snap_1:03d}.hdf5'
             states_2 = f'{tree_dir}/{states}_{snap_2:03d}.hdf5'
             with h5py.File(states_1, 'r') as s1, h5py.File(states_2, 'r') as s2:
-                file_count = interpolate_colt_movie_multi(c1, c2, gas_fields=gas_fields_to_interpolate, star_fields=star_fields_to_interpolate, n_split=n_add+1, s1=s1, s2=s2)
+                file_count = interpolate_colt_movie_multi(c1, c2, z_split=z_split,box_pos_dense=pos_dense, R_virs_dense=r_box_dense, gas_fields=gas_fields_to_interpolate, star_fields=star_fields_to_interpolate, n_split=n_add+1, s1=s1, s2=s2)
         except (FileNotFoundError, KeyError, ZeroDivisionError):
-            file_count = interpolate_colt_movie_multi(c1, c2, gas_fields=gas_fields, star_fields=star_fields_to_interpolate, n_split=n_add+1)
+            file_count = interpolate_colt_movie_multi(c1, c2, z_split=z_split,box_pos_dense=pos_dense, R_virs_dense=r_box_dense ,gas_fields=gas_fields, star_fields=star_fields_to_interpolate, n_split=n_add+1)
