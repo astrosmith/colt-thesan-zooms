@@ -167,7 +167,7 @@ def jerk_interpolate(p0, v0, p1, v1, n_split, dt_s):
         tvals = np.linspace(0, dt, frames)[:, None, None]  # (frames,1,1)
         vel[:, only0_mask] = v0[only0_mask] + a * tvals
         pos[:, only0_mask] = p0[only0_mask] + v0[only0_mask]*tvals + 0.5*a*tvals**2
-        
+
     # ---- Case 3: IDs only in snapshot 2 ----
     if np.any(only1_mask):
         a = v1[only1_mask] / dt
@@ -235,11 +235,11 @@ def interpolate_colt_movie_multi(c1, c2, z_split, box_pos_dense, R_virs_dense, g
                     p1_full += GroupPos1   # ckpc/h but in BoxUnits
                     p2_full += GroupPos2   # ckpc/h but in BoxUnits
                     # Assuming vc = v, since we ignore Hubble flow
-                    v1_full /= conv_fact1  # ckpc/h/s 
+                    v1_full /= conv_fact1  # ckpc/h/s
                     v2_full /= conv_fact2  # ckpc/h/s
 
                     pos_interp, vel_interp = jerk_interpolate(p1_full, v1_full, p2_full, v2_full, n_split=n_split, dt_s=dt_s)
-                    
+
                     # # Shift back to original frame of reference
                     GroupPos_dense = box_pos_dense[:,None,:]
                     a_arr = 1./(z_split+1.)[:,None, None]
@@ -249,8 +249,8 @@ def interpolate_colt_movie_multi(c1, c2, z_split, box_pos_dense, R_virs_dense, g
                     vel_interp *= a_arr * conv_const
 
                     interp_data_dict['r'] = pos_interp
-                    interp_data_dict['v'] = vel_interp 
-                    continue                    
+                    interp_data_dict['v'] = vel_interp
+                    continue
                 else:
                     continue
 
@@ -345,25 +345,25 @@ def interpolate_colt_movie_multi(c1, c2, z_split, box_pos_dense, R_virs_dense, g
                             p1_full += GroupPos1   # ckpc/h but in BoxUnits
                             p2_full += GroupPos2   # ckpc/h but in BoxUnits
                             # Assuming vc = v, since we ignore Hubble flow
-                            v1_full /= conv_fact1  # ckpc/h/s 
+                            v1_full /= conv_fact1  # ckpc/h/s
                             v2_full /= conv_fact2  # ckpc/h/s
 
                             pos_interp, vel_interp = jerk_interpolate(p1_full, v1_full, p2_full, v2_full, n_split=n_split, dt_s=dt_s)
-                            
+
                             # # Shift back to original frame of reference
                             GroupPos_dense = box_pos_dense[:,None,:]
                             a_arr = 1./(z_split+1.)[:,None, None]
-                            
+
                             pos_interp -= GroupPos_dense
                             conv_const = UnitLength_in_cm / h
                             pos_interp *= a_arr * conv_const
                             vel_interp *= a_arr * conv_const
                             interp_data_dict['r_star'] = pos_interp
-                            interp_data_dict['v_star'] = vel_interp 
-                            continue                    
+                            interp_data_dict['v_star'] = vel_interp
+                            continue
                         else:
                             continue
-                        
+
                 if field in no_interp:
                     # For ids missing in c2, fill data2_full with data1_full values (keep constant)
                     missing_mask = ~matches_mask
@@ -520,8 +520,8 @@ with h5py.File(tree_file, 'r') as f:
             g = sf['Smoothed']
             redshift = sf['Redshifts'][:]
             TargetPos = g['TargetPos'][:]  # Use smoothed versions
-            SmoothPos = smooth_pos(redshift, TargetPos) # Smooth the data
-            # print(np.max(np.abs(SmoothPos - GroupPos), axis=0))
+            GroupPos = smooth_pos(redshift, TargetPos) # Smooth the data
+            # print(np.max(np.abs(GroupPos - GroupPos), axis=0))
             R_virs = g['R_Crit200'][:]  #[ckpc/h]
             SmoothR_virs = smooth(redshift, R_virs) # Smooth the data
 
@@ -538,7 +538,7 @@ file_count = np.array([])
 for i in progressbar(range(n_snaps-1)):
     snap = snaps[i]
     snap_1, snap_2 = snap, snap + 1
-    GroupPos1, GroupPos2 = GroupPos[i], GroupPos[i+1] 
+    GroupPos1, GroupPos2 = GroupPos[i], GroupPos[i+1]
     colt_1 = f'{tree_dir}/colt_{snap_1:03d}.hdf5'
     colt_2 = f'{tree_dir}/colt_{snap_2:03d}.hdf5'
     with h5py.File(colt_1, 'r') as c1, h5py.File(colt_2, 'r') as c2:
@@ -546,7 +546,7 @@ for i in progressbar(range(n_snaps-1)):
         H0 = 100. * h
         Omega0 = c1.attrs['Omega0']
         z1, z2 = c1.attrs['redshift'], c2.attrs['redshift']
-        a1, a2 = 1./ (1.+z1), 1./(1.+z2) 
+        a1, a2 = 1./ (1.+z1), 1./(1.+z2)
         h1, h2 = c1.attrs['h100'], c2.attrs['h100']
         conv_fact1, conv_fact2 = a1 * UnitLength_in_cm / h1, a2 * UnitLength_in_cm / h2
         cosmo = FlatLambdaCDM(H0=H0, Om0=Omega0, Tcmb0=2.725)
@@ -558,7 +558,7 @@ for i in progressbar(range(n_snaps-1)):
         z_split = z_at_value(cosmo.age, t_split * u.Myr)
         pos_dense = np.zeros((n_add+2, 3))
         for d in range(3):
-            pos_dense[:,d] = smooth_split(redshift, SmoothPos[:,d], z_split)
+            pos_dense[:,d] = smooth_split(redshift, GroupPos[:,d], z_split)
         r_box_dense = smooth_split(redshift, R_virs, z_split)
         n_stars_tot = (c1.attrs['n_stars'] if 'n_stars' in c1.attrs else 0) + (c2.attrs['n_stars'] if 'n_stars' in c2.attrs else 0)
         gas_fields_to_interpolate = np.concatenate((gas_fields, state_fields)) if copy_states else gas_fields
