@@ -30,6 +30,7 @@ interpolate_mass = True  # Interpolate mass fields
 jerk_interp = True  # Use linear interpolation
 UnitLength_in_cm = 3.08568e+21 # 1 kpc in cm [from Candidates files]
 MYR_TO_S = u.Myr.to(u.s)  # Myr -> s
+f_vir = 4.    # constant factor for virial radius (needs to be cross-referendced with extract.py, default value =4.) 
 
 use_smoothed = True # Use smoothed GroupPos
 # Overwrite for local testing
@@ -195,7 +196,9 @@ def interpolate_colt_movie_multi(c1, c2, z_split, box_pos_dense, R_virs_dense, g
 
     # Dictionary to store interpolated arrays for each field
     interp_data_dict = {}
-    interp_r_box = R_virs_dense
+    a_arr = 1./(z_split+1.)
+    conv_const = UnitLength_in_cm / h
+    interp_r_box = R_virs_dense * a_arr * conv_const
 
     for field in gas_fields:
         if field in state_fields and s1 is not None and s2 is not None:
@@ -559,7 +562,7 @@ for i in progressbar(range(n_snaps-1)):
         pos_dense = np.zeros((n_add+2, 3))
         for d in range(3):
             pos_dense[:,d] = smooth_split(redshift, GroupPos[:,d], z_split)
-        r_box_dense = smooth_split(redshift, R_virs, z_split)
+        r_box_dense = smooth_split(redshift, R_virs, z_split) * f_vir
         n_stars_tot = (c1.attrs['n_stars'] if 'n_stars' in c1.attrs else 0) + (c2.attrs['n_stars'] if 'n_stars' in c2.attrs else 0)
         gas_fields_to_interpolate = np.concatenate((gas_fields, state_fields)) if copy_states else gas_fields
         star_fields_to_interpolate = star_fields if n_stars_tot > 0 else None
