@@ -108,7 +108,7 @@ for i in progressbar(range(n_snaps)):
         # Read gas and star coordinates for the radial masks
         gas_pos = r = f['r'][:] - r_virs[i] # Gas position [cm]
         r_box = f_vir * R_virs[i] # Radial cut = 2 * virial radius
-        gas_mask = (np.sum(r**2, axis=1) < r_box**2) # Sphere cut
+        gas_mask = (np.linalg.norm(r, axis=1) < r_box) # Sphere cut
         n_cells = np.int32(np.count_nonzero(gas_mask)) # Number of cells
         gas_flag = (n_cells >= 0)  # Gas flag
         rho_gas = f['rho'][gas_mask]  # Gas density [g/cm^3]
@@ -121,7 +121,7 @@ for i in progressbar(range(n_snaps)):
         if 'r_star' in f:
             star_flag = True
             r_star = f['r_star'][:] - r_virs[i] # Star position [cm]
-            star_mask = (np.sum(r_star**2, axis=1) < r_box**2) # Sphere cut
+            star_mask = (np.linalg.norm(r_star, axis=1) < r_box) # Sphere cut
             n_stars = np.int32(np.count_nonzero(star_mask)) # Number of star particles
             n_cells = np.int32(np.count_nonzero(star_mask)) # Number of cells
             m_star = f['m_init_star'][star_mask]  # Star mass [Msun]
@@ -137,7 +137,7 @@ for i in progressbar(range(n_snaps)):
             p2_flag = True
             # Read coordinates for the radial masks
             r_p2 = f['r_p2'][:] - r_virs[i] # Dark matter particle positions Type 2 [cm]
-            p2_mask = (np.sum(r_p2**2, axis=1) < r_box**2) # Sphere cut
+            p2_mask = (np.linalg.norm(r_p2, axis=1) < r_box) # Sphere cut
             m_p2 = f['m_p2'][p2_mask]  # Mass of dark matter particles Type 2 [MSun]
             r_p2 = r_p2[p2_mask]
         else:
@@ -148,7 +148,7 @@ for i in progressbar(range(n_snaps)):
         if 'r_p3' in f:
             p3_flag = True
             r_p3 = f['r_p3'][:] - r_virs[i]  # Dark matter particle positions Type 3 [cm]
-            p3_mask = (np.sum(r_p3**2, axis=1) < r_box**2) # Sphere cut
+            p3_mask = (np.linalg.norm(r_p3, axis=1) < r_box) # Sphere cut
             r_p3 = r_p3[p3_mask]  # Dark matter particle positions Type 3 within 2 virial radius[cm]
             m_p3 = f.attrs['m_p3']
             n_p3_tot = f.attrs['n_p3']  # Total number of dark matter particles Type 3 [MSun]
@@ -164,7 +164,7 @@ for i in progressbar(range(n_snaps)):
             n_dm_tot = f.attrs['n_dm']  # Total number of dark matter particles
             m_dm = f.attrs['m_dm']  # Mass of dark matter particles [MSun]
             r_dm = f['r_dm'][:] - r_virs[i]  # Dark matter particle positions [cm]
-            dm_mask = (np.sum(r_dm**2, axis=1) < r_box**2) # Sphere cut
+            dm_mask = (np.linalg.norm(r_dm, axis=1) < r_box) # Sphere cut
             r_dm = r_dm[dm_mask]  # Dark matter particle positions
             m_dm = m_dm * np.ones(n_dm_tot)  # Total dark matter mass [MSun]
             m_dm = m_dm[dm_mask]  # Dark matter mass [MSun]
@@ -186,33 +186,33 @@ for i in progressbar(range(n_snaps)):
 
     if gas_flag and n_cells > 0:
         r_gas_new = gas_pos - com_new_2v  # Gas position relative to the new center of mass
-        gas_mask = (np.sum(r_gas_new**2, axis=1) < r_box**2)  # Sphere cut
+        gas_mask = (np.linalg.norm(r_gas_new, axis=1) < r_box)  # Sphere cut
         n_cells = np.int32(np.count_nonzero(gas_mask))  # Number of cells
         mass_gas = mass_gas[gas_mask]  # Gas mass [g]
         gas_pos = r_gas_new[gas_mask]  # Gas positions [cm]
 
     if star_flag and n_stars > 0:
         r_star_new = r_star - com_new_2v  # Star position relative to the new center of mass
-        star_mask = (np.sum(r_star_new**2, axis=1) < r_box**2)
+        star_mask = (np.linalg.norm(r_star_new, axis=1) < r_box)
         n_stars = np.int32(np.count_nonzero(star_mask))  # Number of star particles
         m_star = m_star[star_mask]  # Star mass [Msun]
         r_star = r_star_new[star_mask]  # Star positions [cm]
 
     if dm_flag and len(r_dm) > 0:
         r_dm_new = r_dm - com_new_2v  # Dark matter position relative to the new center
-        dm_mask = (np.sum(r_dm_new**2, axis=1) < r_box**2)  # Sphere cut
+        dm_mask = (np.linalg.norm(r_dm_new, axis=1) < r_box)  # Sphere cut
         r_dm = r_dm_new[dm_mask]  # Dark matter particle positions [cm]
         m_dm = m_dm[dm_mask]  # Dark matter mass [g]
 
     if p2_flag and len(r_p2) > 0:
         r_p2_new = r_p2 - com_new_2v  # Dark matter particle Type 2 position relative to the new center of mass
-        p2_mask = (np.sum(r_p2_new**2, axis=1) < r_box**2)  # Sphere cut
+        p2_mask = (np.linalg.norm(r_p2_new, axis=1) < r_box)  # Sphere cut
         r_p2 = r_p2_new[p2_mask]  # Dark matter particle Type 2 positions [cm]
         m_p2 = m_p2[p2_mask]  # Dark matter particle Type 2 mass [g]
 
     if  p3_flag and len(r_p3) > 0:
         r_p3_new = r_p3 - com_new_2v  # Dark matter particle Type 3 position relative to the new center of mass
-        p3_mask = (np.sum(r_p3_new**2, axis=1) < r_box**2)  # Sphere cut
+        p3_mask = (np.linalg.norm(r_p3_new, axis=1) < r_box)  # Sphere cut
         r_p3 = r_p3_new[p3_mask]  # Dark matter particle Type 3 positions [cm]
         m_p3 = m_p3[p3_mask]  # Dark matter particle Type 3 mass [g]
 

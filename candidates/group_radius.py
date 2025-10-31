@@ -165,9 +165,14 @@ for i in progressbar(range(n_snaps)):
         GasPos = (f['r'][:] + r_HRs[i]) / length_to_cgs - SmoothPos[i]  # Gas position [ckpc/h] [centered on SmoothPos]
         n_cells = f.attrs['n_cells'] # Number of cells
         gas_rho = f['rho'][:]  # Gas density [g/cm^3]
-        gas_rho[~f['is_HR'][:]] = 0.  # Set gas density to 0 outside the high-resolution region
+        inner_edges = f['inner_edges'][:]
+        edges = f['edges'][:]
+        mask = np.zeros(n_cells, dtype=bool)
+        mask[edges] = True
+        mask[inner_edges] = True
+        gas_rho[mask] = 0.  # Set gas density to 0 outside the high-resolution region
         gas_vol = f['V'][:]  # Cell volume [cm^3]
-        gas_mass = (gas_rho[:] * gas_vol[:]) / SOLAR_MASS  # Gas mass [Msun]
+        gas_mass = (gas_rho * gas_vol) / SOLAR_MASS  # Gas mass [Msun]
         GasMass = gas_mass / mass_to_msun  # Convert to code units [BoxUnits]
 
         # Star Properties
