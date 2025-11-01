@@ -255,6 +255,19 @@ for i in progressbar(range(n_snaps)):
     # Calculate the enclosed mass, density, and virial radius
     M_enc = M_gas_enc + M_dm_enc + M_p2_enc + M_p3_enc + M_stars_enc  # Total enclosed mass
     rho_enc = M_enc * M_to_rho_vir # Enclosed density [rho_vir]
+    i_max = np.argmax(rho_enc)  # Find the bin with the maximum density
+    rho_max = rho_enc[i_max]  # Maximum density
+    if rho_max <= 1.:
+        log_kpc = np.log10(h / a)  # log(kpc)
+        log_r_max = log_rbins[i_max]  # log(r_max)
+        if log_r_max < log_kpc:  # Ensure the radius is at least 1 kpc
+            i_max = np.argmin(np.abs(log_rbins - log_kpc))
+            if log_rbins[i_max] > log_kpc:
+                i_max -= 1
+        i_max += 1  # Right bin index
+        if i_max <= 0: i_max = 1  # Ensure i_max is at least 1
+        if i_max >= n_bins: i_max = n_bins - 1  # Ensure i_max is at most n_bins - 1
+        rho_enc[:i_max] = 1.01  # Ensure rho_enc > 1
     i_vir = np.where(rho_enc > 1)[0][-1] + 1  # Find the last bin with rho_enc > 1
     # Log interpolation to find the virial radius and masses
     frac = -np.log10(rho_enc[i_vir-1]) / np.log10(rho_enc[i_vir]/rho_enc[i_vir-1]) # Interpolation coordinate
