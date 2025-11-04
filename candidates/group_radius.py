@@ -258,11 +258,10 @@ for i in progressbar(range(n_snaps)):
     i_max = np.argmax(rho_enc)  # Find the bin with the maximum density
     rho_max = rho_enc[i_max]  # Maximum density
     if rho_max <= 1.:
-        log_kpc = np.log10(h / a)  # log(kpc)
         log_r_max = log_rbins[i_max]  # log(r_max)
-        if log_r_max < log_kpc:  # Ensure the radius is at least 1 kpc
-            i_max = np.argmin(np.abs(log_rbins - log_kpc))
-            if log_rbins[i_max] > log_kpc:
+        if log_r_max < 0.:  # Ensure the radius is at least 1 ckpc/h
+            i_max = np.argmin(np.abs(log_rbins))
+            if log_rbins[i_max] > 0.:
                 i_max -= 1
         i_max += 1  # Right bin index
         if i_max <= 0: i_max = 1  # Ensure i_max is at least 1
