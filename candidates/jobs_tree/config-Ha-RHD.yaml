@@ -105,20 +105,16 @@ n_map_pixels: 120             # Number of radial pixels for radial maps
 
 # Radial averages
 output_radial_avg: true       # Output angle-averaged radial surface brightness
-# radius_kpc: 500               # Radial avgs radius [kpc]
-# min_radius_pc: 0.5            # Minimum radial distance for avgs [pc]
-# n_radial_pixels: 120          # Number of radial pixels for radial avgs
+n_radial_avg_pixels: 120          # Number of radial pixels for radial avgs
 radial_flow:                  # Radial flow statistics
   radial_logspace_pc: [0, 5, 51] # Logarithmically spaced radial bins [pc]
 
 # Spectral radial averages
 output_radial_cube_avg: true  # Output angle-averaged radial spectral surface brightness
-# radius_kpc: 500             # Radial avgs radius [kpc]
-# min_radius_pc: 0.5          # Minimum radial distance for avgs [pc]
-# n_radial_pixels: 120              # Number of radial pixels for radial avgs
+n_radial_cube_avg_pixels: 120              # Number of radial pixels for radial avgs
 # radial_flow:                  # Radial flow statistics
 #   radial_logspace_pc: [0, 5, 51] # Logarithmically spaced radial bins [pc]
-# focus_radial_on_emission: true
+focus_radial_on_emission: true
 # shift_radial_on_emission: true
 
 #verbose: true                 # Verbose output for tests and debugging
