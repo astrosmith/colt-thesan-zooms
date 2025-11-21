@@ -1,10 +1,39 @@
 import numpy as np
 import h5py
-import sys
+import os, platform, sys
 
-X = 0.76            # Primordial mass fraction of hydrogen
+def progressbar(it, prefix="", size=100, file=sys.stdout):
+    count = len(it)
+    def show(j):
+        x = int(size*j/count)
+        file.write("%s[%s%s] %i/%i\r" % (prefix, "#"*x, "."*(size-x), j, count))
+        file.flush()
+    show(0)
+    for i, item in enumerate(it):
+        yield item
+        show(i+1)
+    file.write("\n")
+    file.flush()
+
+# Configurable global variables
+if platform.system() == 'Darwin':
+    sim, zoom_dir = 'g500531/z4', os.path.expandvars('$HOME/Engaging/Thesan-Zooms')
+else:
+    sim, zoom_dir = 'g5760/z4', '/orcd/data/mvogelsb/004/Thesan-Zooms'
+
+if __name__ == '__main__':
+    if len(sys.argv) == 2:
+        sim = sys.argv[1]
+    elif len(sys.argv) == 3:
+        sim, zoom_dir = sys.argv[1], sys.argv[2]
+    elif len(sys.argv) != 1:
+        raise ValueError('Usage: python group_radius.py [sim] [zoom_dir]')
+
+# colt_dir = f'/orcd/data/mvogelsb/004/Thesan-Zooms-COLT/{sim}/ics_tree'
+colt_dir = f'/orcd/data/mvogelsb/005/Lab/Thesan-Zooms-COLT/{sim}/ics_tree'
 
 # Universal constants
+X = 0.76                   # Primordial mass fraction of hydrogen
 c = 2.99792458e10          # Speed of light [cm/s]
 kB = 1.380648813e-16       # Boltzmann's constant [g cm^2/s^2/K]
 h = 6.626069573e-27        # Planck's constant [erg/s]
@@ -91,52 +120,53 @@ def P_B(Ptab, T, n_e, T_floor_rec=7000.):
 def alpha_eff_B_Ha(T, n_e):
     return np.array([P_B(P_Ha_SH95, T[i], n_e[i]) for i in range(len(T))]) * alpha_B(T) # α_eff_B = P_B α_B
 
-# data_dir = 'Data/Thesan-Zooms-COLT'
-data_dir = f'/orcd/data/mvogelsb/005/Lab/Thesan-Zooms-COLT'
-# nsnaps = [186,187,188]  # Single snapshot for testing
-nsnaps = np.arange(0, 189,1)  # Range of snapshots
-simulations = ['g500531/z4']   ## List of simulations to process
-# simulations = ['g2274036/z16','g519761/z16','g500531/z16','137030/z16','g10304/z8',
-#                 'g5760/z8','g1163/z4','g578/z4','g205/z4']   ## List of simulations to process
-for sim in simulations:
-    print(f"Processing simulation {sim}")
-    for snap in nsnaps:
+print(f"Processing simulation {sim}")
+for snap in progressbar(np.arange(0, 189,1)):
+    colt_file = f'{colt_dir}/colt_{snap:03d}.hdf5'
+    state_file = f'{colt_dir}/states-no-UVB_{snap:03d}.hdf5'
+    try:
+        with h5py.File(state_file, 'r') as f:
+            x_e = f['x_e'][:]
+            x_HII = f['x_HII'][:]
+    except FileNotFoundError:
         try:
-            print(f"Processing snapshot {snap}")
-            colt_file = f'{data_dir}/{sim}/ics_tree/colt_{snap}.hdf5'
-            state_file = f'{data_dir}/{sim}/ics_tree/states-no-UVB_{snap}.hdf5'
-            with h5py.File(colt_file, 'r') as f, h5py.File(state_file, 'r') as s:
-                rho = f['rho'][:]
-                # T = f['T'][:]
-                e_int = f['e_int'][:]
-                v = f['v'][:]
-                v_star = f['v_star'][:]
-                Z = f['Z'][:]
-                D = f['D'][:]
-                x_e = s['x_e'][:]  # import from states
-                x_HII = s['x_HII'][:]  # import from states
-                V = f['V'][:]
-                gamma = 5. / 3.;          # Adiabatic index
-                T_div_emu = (gamma - 1.) * mH / kB; # T / (e * mu)
-                mu = 4. / (1. + X * (3. + 4. * x_e)); # Mean molecular mass [mH]
-                T = T_div_emu * e_int * mu;      # Gas temperature [K]
-
-            n_H = X * rho * (1. - Z - D) / mH  # n_H = X rho (1-Z-D) / mH
-            n_e = n_H * x_e  # Electron number density [cm^-3]
-            V_nH_ne = V * n_H**2 * x_e  # Shared constant [cm^-3]
-            # Recombination luminosity [erg/s]: L_rec = hν ∫ α_eff_B(T) n_e n_p dV
-            L = E0_Ha * V_nH_ne * x_HII * alpha_eff_B_Ha(T, n_e) # [erg/s]
-            v_Ha = np.sum(v * L[:,None], axis=0) / np.sum(L)  # Center of light velocity
-
-            # When writing the file use
-
-            with h5py.File(colt_file, 'r+') as f:
-                v = f['v']
-                v[:] -= v_Ha  # Recentered velocities
-                v_star = f['v_star']
-                v_star[:] -= v_Ha  # Recentered velocities
-                f.attrs['v_Ha'] = v_Ha  # Store velocity shift [cm/s]
-                print(f"Snapshot {snap} recentered. Velocity shift: {v_Ha}")
-        except Exception as e:
-            print(f"Error processing snapshot {snap}: {e}")
+            with h5py.File(colt_file, 'r') as f:
+                x_e = f['x_e'][:]
+                x_HII = 1. - f['x_HI'][:]
+        except FileNotFoundError:
+            print(f"\nMissing colt file for snapshot {snap}")
             continue
+        except Exception as e:
+            print(f"\nError processing colt file for snapshot {snap}: {e}")
+            continue
+    except Exception as e:
+        print(f"\nError processing snapshot {snap}: {e}")
+        continue
+    with h5py.File(colt_file, 'r') as f:
+        rho = f['rho'][:]
+        e_int = f['e_int'][:]
+        v = f['v'][:]
+        Z = f['Z'][:]
+        D = f['D'][:]
+        V = f['V'][:]
+    gamma = 5. / 3.  # Adiabatic index
+    T_div_emu = (gamma - 1.) * mH / kB  # T / (e * mu)
+    mu = 4. / (1. + X * (3. + 4. * x_e))  # Mean molecular mass [mH]
+    T = T_div_emu * e_int * mu  # Gas temperature [K]
+    n_H = X * rho * (1. - Z - D) / mH  # n_H = X rho (1-Z-D) / mH
+    n_e = n_H * x_e  # Electron number density [cm^-3]
+    V_nH_ne = V * n_H**2 * x_e  # Shared constant [cm^-3]
+    # Recombination luminosity [erg/s]: L_rec = hν ∫ α_eff_B(T) n_e n_p dV
+    L = E0_Ha * V_nH_ne * x_HII * alpha_eff_B_Ha(T, n_e) # [erg/s]
+    v_Ha = np.sum(v * L[:,None], axis=0) / np.sum(L)  # Center of light velocity
+    with h5py.File(colt_file, 'r+') as f:
+        v = f['v']
+        v[:] -= v_Ha  # Recentered velocities
+        f.attrs['v_Ha'] = v_Ha  # Store velocity shift [cm/s]
+        # print(f"Snapshot {snap:03d} recentered. Velocity shift: {v_Ha}")
+    try:
+        with h5py.File(colt_file, 'r+') as f:
+            v_star = f['v_star']
+            v_star[:] -= v_Ha  # Recentered velocities
+    except:
+        continue
