@@ -26,10 +26,10 @@ cosmological: true            # Indicates whether the simulation is cosmological
 continuum: true                 # Include continuum emission
 continuum_range: [-2000,2000]  # Continuum wavelength range in km/s
 use_stellar_frame: true         # Use stellar frame
-source_file_Z_age: /home/mehrotra26parth/colt/tables/bpass-spectra-bin-imf_chab100.hdf5 # Source file for continuum emission
-dust_model_graphite: /home/mehrotra26parth/colt/tables/graphite_dust.hdf5
-dust_model_silicate: /home/mehrotra26parth/colt/tables/silicate_dust.hdf5
-dust_model_PAH: /home/mehrotra26parth/colt/tables/PAH_dust.hdf5
+source_file_Z_age: /home/arsmith/colt/tables/bpass-spectra-bin-imf_chab100.hdf5 # Source file for continuum emission
+dust_model_graphite: /home/arsmith/colt/tables/graphite_dust.hdf5
+dust_model_silicate: /home/arsmith/colt/tables/silicate_dust.hdf5
+dust_model_PAH: /home/arsmith/colt/tables/PAH_dust.hdf5
 f_PAH: 0.01                   # Fraction of carbonaceous dust in PAHs
 line: Lyman-alpha             # Name of the line (default "Lyman-alpha")
 dynamical_core_skipping: true # Dynamical core-skipping
@@ -37,7 +37,7 @@ n_exp_atau: 2                 # Healpix exponent for a*tau0 calculations
 v_turb_kms: 10                # Microturbulent velocity [km/s]
 output_mcrt_emission: true    # Output intrinsic emission without transport (mcrt)
 # output_mcrt_attenuation: true # Output attenuated emission without scattering (mcrt)
-output_proj_emission: true    # Output intrinsic emission without transport (proj)
+# output_proj_emission: true    # Output intrinsic emission without transport (proj)
 # output_proj_attenuation: true # Output attenuated emission without scattering (proj)
 # pixel_rtol: 1e-2              # Relative tolerence per pixel
 

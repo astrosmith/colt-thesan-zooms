@@ -26,7 +26,7 @@ cosmological: true            # Indicates whether the simulation is cosmological
 continuum: true
 continuum_range: [-700,700]    # Continuum wavelength range in km/s
 use_stellar_frame: true
-source_file_Z_age: /home/mehrotra26parth/colt/tables/bpass-spectra-bin-imf_chab100.hdf5
+source_file_Z_age: /home/arsmith/colt/tables/bpass-spectra-bin-imf_chab100.hdf5
 dust_model_graphite: /home/arsmith/colt/tables/graphite_dust.hdf5
 dust_model_silicate: /home/arsmith/colt/tables/silicate_dust.hdf5
 dust_model_PAH: /home/arsmith/colt/tables/PAH_dust.hdf5
@@ -35,8 +35,8 @@ line: Balmer-alpha            # Name of the line (default "Lyman-alpha")
 v_turb_kms: 10                # Microturbulent velocity [km/s]
 output_mcrt_emission: true    # Output intrinsic emission without transport (mcrt)
 # output_mcrt_attenuation: true # Output attenuated emission without scattering (mcrt)
-output_proj_emission: true    # Output intrinsic emission without transport (proj)
-output_proj_attenuation: true # Output attenuated emission without scattering (proj)
+# output_proj_emission: true    # Output intrinsic emission without transport (proj)
+# output_proj_attenuation: true # Output attenuated emission without scattering (proj)
 # pixel_rtol: 1e-2              # Relative tolerence per pixel
 
 # n_photons: 1000000            # Number of photon packets (10^6)
