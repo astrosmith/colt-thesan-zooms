@@ -10,7 +10,7 @@ output_dir: output_tree       # Output directory name (default: "output")
 # f_dust: 0.2                   # Fraction of metals locked in dust grains
 # output_dir: output_tree_fdust_40 # Output directory name (default: "output")
 # f_dust: 0.4                   # Fraction of metals locked in dust grains
-output_base: Ha               # Output file base name (default: "colt")
+output_base: Ha-cont           # Output file base name (default: "colt")
 abundances_base: states-no-UVB # Output a separate abundances file
 
 # output_cells: true            # Output cell emission and escape
