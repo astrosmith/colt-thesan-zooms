@@ -17,6 +17,7 @@ abundances_base: states-no-UVB # Output a separate abundances file
 
 # Information about sources
 cosmological: true            # Indicates whether the simulation is cosmological
+T_ceiling: 1e6                # Apply a temperature ceiling: T [K]
 # recombinations: true          # Include recombination emission
 # T_floor_rec: 7000             # Apply a recombination temperature floor [K]
 # collisions: true              # Include collisional excitation

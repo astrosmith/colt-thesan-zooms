@@ -8,6 +8,7 @@ output_base: SiII-1190        # Output file base name (default: "colt")
 
 # Information about sources
 cosmological: true            # Indicates whether the simulation is cosmological
+T_ceiling: 1e6                # Apply a temperature ceiling: T [K]
 line: SiII-1190-1193            # Name of the line (default "Lyman-alpha")
 v_turb_kms: 10                # Microturbulent velocity [km/s]
 # T_turb: 1e4                   # Microturbulent temperature [K]

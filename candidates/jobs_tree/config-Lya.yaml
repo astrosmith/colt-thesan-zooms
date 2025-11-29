@@ -19,6 +19,7 @@ abundances_base: states-no-UVB # Output a separate abundances file
 cosmological: true            # Indicates whether the simulation is cosmological
 recombinations: true          # Include recombination emission
 T_floor_rec: 7000             # Apply a recombination temperature floor [K]
+T_ceiling: 1e6                # Apply a temperature ceiling: T [K]
 collisions: true              # Include collisional excitation
 # collisions_limiter: 10        # Limited by photoheating rate
 # output_collisions: true       # Output collisional excitation data
@@ -37,6 +38,8 @@ output_proj_emission: true    # Output intrinsic emission without transport (pro
 # output_proj_attenuation: true # Output attenuated emission without scattering (proj)
 # pixel_rtol: 1e-2              # Relative tolerence per pixel
 
+# n_photons: 10000              # Number of photon packets (10^4)
+# n_photons: 100000             # Number of photon packets (10^5)
 n_photons: 1000000            # Number of photon packets (10^6)
 # n_photons: 10000000           # Number of photon packets (10^7)
 # n_photons: 100000000          # Number of photon packets (10^8)

@@ -70,6 +70,9 @@ field_weight_pairs:
   # - [v_x, mass]
   # - [v_y, mass]
 
+star_field_weight_pairs:
+  - [m, sum]
+
 #fade_in_length_bbox: 1        # Fade in length relative to the bbox
 #fade_in_length_bbox: 0.4     # Fade in length relative to the bbox
 #fade_in_width_bbox: 0.25      # Fade in width relative to the bbox
