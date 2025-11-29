@@ -21,7 +21,6 @@ cand_dir = f'{zoom_dir}/{sim}/postprocessing/candidates'
 colt_dir = f'{zoom_dir}-COLT/{sim}/ics'
 # colt_dir = f'/orcd/data/mvogelsb/005/Lab/Thesan-Zooms-COLT/{sim}/ics'
 states = 'states-no-UVB' # States prefix
-copy_states = True # Copy ionization states to the new colt file
 os.makedirs(f'{colt_dir}_tree', exist_ok=True) # Ensure the new colt directory exists
 
 # Overwrite for local testing
@@ -50,8 +49,6 @@ def progressbar(it, prefix="", size=100, file=sys.stdout):
 
 f_vir = 4.  # Virial radius extraction factor
 use_smoothed = True  # Use smoothed versions
-# gas_fields = ['D', 'D_Si', 'SFR', 'T_dust', 'X', 'Y', 'Z', 'Z_C', 'Z_Fe', 'Z_Mg', 'Z_N', 'Z_Ne', 'Z_O', 'Z_S', 'Z_Si',
-#               'e_int', 'is_HR', 'rho', 'v', 'x_H2', 'x_HI', 'x_HeI', 'x_HeII', 'x_e', 'id', 'group_id', 'subhalo_id']
 state_fields = ['G_ion', 'x_e', 'x_HI', 'x_HII', 'x_HeI', 'x_HeII',
                 'x_CI', 'x_CII', 'x_CIII', 'x_CIV',
                 'x_NI', 'x_NII', 'x_NIII', 'x_NIV', 'x_NV',
@@ -61,7 +58,6 @@ state_fields = ['G_ion', 'x_e', 'x_HI', 'x_HII', 'x_HeI', 'x_HeII',
                 'x_SiI', 'x_SiII', 'x_SiIII', 'x_SiIV',
                 'x_SI', 'x_SII', 'x_SIII', 'x_SIV', 'x_SV', 'x_SVI',
                 'x_FeI', 'x_FeII', 'x_FeIII', 'x_FeIV', 'x_FeV', 'x_FeVI']
-# star_fields = ['Z_star', 'age_star', 'm_star', 'm_init_star', 'v_star', 'id_star', 'group_id_star', 'subhalo_id_star']
 units = {'r': b'cm', 'v': b'cm/s', 'e_int': b'cm^2/s^2', 'T_dust': b'K', 'rho': b'g/cm^3', 'SFR': b'Msun/yr',
          'r_star': b'cm', 'v_star': b'cm/s', 'm_star': b'Msun', 'm_init_star': b'Msun', 'age_star': b'Gyr'}
 
@@ -138,7 +134,7 @@ for i in progressbar(range(n_snaps)):
         with h5py.File(states_file, 'r') as f, h5py.File(new_states_file, 'w') as g:
             for field in state_fields:
                 g.create_dataset(field, data=f[field][:][gas_mask])
-            if 'G_ion' in state_fields: g['G_ion'].attrs['units'] = b'erg/s'
+            # if 'G_ion' in state_fields: g['G_ion'].attrs['units'] = b'erg/s'
     except Exception as e:
         failed_states.append(snap)
 
