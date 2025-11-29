@@ -101,8 +101,6 @@ for i in progressbar(range(n_snaps)):
     snap = snaps[i]
     cand_file = f'{cand_dir}/candidates_{snap:03d}.hdf5'
     colt_file = f'{colt_dir}/colt_{snap:03d}.hdf5'
-    new_file = f'{colt_dir}_tree/colt_{snap:03d}.hdf5'
-    silentremove(new_file)
     with h5py.File(cand_file, 'r') as f:
         header = f['Header'].attrs
         a = header['Time']
@@ -127,7 +125,6 @@ for i in progressbar(range(n_snaps)):
         r = f['r'][:] - r_virs[i] # Gas position [cm]
         r_box = f_vir * R_virs[i] # Radial cut = 2 * virial radius
         gas_mask = (np.sum(r**2, axis=1) < r_box**2) # Sphere cut
-
     try:
         states_file = f'{colt_dir}/{states}_{snap:03d}.hdf5'
         new_states_file = f'{colt_dir}_tree/{states}_{snap:03d}.hdf5'
