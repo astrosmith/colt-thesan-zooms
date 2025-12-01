@@ -3,7 +3,7 @@ import os, h5py
 # Directory containing the simulation files
 zoom_dir = '/orcd/data/mvogelsb/004/Thesan-Zooms'
 colt_dir = f'{zoom_dir}-COLT'
-# colt_dir = '/orcd/data/mvogelsb/005/Lab/Thesan-Zooms-COLT'
+colt_dir = '/orcd/data/mvogelsb/005/Lab/Thesan-Zooms-COLT'
 
 # Directory containing the output files
 states = 'states-no-UVB'  # States to check
@@ -24,13 +24,13 @@ job_sets = [
 # {'job':'B', 'group':'g39', 'run':'z4', 'snaps':[0, 188]},              # 0-188  ->  0-188
 # {'job':'C', 'group':'g205', 'run':'z4', 'snaps':[0, 188]},             # 0-188  ->  0-188
 # {'job':'D', 'group':'g578', 'run':'z4', 'snaps':[0, 188]},             # 0-188  ->  0-188
-# {'job':'E', 'group':'g1163', 'run':'z4', 'snaps':[0, 188]},            # 0-188  ->  0-188
+## {'job':'E', 'group':'g1163', 'run':'z4', 'snaps':[0, 188]},            # 0-188  ->  0-188
 # {'job':'F', 'group':'g5760', 'run':'z8', 'snaps':[0, 188]},            # 0-188  ->  0-188
-# {'job':'G', 'group':'g10304', 'run':'z8', 'snaps':[0, 188]},           # 0-188  ->  0-188
+## {'job':'G', 'group':'g10304', 'run':'z8', 'snaps':[0, 188]},           # 0-188  ->  0-188
 ## {'job':'J', 'group':'g137030', 'run':'z16', 'snaps':[5, 188]},         # 0-188  ->  5-188
 ## {'job':'K', 'group':'g500531', 'run':'z16', 'snaps':[9, 188]},         # 0-188  ->  9-188
-# {'job':'L', 'group':'g519761', 'run':'z16', 'snaps':[39, 188]},        # 0-188  ->  39-188
-# {'job':'M', 'group':'g2274036', 'run':'z16', 'snaps':[9, 188]},        # 0-189  ->  9-188
+## {'job':'L', 'group':'g519761', 'run':'z16', 'snaps':[39, 188]},        # 0-188  ->  39-188
+## {'job':'M', 'group':'g2274036', 'run':'z16', 'snaps':[9, 188]},        # 0-189  ->  9-188
 # COLT (int circulators)
 # {'job':'F', 'group':'g5760', 'run':'noESF_z4', 'snaps':[5, 188]},      # 0-188  ->  5-188
 # {'job':'G', 'group':'g10304', 'run':'noESF_z4', 'snaps':[0, 188]},     # 0-188  ->  0-188
@@ -63,14 +63,14 @@ job_sets = [
 # {'job':'N', 'group':'g5229300', 'run':'uvb_z8', 'snaps':[0, 0]},       # 0-189  ->  0-0
 # {'job':'N', 'group':'g5229300', 'run':'noExt_z8', 'snaps':[0, 0]},     # 0-189  ->  0-0
 # Fiducial:
-{'job':'F', 'group':'g5760', 'run':'z4', 'snaps':[5, 188]},            # 0-188  ->  5-188
-{'job':'G', 'group':'g10304', 'run':'z4', 'snaps':[0, 188]},           # 0-188  ->  0-188
-{'job':'H', 'group':'g33206', 'run':'z8', 'snaps':[4, 188]},           # 0-188  ->  4-188
-## {'job':'H', 'group':'g33206', 'run':'z4', 'snaps':[6, 189]},           # 0-189  ->  6-189
-{'job':'I', 'group':'g37591', 'run':'z8', 'snaps':[6, 188]},           # 0-188  ->  6-188
-{'job':'I', 'group':'g37591', 'run':'z4', 'snaps':[11, 188]},          # 0-188  ->  11-188
-## {'job':'J', 'group':'g137030', 'run':'z8', 'snaps':[2, 188]},          # 0-188  ->  2-188
-## {'job':'J', 'group':'g137030', 'run':'z4', 'snaps':[10, 188]},         # 0-188  ->  10-188
+# {'job':'F', 'group':'g5760', 'run':'z4', 'snaps':[5, 188]},            # 0-188  ->  5-188
+# {'job':'G', 'group':'g10304', 'run':'z4', 'snaps':[0, 188]},           # 0-188  ->  0-188
+# {'job':'H', 'group':'g33206', 'run':'z8', 'snaps':[4, 188]},           # 0-188  ->  4-188
+# {'job':'H', 'group':'g33206', 'run':'z4', 'snaps':[6, 189]},           # 0-189  ->  6-189
+# {'job':'I', 'group':'g37591', 'run':'z8', 'snaps':[6, 188]},           # 0-188  ->  6-188
+# {'job':'I', 'group':'g37591', 'run':'z4', 'snaps':[11, 188]},          # 0-188  ->  11-188
+# {'job':'J', 'group':'g137030', 'run':'z8', 'snaps':[2, 188]},          # 0-188  ->  2-188
+# {'job':'J', 'group':'g137030', 'run':'z4', 'snaps':[10, 188]},         # 0-188  ->  10-188
 # {'job':'K', 'group':'g500531', 'run':'z8', 'snaps':[10, 188]},         # 0-188  ->  10-188
 # {'job':'K', 'group':'g500531', 'run':'z4', 'snaps':[16, 189]},         # 0-189  ->  16-189
 # {'job':'L', 'group':'g519761', 'run':'z8', 'snaps':[46, 189]},         # 0-189  ->  46-189
@@ -102,7 +102,7 @@ for job_set in job_sets:
                     if field in f:
                         x = f[field][:]  # Read the convergence field
                         conv = abs(1. - x[-2] / x[-1])  # Calculate the convergence
-                        if conv > target or 'n_photons_pre' not in f.attrs:
+                        if conv > target or 'n_photons_pre' not in f.attrs or f.attrs['n_photons'] < 100_000_000:
                             unconverged_snaps.append(snap)  # Field is unconverged
                         # print(f'  snap {snap}: {100.*conv:.2f}%')
                     elif 'x_e' in f:
