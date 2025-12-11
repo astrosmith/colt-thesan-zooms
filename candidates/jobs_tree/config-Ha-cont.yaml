@@ -25,7 +25,7 @@ T_ceiling: 1e6                # Apply a temperature ceiling: T [K]
 # output_collisions: true       # Output collisional excitation data
 # dust_model: SMC               # Dust model: SMC, MW, etc.
 continuum: true
-continuum_range: [-700,700]    # Continuum wavelength range in km/s
+continuum_range: [-1500,1500] # Continuum wavelength range in km/s
 use_stellar_frame: true
 source_file_Z_age: /home/arsmith/colt/tables/bpass-spectra-bin-imf_chab100.hdf5
 dust_model_graphite: /home/arsmith/colt/tables/graphite_dust.hdf5
@@ -64,7 +64,7 @@ poly_cameras: tetrahedron     # Polygon-based camera configuration
 # Frequency
 output_freq_stds: true        # Output frequency standard deviations (default: false)
 output_flux_avg: true         # Output angle-averaged spectral flux
-freq_range: [-500, 500]       # Camera frequency range [km/s]
+freq_range: [-1000, 1000]     # Camera frequency range [km/s]
 n_bins: 500                   # Number of frequency bins
 
 # Images
@@ -81,14 +81,14 @@ n_radial_pixels: 512          # Number of radial image pixels
 output_radial_cubes: true     # Output radial spectral data cubes [erg/s/cm^2/arcsec^2/angstrom]
 radial_cube_radius_bbox: 0.75  # Radial cube radius relative to the bbox (2 Rvir)
 n_radial_cube_pixels: 512     # Number of radial cube pixels
-radial_cube_freq_range: [-500, 500] # Camera frequency range [km/s]
+radial_cube_freq_range: [-1000, 1000] # Camera frequency range [km/s]
 n_radial_cube_bins: 200       # Number of frequency bins
 
 # Spectral data cubes
 output_cubes: true            # Surface brightness cubes (defualt: false)
 cube_radius_bbox: 0.5         # Cube radius relative to the bbox (2 Rvir)
 n_cube_pixels: 128            # Number of cube pixels
-cube_freq_range: [-500, 500] # Camera frequency range [km/s]
+cube_freq_range: [-750, 750]  # Camera frequency range [km/s]
 n_cube_bins: 100              # Number of frequency bins
 
 # Maps
@@ -100,7 +100,7 @@ n_side_map: 5                 # Healpix resolution for group maps
 # Flux maps
 output_flux_map: true         # Output spectral flux group maps
 n_side_flux: 3                # Healpix resolution for group flux maps
-map_freq_range: [-500, 500]   # Healpix frequency range [km/s]
+map_freq_range: [-750, 750]   # Healpix frequency range [km/s]
 n_map_bins: 100               # Number of frequency bins for group flux maps
 
 # Radial maps
@@ -119,7 +119,7 @@ n_radial_avg_pixels: 512      # Number of radial pixels for radial avgs
 output_radial_cube_avg: true  # Output angle-averaged radial spectral surface brightness
 radial_cube_avg_radius_bbox: 0.75 # Radial cube average radius relative to the bbox (2 Rvir)
 n_radial_cube_avg_pixels: 256 # Number of radial pixels for radial cube avgs
-radial_cube_avg_freq_range: [-500, 500] # Camera frequency range [km/s]
+radial_cube_avg_freq_range: [-750, 750] # Camera frequency range [km/s]
 n_radial_cube_avg_bins: 100   # Number of frequency bins for radial cube avgs
 
 # Radial flow statistics

@@ -25,7 +25,7 @@ T_ceiling: 1e6                # Apply a temperature ceiling: T [K]
 # output_collisions: true       # Output collisional excitation data
 # dust_model: SMC               # Dust model: SMC, MW, etc.
 continuum: true                 # Include continuum emission
-continuum_range: [-2000,2000]  # Continuum wavelength range in km/s
+continuum_range: [-2500,2500]  # Continuum wavelength range in km/s
 use_stellar_frame: true         # Use stellar frame
 source_file_Z_age: /home/arsmith/colt/tables/bpass-spectra-bin-imf_chab100.hdf5 # Source file for continuum emission
 dust_model_graphite: /home/arsmith/colt/tables/graphite_dust.hdf5
@@ -42,8 +42,8 @@ output_mcrt_emission: true    # Output intrinsic emission without transport (mcr
 # output_proj_attenuation: true # Output attenuated emission without scattering (proj)
 # pixel_rtol: 1e-2              # Relative tolerence per pixel
 
-n_photons: 1000000            # Number of photon packets (10^6)
-# n_photons: 10000000           # Number of photon packets (10^7)
+# n_photons: 1000000            # Number of photon packets (10^6)
+n_photons: 10000000           # Number of photon packets (10^7)
 # n_photons: 100000000          # Number of photon packets (10^8)
 # n_photons: 2000000000         # Number of photon packets (10^9)
 j_exp: 0.75                   # Luminosity boosting exponent
