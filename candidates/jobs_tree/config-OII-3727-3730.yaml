@@ -116,7 +116,7 @@ output_radial_cube_avg: true  # Output angle-averaged radial spectral surface br
 radial_cube_avg_radius_bbox: 0.75 # Radial cube average radius relative to the bbox (2 Rvir)
 n_radial_cube_avg_pixels: 256 # Number of radial pixels for radial cube avgs
 radial_cube_avg_freq_range: [-500, 500] # Camera frequency range [km/s]
-n_radial_cube_avg_bins: 100   # Number of frequency bins for radial cube avgs
+n_radial_cube_avg_bins: 200   # Number of frequency bins for radial cube avgs
 
 # Radial flow statistics
 radial_flow:                  # Radial flow statistics

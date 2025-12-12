@@ -18,44 +18,6 @@ output_ion_stats_H: true      # Ionization statistics for hydrogen
 output_ion_stats_He: true     # Ionization statistics for helium
 output_ion_stats_dust: true   # Ionization statistics for dust
 
-# # Group information
-# focus_groups_on_emission: true # Center of luminosity position and velocity
-# # output_groups: true           # Output group statistics
-# output_groups_obs: true       # Output group statistics for observations
-# output_groups_vir: true       # Output group statistics for virial quantities
-# output_groups_gal: true       # Output group statistics for galaxy quantities
-# # output_map_groups: true       # Output escape fraction maps
-# output_map2_groups: true      # Output escape fraction maps (and statistics)
-# n_side_groups: 5              # Healpix resolution for group maps
-# group_flows:                  # Group flow statistics
-#   radial_logspace_Rvir: [-3, 1, 41] # Logarithmically spaced radial bins [Rvir]
-#   freq_edge_names: [HI, HeI, HeII, max] # Coarse frequency bin edge names
-
-# Maps
-output_map: true              # Output escape fraction maps
-output_map2: true             # Output escape fraction maps (and statistics)
-n_side_map: 10                # Healpix resolution for maps (try 10 later)
-
-# Radial Maps
-output_radial_map: true       # Output radial surface brightness maps
-output_bin_radial_map: true   # Output radial surface brightness maps
-n_side_radial: 5              # Healpix resolution for radial maps (try 5 later)
-map_radius_bbox: 0.75         # Radial maps radius [bounding box]
-# min_map_radius_pc: 0.5        # Minimum radial distance for maps [pc]
-n_map_pixels: 120             # Number of radial pixels for radial maps
-
-# Radial Averages
-output_radial_avg: true       # Output angle-averaged radial surface brightness
-# radius_kpc: 500             # Radial avgs radius [kpc]
-# min_radius_pc: 0.5          # Minimum radial distance for avgs [pc]
-# n_radial_pixels: 120              # Number of radial pixels for radial avgs
-radial_flow:                  # Radial flow statistics
-  radial_logspace_pc: [0, 5, 51] # Logarithmically spaced radial bins [pc]
-  freq_edge_names: [HI, HeI, HeII, max] # Coarse frequency bin edge names
-
-# focus_radial_on_emission: true
-# shift_radial_on_emission: true
-
 # Information about sources
 cosmological: true            # Indicates whether the simulation is cosmological
 source_file_Z_age: /home/arsmith/colt/tables/bpass-spectra-bin-imf_chab100.hdf5
@@ -98,16 +60,46 @@ output_bin_escape_fractions: true # Output bin escape fractions
 # Information about cameras
 poly_cameras: tetrahedron     # Polygon-based camera configuration
 
-# SB Images
+# Images
 output_images: true           # Output surface brightness images
 output_bin_images: true       # Output bin SB images
 image_radius_bbox: 0.25       # Image radius relative to the bbox (1 Rvir)
 n_pixels: 512                 # Number of image pixels
 
-# Radial SB Images
+# Radial images
 output_radial_images: true    # Output radial surface brightness images
 output_bin_radial_images: true # Output bin radial SB images
 radial_image_radius_bbox: 0.5 # Radial image radius relative to the bbox (2 Rvir)
 n_radial_pixels: 512          # Number of radial image pixels
+
+# Maps
+output_map: true              # Output escape fraction maps
+output_map2: true             # Output escape fraction maps (and statistics)
+n_side_map: 10                # Healpix resolution for maps
+
+# Radial Maps
+output_radial_map: true       # Output radial surface brightness maps
+output_bin_radial_map: true   # Output radial surface brightness maps
+n_side_radial: 5              # Healpix resolution for radial maps
+map_radius_bbox: 0.75         # Radial maps radius [bounding box]
+n_map_pixels: 120             # Number of radial pixels for radial maps
+
+# Radial averages
+output_radial_avg: true       # Output angle-averaged radial surface brightness
+radial_avg_radius_bbox: 0.75  # Radial average radius relative to the bbox (2 Rvir)
+n_radial_avg_pixels: 512      # Number of radial pixels for radial avgs
+
+# Radial cube averages
+output_radial_cube_avg: true  # Output angle-averaged radial spectral surface brightness
+radial_cube_avg_radius_bbox: 0.75  # Radial average radius relative to the bbox (2 Rvir)
+n_radial_cube_avg_pixels: 256 # Number of radial pixels for radial cube avgs
+
+# Radial flow statistics
+radial_flow:                  # Radial flow statistics
+  radial_logspace_pc: [0, 5, 51] # Logarithmically spaced radial bins [pc]
+  freq_edge_names: [HI, HeI, HeII, max] # Coarse frequency bin edge names
+
+# focus_radial_on_emission: true
+# shift_radial_on_emission: true
 
 #verbose: true                 # Verbose output for tests and debugging
