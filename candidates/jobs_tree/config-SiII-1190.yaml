@@ -29,7 +29,7 @@ dust_model_silicate: /home/arsmith/colt/tables/silicate_dust.hdf5
 dust_model_PAH: /home/arsmith/colt/tables/PAH_dust.hdf5
 f_PAH: 0.01                   # Fraction of carbonaceous dust in PAHs
 
-# n_photons: 10000000           # Number of photon packets (10^7)
+# n_photons: 50000000           # Number of photon packets (10^7)
 n_photons: 100000000          # Number of photon packets (10^8)
 j_exp: 0.75                    # Luminosity boosting exponent
 continuum: true               # Include UV continuum emission

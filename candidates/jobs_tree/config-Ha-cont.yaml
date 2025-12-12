@@ -40,7 +40,7 @@ output_mcrt_emission: true    # Output intrinsic emission without transport (mcr
 # output_proj_attenuation: true # Output attenuated emission without scattering (proj)
 # pixel_rtol: 1e-2              # Relative tolerence per pixel
 
-# n_photons: 10000000           # Number of photon packets (10^7)
+# n_photons: 50000000           # Number of photon packets (10^7)
 n_photons: 100000000          # Number of photon packets (10^8)
 j_exp: 0.75                   # Luminosity boosting exponent
 

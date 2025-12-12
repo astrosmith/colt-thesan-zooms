@@ -34,7 +34,7 @@ ion_bins: true                # Include all active ion bins
 # min_HI_bin_cdf: 0.8           # Minimum CDF value for >= 13.6 eV bins
 max_bin_dex: 0.05             # Minimum frequency bin width in dex
 
-# n_photons: 10000000           # Number of photon packets (10^7)
+# n_photons: 50000000           # Number of photon packets (10^7)
 n_photons: 100000000          # Number of photon packets (10^8)
 max_iter: 1                   # Maximum number of iterations
 max_error: 0.001              # Relative error for convergence

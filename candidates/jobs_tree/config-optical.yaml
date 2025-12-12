@@ -92,10 +92,8 @@ min_bin_angstrom: 6000        # Lowest energy bin edge [angstrom]
 max_bin_angstrom: 5000        # Highest energy bin edge [angstrom]
 max_streaming_kpc: 50         # Maximum free-streaming distance [kpc]
 
-# n_photons: 1000000            # Number of photon packets (10^6)
-# n_photons: 10000000           # Number of photon packets (10^7)
+# n_photons: 50000000           # Number of photon packets (10^7)
 n_photons: 100000000          # Number of photon packets (10^8)
-#n_photons: 1000000000         # Number of photon packets (10^9)
 max_iter: 1                   # Maximum number of iterations
 max_error: 0.001              # Relative error for convergence
 
