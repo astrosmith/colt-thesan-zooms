@@ -58,8 +58,8 @@ poly_cameras: tetrahedron     # Polygon-based camera configuration
 # radial_pixel_arcsec: 0.01            # Observed angular width of each radial image pixel [arcseconds]
 
 # Frequency
-# output_freq_stds: true        # Output frequency standard deviations (default: false)
-# output_flux_avg: true         # Output angle-averaged spectral flux
+output_freq_stds: true        # Output frequency standard deviations (default: false)
+output_flux_avg: true         # Output angle-averaged spectral flux
 freq_range: [-500, 750]       # Camera frequency range [km/s]
 n_bins: 625                   # Number of frequency bins
 
