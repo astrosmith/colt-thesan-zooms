@@ -94,18 +94,18 @@ n_cube_bins: 100              # Number of frequency bins
 # Maps
 output_map: true              # Output escape fraction maps
 output_map2: true             # Output escape fraction maps (and statistics)
-output_freq2_map: true        # Output frequency^2 group maps
-n_side_map: 5                 # Healpix resolution for group maps
+output_freq2_map: true        # Output frequency^2 maps
+n_side_map: 5                 # Healpix resolution for maps
 
 # Flux maps
-output_flux_map: true         # Output spectral flux group maps
-n_side_flux: 3                # Healpix resolution for group flux maps
+output_flux_map: true         # Output spectral flux maps
+n_side_flux: 3                # Healpix resolution for flux maps
 map_freq_range: [-1080, 1320] # Healpix frequency range [km/s]
-n_map_bins: 100               # Number of frequency bins for group flux maps
+n_map_bins: 100               # Number of frequency bins for flux maps
 
 # Radial maps
-output_radial_map: true       # Output radial surface brightness group maps
-n_side_radial: 3              # Healpix resolution for group radial maps
+output_radial_map: true       # Output radial surface brightness maps
+n_side_radial: 3              # Healpix resolution for radial maps
 map_radius_bbox: 0.75         # Radial maps radius [bounding box]
 # min_map_radius_pc: 0.5        # Minimum radial distance for maps [pc]
 n_map_pixels: 120             # Number of radial pixels for radial maps

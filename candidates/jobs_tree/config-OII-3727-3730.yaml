@@ -60,7 +60,7 @@ poly_cameras: tetrahedron     # Polygon-based camera configuration
 # Frequency
 output_freq_stds: true        # Output frequency standard deviations (default: false)
 output_flux_avg: true         # Output angle-averaged spectral flux
-freq_range: [-500, 500]       # Camera frequency range [km/s]
+freq_range: [-600, 400]       # Camera frequency range [km/s]
 n_bins: 500                   # Number of frequency bins
 
 # Images
@@ -77,31 +77,31 @@ n_radial_pixels: 512          # Number of radial image pixels
 output_radial_cubes: true     # Output radial spectral data cubes [erg/s/cm^2/arcsec^2/angstrom]
 radial_cube_radius_bbox: 0.75 # Radial cube radius relative to the bbox (2 Rvir)
 n_radial_cube_pixels: 512     # Number of radial cube pixels
-radial_cube_freq_range: [-500, 500] # Camera frequency range [km/s]
+radial_cube_freq_range: [-600, 400] # Camera frequency range [km/s]
 n_radial_cube_bins: 200       # Number of frequency bins
 
 # Spectral data cubes
 output_cubes: true            # Surface brightness cubes (defualt: false)
 cube_radius_bbox: 0.5         # Cube radius relative to the bbox (2 Rvir)
 n_cube_pixels: 128            # Number of cube pixels
-cube_freq_range: [-500, 500]  # Camera frequency range [km/s]
+cube_freq_range: [-600, 400]  # Camera frequency range [km/s]
 n_cube_bins: 100              # Number of frequency bins
 
 # Maps
 output_map: true              # Output escape fraction maps
 output_map2: true             # Output escape fraction maps (and statistics)
-output_freq2_map: true        # Output frequency^2 group maps
-n_side_map: 5                 # Healpix resolution for group maps
+output_freq2_map: true        # Output frequency^2 maps
+n_side_map: 5                 # Healpix resolution for maps
 
 # Flux maps
-output_flux_map: true         # Output spectral flux group maps
-n_side_flux: 3                # Healpix resolution for group flux maps
-map_freq_range: [-500, 500]   # Healpix frequency range [km/s]
-n_map_bins: 100               # Number of frequency bins for group flux maps
+output_flux_map: true         # Output spectral flux maps
+n_side_flux: 3                # Healpix resolution for flux maps
+map_freq_range: [-600, 400]   # Healpix frequency range [km/s]
+n_map_bins: 100               # Number of frequency bins for flux maps
 
 # Radial maps
-output_radial_map: true       # Output radial surface brightness group maps
-n_side_radial: 3              # Healpix resolution for group radial maps
+output_radial_map: true       # Output radial surface brightness maps
+n_side_radial: 3              # Healpix resolution for radial maps
 map_radius_bbox: 0.75         # Radial maps radius [bounding box]
 # min_map_radius_pc: 0.5        # Minimum radial distance for maps [pc]
 n_map_pixels: 120             # Number of radial pixels for radial maps
@@ -115,7 +115,7 @@ n_radial_avg_pixels: 512      # Number of radial pixels for radial avgs
 output_radial_cube_avg: true  # Output angle-averaged radial spectral surface brightness
 radial_cube_avg_radius_bbox: 0.75 # Radial cube average radius relative to the bbox (2 Rvir)
 n_radial_cube_avg_pixels: 256 # Number of radial pixels for radial cube avgs
-radial_cube_avg_freq_range: [-500, 500] # Camera frequency range [km/s]
+radial_cube_avg_freq_range: [-600, 400] # Camera frequency range [km/s]
 n_radial_cube_avg_bins: 200   # Number of frequency bins for radial cube avgs
 
 # Radial flow statistics
