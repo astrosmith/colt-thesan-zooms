@@ -36,9 +36,9 @@ output_proj_emission: true    # Output intrinsic emission without transport (pro
 output_proj_attenuation: true # Output attenuated emission without scattering (proj)
 # pixel_rtol: 1e-2              # Relative tolerence per pixel
 
-n_photons: 1000000            # Number of photon packets (10^6)
+# n_photons: 1000000            # Number of photon packets (10^6)
 # n_photons: 80000000           # Number of photon packets (10^7)
-## n_photons: 100000000          # Number of photon packets (10^8)
+n_photons: 100000000          # Number of photon packets (10^8)
 # n_photons: 2000000000         # Number of photon packets (10^9)
 j_exp: 0.75                   # Luminosity boosting exponent
 
@@ -60,8 +60,8 @@ poly_cameras: tetrahedron     # Polygon-based camera configuration
 # Frequency
 output_freq_stds: true        # Output frequency standard deviations (default: false)
 output_flux_avg: true         # Output angle-averaged spectral flux
-freq_range: [-500, 750]       # Camera frequency range [km/s]
-n_bins: 625                   # Number of frequency bins
+freq_range: [-500, 500]       # Camera frequency range [km/s]
+n_bins: 500                   # Number of frequency bins
 
 # Images
 output_freq2_images: true     # Frequency moment images (default: false)
@@ -77,15 +77,15 @@ n_radial_pixels: 512          # Number of radial image pixels
 output_radial_cubes: true     # Output radial spectral data cubes [erg/s/cm^2/arcsec^2/angstrom]
 radial_cube_radius_bbox: 0.75 # Radial cube radius relative to the bbox (2 Rvir)
 n_radial_cube_pixels: 512     # Number of radial cube pixels
-radial_cube_freq_range: [-500, 750] # Camera frequency range [km/s]
-n_radial_cube_bins: 625       # Number of frequency bins
+radial_cube_freq_range: [-500, 500] # Camera frequency range [km/s]
+n_radial_cube_bins: 200       # Number of frequency bins
 
 # Spectral data cubes
 output_cubes: true            # Surface brightness cubes (defualt: false)
 cube_radius_bbox: 0.5         # Cube radius relative to the bbox (2 Rvir)
 n_cube_pixels: 128            # Number of cube pixels
-cube_freq_range: [-500, 750]  # Camera frequency range [km/s]
-n_cube_bins: 125              # Number of frequency bins
+cube_freq_range: [-500, 500]  # Camera frequency range [km/s]
+n_cube_bins: 100              # Number of frequency bins
 
 # Maps
 output_map: true              # Output escape fraction maps
@@ -96,8 +96,8 @@ n_side_map: 5                 # Healpix resolution for group maps
 # Flux maps
 output_flux_map: true         # Output spectral flux group maps
 n_side_flux: 3                # Healpix resolution for group flux maps
-map_freq_range: [-500, 750]   # Healpix frequency range [km/s]
-n_map_bins: 125               # Number of frequency bins for group flux maps
+map_freq_range: [-500, 500]   # Healpix frequency range [km/s]
+n_map_bins: 100               # Number of frequency bins for group flux maps
 
 # Radial maps
 output_radial_map: true       # Output radial surface brightness group maps
@@ -115,8 +115,8 @@ n_radial_avg_pixels: 512      # Number of radial pixels for radial avgs
 output_radial_cube_avg: true  # Output angle-averaged radial spectral surface brightness
 radial_cube_avg_radius_bbox: 0.75 # Radial cube average radius relative to the bbox (2 Rvir)
 n_radial_cube_avg_pixels: 256 # Number of radial pixels for radial cube avgs
-radial_cube_avg_freq_range: [-500, 750] # Camera frequency range [km/s]
-n_radial_cube_avg_bins: 125   # Number of frequency bins for radial cube avgs
+radial_cube_avg_freq_range: [-500, 500] # Camera frequency range [km/s]
+n_radial_cube_avg_bins: 100   # Number of frequency bins for radial cube avgs
 
 # Radial flow statistics
 radial_flow:                  # Radial flow statistics
