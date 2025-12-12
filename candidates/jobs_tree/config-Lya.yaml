@@ -38,12 +38,10 @@ output_proj_emission: true    # Output intrinsic emission without transport (pro
 # output_proj_attenuation: true # Output attenuated emission without scattering (proj)
 # pixel_rtol: 1e-2              # Relative tolerence per pixel
 
-# n_photons: 10000              # Number of photon packets (10^4)
 # n_photons: 100000             # Number of photon packets (10^5)
 n_photons: 1000000            # Number of photon packets (10^6)
 # n_photons: 10000000           # Number of photon packets (10^7)
 # n_photons: 100000000          # Number of photon packets (10^8)
-# n_photons: 2000000000         # Number of photon packets (10^9)
 j_exp: 0.75                   # Luminosity boosting exponent
 
 # Information about escape

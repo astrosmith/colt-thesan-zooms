@@ -45,7 +45,6 @@ output_mcrt_emission: true    # Output intrinsic emission without transport (mcr
 # n_photons: 1000000            # Number of photon packets (10^6)
 n_photons: 10000000           # Number of photon packets (10^7)
 # n_photons: 100000000          # Number of photon packets (10^8)
-# n_photons: 2000000000         # Number of photon packets (10^9)
 j_exp: 0.75                   # Luminosity boosting exponent
 
 # Information about escape

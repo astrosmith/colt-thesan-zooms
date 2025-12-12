@@ -34,10 +34,8 @@ ion_bins: true                # Include all active ion bins
 # min_HI_bin_cdf: 0.8           # Minimum CDF value for >= 13.6 eV bins
 max_bin_dex: 0.05             # Minimum frequency bin width in dex
 
-# n_photons: 1000000            # Number of photon packets (10^6)
 # n_photons: 10000000           # Number of photon packets (10^7)
 n_photons: 100000000          # Number of photon packets (10^8)
-# n_photons: 1000000000         # Number of photon packets (10^9)
 max_iter: 1                   # Maximum number of iterations
 max_error: 0.001              # Relative error for convergence
 
@@ -90,7 +88,7 @@ radial_avg_radius_bbox: 0.75  # Radial average radius relative to the bbox (2 Rv
 n_radial_avg_pixels: 512      # Number of radial pixels for radial avgs
 
 # Radial cube averages
-output_radial_cube_avg: true  # Output angle-averaged radial spectral surface brightness
+output_bin_radial_avg: true   # Output angle-averaged radial spectral surface brightness
 radial_cube_avg_radius_bbox: 0.75  # Radial average radius relative to the bbox (2 Rvir)
 n_radial_cube_avg_pixels: 256 # Number of radial pixels for radial cube avgs
 
