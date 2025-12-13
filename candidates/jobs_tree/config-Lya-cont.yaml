@@ -55,7 +55,7 @@ escape_radius_bbox: 0.75      # Escape radius relative to the bbox
 emission_radius_bbox: 0.5     # Emission radius relative to the bbox
 
 # Information about cameras
-poly_cameras: tetrahedron     # Polygon-based camera configuration
+poly_cameras: eight           # Polygon-based camera configuration
 # n_exp: 0                      # Camera healpix directions exponent
 # cameras:                      # Add camera directions manually
 #   - [0,0,1]

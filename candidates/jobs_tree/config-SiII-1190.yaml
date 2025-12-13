@@ -29,9 +29,9 @@ dust_model_silicate: /home/arsmith/colt/tables/silicate_dust.hdf5
 dust_model_PAH: /home/arsmith/colt/tables/PAH_dust.hdf5
 f_PAH: 0.01                   # Fraction of carbonaceous dust in PAHs
 
-# n_photons: 50000000           # Number of photon packets (10^7)
-n_photons: 100000000          # Number of photon packets (10^8)
-j_exp: 0.75                    # Luminosity boosting exponent
+n_photons: 50000000           # Number of photon packets (10^7)
+# n_photons: 100000000          # Number of photon packets (10^8)
+j_exp: 0.75                   # Luminosity boosting exponent
 continuum: true               # Include UV continuum emission
 continuum_range: [-2000, 2300] # Continuum velocity offset range [km/s]
 source_model: BPASS-IMF-135-100 # Spectral source model
@@ -45,7 +45,7 @@ escape_radius_bbox: 0.75      # Escape radius relative to the bbox
 emission_radius_bbox: 0.5     # Emission radius relative to the bbox
 
 # Information about cameras
-poly_cameras: tetrahedron     # Polygon-based camera configuration
+poly_cameras: eight           # Polygon-based camera configuration
 # n_exp: 0                      # Camera healpix directions exponent
 # cameras:                      # Add camera directions manually
 #   - [0,0,1]
@@ -70,7 +70,7 @@ n_radial_pixels: 512          # Number of radial image pixels
 
 # Spectral radial images
 output_radial_cubes: true     # Output radial spectral data cubes [erg/s/cm^2/arcsec^2/angstrom]
-radial_cube_radius_bbox: 0.75  # Radial cube radius relative to the bbox (2 Rvir)
+radial_cube_radius_bbox: 0.75 # Radial cube radius relative to the bbox (2 Rvir)
 n_radial_cube_pixels: 512     # Number of radial cube pixels
 radial_cube_freq_range: [-1080, 1320] # Camera frequency range [km/s]
 n_radial_cube_bins: 200       # Number of frequency bins
@@ -79,7 +79,7 @@ n_radial_cube_bins: 200       # Number of frequency bins
 output_cubes: true            # Surface brightness cubes (defualt: false)
 cube_radius_bbox: 0.5         # Cube radius relative to the bbox (2 Rvir)
 n_cube_pixels: 128            # Number of cube pixels
-cube_freq_range: [-1080, 1320]  # Camera frequency range [km/s]
+cube_freq_range: [-1080, 1320] # Camera frequency range [km/s]
 n_cube_bins: 100              # Number of frequency bins
 
 # Maps

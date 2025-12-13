@@ -28,7 +28,7 @@ image_radius_Rvir: 1          # Image radius relative to the bbox (1 Rvir)
 # n_pixels: 128                 # Number of image pixels
 # n_pixels: 512                 # Number of image pixels
 pixel_width_pc: 100           # Pixel width in parsecs
-poly_cameras: tetrahedron     # Polygon-based camera configuration
+poly_cameras: eight           # Polygon-based camera configuration
 # n_side: 1                     # Healpix resolution for cameras
 # cameras:                      # Add camera directions manually
 #   - [0,0,1]
