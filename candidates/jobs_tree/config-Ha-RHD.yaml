@@ -36,8 +36,8 @@ output_proj_emission: true    # Output intrinsic emission without transport (pro
 output_proj_attenuation: true # Output attenuated emission without scattering (proj)
 # pixel_rtol: 1e-2              # Relative tolerence per pixel
 
-n_photons: 50000000           # Number of photon packets (10^7)
-# n_photons: 100000000          # Number of photon packets (10^8)
+# n_photons: 50000000           # Number of photon packets (10^7)
+n_photons: 100000000          # Number of photon packets (10^8)
 j_exp: 0.75                   # Luminosity boosting exponent
 
 # Information about escape
@@ -46,6 +46,7 @@ output_photons: false         # Output escaped photon packets
 spherical_escape: true        # Photons escape from a sphere
 escape_radius_bbox: 0.75      # Escape radius relative to the bbox
 emission_radius_bbox: 0.5     # Emission radius relative to the bbox
+# cell_center_emission: true    # Cell center emission instead of uniform sampling
 
 # Information about cameras
 poly_cameras: eight           # Polygon-based camera configuration

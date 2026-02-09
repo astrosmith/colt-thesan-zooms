@@ -1,16 +1,16 @@
 # COLT config file
 --- !ionization               # MCRT ionization equilibrium module
 
-init_dir: ics_tree              # Initial conditions directory (default: "ics")
-init_base: colt                 # Initial conditions base name (optional)
-output_dir: output_tree         # Output directory name (default: "output")
+init_dir: ics_tree            # Initial conditions directory (default: "ics")
+init_base: colt               # Initial conditions base name (optional)
+output_dir: output_tree       # Output directory name (default: "output")
 # output_dir: output_fdust_10   # Output directory name (default: "output")
 # f_dust: 0.1                   # Fraction of metals locked in dust grains
 # output_dir: output_fdust_20   # Output directory name (default: "output")
 # f_dust: 0.2                   # Fraction of metals locked in dust grains
 # output_dir: output_fdust_40   # Output directory name (default: "output")
 # f_dust: 0.4                   # Fraction of metals locked in dust grains
-output_base: ion-eq-RHD         # Output file base name (default: "colt")
+output_base: ion-eq-RHD       # Output file base name (default: "colt")
 # abundances_base: states-no-UVB       # Output a separate abundances file
 
 output_stars: true            # Output star emission and escape
@@ -34,8 +34,8 @@ ion_bins: true                # Include all active ion bins
 # min_HI_bin_cdf: 0.8           # Minimum CDF value for >= 13.6 eV bins
 max_bin_dex: 0.05             # Minimum frequency bin width in dex
 
-n_photons: 50000000           # Number of photon packets (10^7)
-# n_photons: 100000000          # Number of photon packets (10^8)
+# n_photons: 50000000           # Number of photon packets (10^7)
+n_photons: 100000000          # Number of photon packets (10^8)
 max_iter: 1                   # Maximum number of iterations
 max_error: 0.001              # Relative error for convergence
 

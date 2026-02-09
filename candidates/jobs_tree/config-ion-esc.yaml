@@ -1,0 +1,52 @@
+# COLT config file
+--- !escape                   # Escape module
+
+init_dir: ics_tree            # Initial conditions directory (default: "ics")
+init_base: colt               # Initial conditions base name (optional)
+output_dir: output_tree       # Output directory name (default: "output")
+# output_dir: output_fdust_10   # Output directory name (default: "output")
+# f_dust: 0.1                   # Fraction of metals locked in dust grains
+# output_dir: output_fdust_20   # Output directory name (default: "output")
+# f_dust: 0.2                   # Fraction of metals locked in dust grains
+# output_dir: output_fdust_40   # Output directory name (default: "output")
+# f_dust: 0.4                   # Fraction of metals locked in dust grains
+output_base: ion-esc          # Output file base name (default: "colt")
+abundances_base: states-no-UVB # Output a separate abundances file
+
+# Information about sources
+cosmological: true            # Indicates whether the simulation is cosmological
+source_file_Z_age: /home/arsmith/colt/tables/bpass-spectra-bin-imf_chab100.hdf5
+# dust_model: /home/arsmith/colt/tables/Draine-SMC.hdf5
+dust_model_graphite: /home/arsmith/colt/tables/graphite_dust.hdf5
+dust_model_silicate: /home/arsmith/colt/tables/silicate_dust.hdf5
+dust_model_PAH: /home/arsmith/colt/tables/PAH_dust.hdf5
+f_PAH: 0.01                   # Fraction of carbonaceous dust in PAHs
+metal_ions: false             # Include all metal ions
+helium_ions: true             # Include all helium ions
+ion_bins: true                # Include all active ion bins
+max_bin_dex: 0.05             # Minimum frequency bin width in dex
+
+spherical_escape: true        # Photons escape from a sphere
+escape_radius_bbox: 0.25      # Escape radius relative to the bbox
+emission_radius_bbox: 0.25    # Emission radius relative to the bbox
+
+n_side: 10                    # Camera healpix directions resolution
+output_images: false          # Output camera images
+output_emission: true         # Output intrinsic emission without transport
+output_bin_escape_fractions: false # Output bin escape fractions
+output_dust_absorptions: true # Output camera dust absorptions
+output_bin_dust_absorptions: false # Output bin dust absorptions
+output_ion_absorptions: true  # Output camera absorption for all ionization species
+output_bin_ion_absorptions: false # Output bin absorption for all ionization species
+output_absorption_distances: true # Output absorption distances [cm]
+output_bin_absorption_distances: false # Output bin absorption distances [cm]
+output_gas_columns_int: true  # Output gas column densities (intrinsic)
+output_gas_columns_esc: true  # Output gas column densities (escaped)
+output_dust_columns_int: true # Output dust column densities (intrinsic)
+output_dust_columns_esc: true # Output dust column densities (escaped)
+output_metal_columns_int: true # Output metal column densities (intrinsic)
+output_metal_columns_esc: true # Output metal column densities (escaped)
+output_HI_columns_int: true   # Output HI column densities (intrinsic)
+output_HI_columns_esc: true   # Output HI column densities (escaped)
+
+#verbose: true                 # Verbose output for tests and debugging

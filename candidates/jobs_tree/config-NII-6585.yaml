@@ -4,42 +4,45 @@
 init_dir: ics_tree            # Initial conditions directory (default: "ics")
 init_base: colt               # Initial conditions base name (optional)
 output_dir: output_tree       # Output directory name (default: "output")
-output_base: SiII-1190        # Output file base name (default: "colt")
+# output_dir: output_tree_fdust_10 # Output directory name (default: "output")
+# f_dust: 0.1                   # Fraction of metals locked in dust grains
+# output_dir: output_tree_fdust_20 # Output directory name (default: "output")
+# f_dust: 0.2                   # Fraction of metals locked in dust grains
+# output_dir: output_tree_fdust_40 # Output directory name (default: "output")
+# f_dust: 0.4                   # Fraction of metals locked in dust grains
+output_base: NII-6585         # Output file base name (default: "colt")
+abundances_base: states-no-UVB # Output a separate abundances file
+
+# output_cells: true            # Output cell emission and escape
 
 # Information about sources
 cosmological: true            # Indicates whether the simulation is cosmological
+# recombinations: true          # Include recombination emission
+# T_floor_rec: 7000             # Apply a recombination temperature floor [K]
 T_ceiling: 1e6                # Apply a temperature ceiling: T [K]
-line: SiII-1190-1193            # Name of the line (default "Lyman-alpha")
-v_turb_kms: 10                # Microturbulent velocity [km/s]
-# T_turb: 1e4                   # Microturbulent temperature [K]
-# T_floor: 1e3                  # Apply a temperature floor [K]
-# output_mcrt_emission: true    # Output intrinsic emission without transport (mcrt)
-# output_mcrt_attenuation: true # Output attenuated emission without scattering (mcrt)
-#output_proj_emission: true    # Output intrinsic emission without transport (proj)
-#output_proj_attenuation: true # Output attenuated emission without scattering (proj)
-# pixel_rtol: 1e-2              # Relative tolerence per pixel
-output_mcrt_emission: true
-
-# thermal_ionization: true   # Set ionization states based on threshold temperatures
-# set_density_from_mass: true   # Calculate density as mass / volume
-# dust_to_metal: 0.4            # Dust-to-metal ratio
-# dust_model: SMC                # Dust model: SMC, MW, etc.
+collisions: true              # Include collisional excitation
+# collisions_limiter: 10        # Limited by photoheating rate
+# output_collisions: true       # Output collisional excitation data
+# dust_model: SMC               # Dust model: SMC, MW, etc.
 dust_model_graphite: /home/arsmith/colt/tables/graphite_dust.hdf5
 dust_model_silicate: /home/arsmith/colt/tables/silicate_dust.hdf5
 dust_model_PAH: /home/arsmith/colt/tables/PAH_dust.hdf5
 f_PAH: 0.01                   # Fraction of carbonaceous dust in PAHs
+line: NII-6585                # Name of the line (default "Lyman-alpha")
+v_turb_kms: 10                # Microturbulent velocity [km/s]
+output_mcrt_emission: true    # Output intrinsic emission without transport (mcrt)
+# output_mcrt_attenuation: true # Output attenuated emission without scattering (mcrt)
+output_proj_emission: true    # Output intrinsic emission without transport (proj)
+output_proj_attenuation: true # Output attenuated emission without scattering (proj)
+# pixel_rtol: 1e-2              # Relative tolerence per pixel
 
 # n_photons: 50000000           # Number of photon packets (10^7)
 n_photons: 100000000          # Number of photon packets (10^8)
 j_exp: 0.75                   # Luminosity boosting exponent
-continuum: true               # Include UV continuum emission
-continuum_range: [-2000, 2300] # Continuum velocity offset range [km/s]
-source_model: BPASS-IMF-135-100 # Spectral source model
 
 # Information about escape
 output_photons: false         # Output escaped photon packets
-#output_photons: true          # Output escaped photon packets
-#photon_file: photons          # Output a separate photon file
+# photon_file: photons          # Output a separate photon file
 spherical_escape: true        # Photons escape from a sphere
 escape_radius_bbox: 0.75      # Escape radius relative to the bbox
 emission_radius_bbox: 0.5     # Emission radius relative to the bbox
@@ -55,7 +58,7 @@ poly_cameras: eight           # Polygon-based camera configuration
 # Frequency
 output_freq_stds: true        # Output frequency standard deviations (default: false)
 output_flux_avg: true         # Output angle-averaged spectral flux
-freq_range: [-1350, 1650]     # Camera frequency range [km/s]
+freq_range: [-500, 500]       # Camera frequency range [km/s]
 n_bins: 500                   # Number of frequency bins
 
 # Images
@@ -70,16 +73,16 @@ n_radial_pixels: 512          # Number of radial image pixels
 
 # Spectral radial images
 output_radial_cubes: true     # Output radial spectral data cubes [erg/s/cm^2/arcsec^2/angstrom]
-radial_cube_radius_bbox: 0.75 # Radial cube radius relative to the bbox (2 Rvir)
+radial_cube_radius_bbox: 0.75  # Radial cube radius relative to the bbox (2 Rvir)
 n_radial_cube_pixels: 512     # Number of radial cube pixels
-radial_cube_freq_range: [-1080, 1320] # Camera frequency range [km/s]
+radial_cube_freq_range: [-500, 500] # Camera frequency range [km/s]
 n_radial_cube_bins: 200       # Number of frequency bins
 
 # Spectral data cubes
 output_cubes: true            # Surface brightness cubes (defualt: false)
 cube_radius_bbox: 0.5         # Cube radius relative to the bbox (2 Rvir)
 n_cube_pixels: 128            # Number of cube pixels
-cube_freq_range: [-1080, 1320] # Camera frequency range [km/s]
+cube_freq_range: [-500, 500] # Camera frequency range [km/s]
 n_cube_bins: 100              # Number of frequency bins
 
 # Maps
@@ -91,7 +94,7 @@ n_side_map: 5                 # Healpix resolution for maps
 # Flux maps
 output_flux_map: true         # Output spectral flux maps
 n_side_flux: 3                # Healpix resolution for flux maps
-map_freq_range: [-1080, 1320] # Healpix frequency range [km/s]
+map_freq_range: [-500, 500]   # Healpix frequency range [km/s]
 n_map_bins: 100               # Number of frequency bins for flux maps
 
 # Radial maps
@@ -110,7 +113,7 @@ n_radial_avg_pixels: 512      # Number of radial pixels for radial avgs
 output_radial_cube_avg: true  # Output angle-averaged radial spectral surface brightness
 radial_cube_avg_radius_bbox: 0.75 # Radial cube average radius relative to the bbox (2 Rvir)
 n_radial_cube_avg_pixels: 256 # Number of radial pixels for radial cube avgs
-radial_cube_avg_freq_range: [-1080, 1320] # Camera frequency range [km/s]
+radial_cube_avg_freq_range: [-500, 500] # Camera frequency range [km/s]
 n_radial_cube_avg_bins: 200   # Number of frequency bins for radial cube avgs
 
 # Radial flow statistics

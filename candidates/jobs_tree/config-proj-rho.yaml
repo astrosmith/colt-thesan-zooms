@@ -18,7 +18,7 @@ avoid_edges: false            # Avoid ray-tracing through edge cells
 # Information about fields
 field_weight_pairs:
   - [rho, avg]
-  - [rho2, avg]
+  # - [rho2, avg]
 
 # Information about Fade
 #fade_in_length_bbox: 1        # Fade in length relative to the bbox
@@ -39,10 +39,10 @@ proj_radius_bbox: 0.6         # Projection depth relative to the bbox
 proj_sphere: true             # Project through a spherical volume
 # nx_pixels: 1280                 #Number of image pixels
 # ny_pixels: 720
-nx_pixels: 3840               # Number of image pixels
-ny_pixels: 2160
-# nx_pixels: 640                 #Number of image pixels
-# ny_pixels: 360
+# nx_pixels: 3840               # Number of image pixels
+# ny_pixels: 2160
+nx_pixels: 640                 #Number of image pixels
+ny_pixels: 360
 # n_pixels: 3840                # Number of image pixels
 #n_pixels: 1280                # Number of image pixels
 #n_pixels: 2160                # Number of image pixels
@@ -53,7 +53,7 @@ camera_north: [0,0,1]         # Camera north orientation
 # n_rot: 360                    # Add camera directions manually
 # phi_start: 0                  # Starting azimuthal angle [deg]
 # phi_end: 360                  # Ending azimuthal angle [deg]
-n_rot: 4                      # Add camera directions manually
+n_rot: 1                      # Add camera directions manually
 phi_start: 0                  # Starting azimuthal angle [deg]
 phi_end: 4                    # Ending azimuthal angle [deg]
 rotate_with_snaps: true       # Flag to offset rotations by the snapshot number
