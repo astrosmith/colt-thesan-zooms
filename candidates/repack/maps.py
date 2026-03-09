@@ -55,7 +55,8 @@ def repack_maps(snaps, base='ion-eq', out_dir='.'):
         f.create_dataset('maps', data=maps)
 
 if __name__ == '__main__':
-    colt_dir = '/orcd/data/mvogelsb/005/Lab/Thesan-Zooms-COLT'
+    colt_dir = '/nfs/mvogelsblab001/Lab/Thesan-Zooms-COLT'
+    # colt_dir = '/orcd/data/mvogelsb/005/Lab/Thesan-Zooms-COLT'
     sims = ['g2', 'g39', 'g205', 'g578', 'g1163', 'g5760', 'g10304', 'g137030', 'g500531', 'g519761', 'g2274036'][4:]
     runs = ['z4', 'z4', 'z4', 'z4', 'z4', 'z8', 'z8', 'z16', 'z16', 'z16'][4:]
     # , 'g5229300']
