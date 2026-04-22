@@ -5,7 +5,7 @@ init_dir: ics_movie           # Initial conditions directory (default: "ics")
 init_base: colt               # Initial conditions base name (optional)
 output_dir: output_movie      # Output directory name (default: "output")
 output_base: proj_all         # Output file base name (default: "colt")
-# abundances_base: states-no-UVB # Output a separate abundances file
+abundances_base: states-no-UVB # Output a separate abundances file
 snap_padding: 4               # Leading zeros for snapshot number formatting
 
 cosmological: true            # Indicates whether the simulation is cosmological
