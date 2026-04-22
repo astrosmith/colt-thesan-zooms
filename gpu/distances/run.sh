@@ -1,6 +1,8 @@
 #!/bin/bash
 
-# module load gcc cuda/11.3 openmpi hdf5
+# sched_mit_mki_r8
+# module load cuda/12.4.0 gcc/6.2.0 openmpi/4.0.4 hdf5/1.12.2
+# OLD VERSION: module load gcc cuda/11.3 openmpi hdf5
 
 # Set flags
 serial=false
@@ -20,16 +22,19 @@ compile() {
     # Serial
     if [ "$serial" = true ]; then
         CFLAGS="-std=c++14"
-        nvcc $CFLAGS $1.cu -o $1_serial -lhdf5 -lm
+        cp $1.cu $1.cc
+        mpicxx $CFLAGS $1.cc -o $1_serial -lhdf5 -lm
+        rm -f $1.cc
     fi
     # MPI
     if [ "$mpi" = true ]; then
         CFLAGS="-std=c++14 -DMPI"
+        cp $1.cu $1.cc
         # Compile the CUDA source file to an object file
-        nvcc $CFLAGS -c $1.cu -o $1.o -I/home/software/cuda/11.3/targets/x86_64-linux/include
+        mpicxx $CFLAGS -c $1.cc -o $1.o
         # Link the object file with mpicxx
-        mpicxx $CFLAGS -o $1_mpi $1.o -L/home/software/cuda/11.3/targets/x86_64-linux/lib -lhdf5 -lm -lcudart
-        rm -f $1.o
+        mpicxx $CFLAGS -o $1_mpi $1.o -lhdf5 -lm
+        rm -f $1.o $1.cc
     fi
     # GPU (Serial)
     if [ "$gpu" = true ]; then
@@ -41,9 +46,9 @@ compile() {
         CFLAGS="-std=c++14 -DGPU -DMPI"
         GFLAGS="-arch=compute_80 -code=sm_80"
         # Compile the CUDA source file to an object file
-        nvcc $CFLAGS $GFLAGS -c $1.cu -o $1.o -I/home/software/cuda/11.3/targets/x86_64-linux/include
+        nvcc $CFLAGS $GFLAGS -c $1.cu -o $1.o
         # Link the object file with mpicxx
-        mpicxx $CFLAGS -o $1_gpu_mpi $1.o -L/home/software/cuda/11.3/targets/x86_64-linux/lib -lhdf5 -lm -lcudart
+        mpicxx $CFLAGS -o $1_gpu_mpi $1.o -L/orcd/software/core/001/pkg/cuda/12.4/lib64 -lhdf5 -lm -lcudart
         rm -f $1.o
     fi
 }
@@ -51,9 +56,12 @@ compile() {
 compile main
 
 run() {
-    sim_dir="/orcd/data/mvogelsb/004/Thesan-Zooms/$1/output"
+    # sim_dir="/orcd/data/mvogelsb/004/Thesan-Zooms/$1/output"
+    sim_dir="/orcd/data/mvogelsb/005/Users/kannan/THzoom/PopIII/$1/output"
     # for i in {0..189}; do
-    for i in 188; do
+    for i in $(seq 0 $2); do
+    # for i in 188; do
+    # for i in $2; do
         if [ "$serial" = true ]; then
             echo "Running serial: $sim_dir $i"
             ./main_serial $sim_dir $i
@@ -69,13 +77,17 @@ run() {
         fi
         if [ "$gpu_mpi" = true ]; then
             echo "Running gpu_mpi: $sim_dir $i"
-            mpirun --mca opal_warn_on_missing_libcuda 0 --mca btl '^openib' --mca psm2 ucx -np 16 ./main_gpu_mpi $sim_dir $i
+            mpirun --mca opal_warn_on_missing_libcuda 0 --mca btl '^openib' --mca psm2 ucx -np 32 ./main_gpu_mpi $sim_dir $i
         fi
     done
     echo "Done with $1"
 }
 
-run g2274036/z8
+# run g2274036/z8
+#run g500531/z8 117
+#run g500531/z8_gnedin 117
+#run g500531/z8_gnedin_Pop3 118
+#run g500531/z8_gnedin_Pop3_salpeter 118
 
 # Define job sets with individual job, group, and runs
 job_sets=(

@@ -10,6 +10,7 @@ To run the setup pipeline, follow these steps (automated using `bash submit.sh` 
   ```
   python distances.py [sim] [snap]
   ```
+  For performance reasons, this is now replaced with the `gpu/distances` pipeline.
 
 2. Generate uncontaminated halo candidates, also saving condensed group catalogs:
   ```
@@ -38,7 +39,7 @@ To run the setup pipeline, follow these steps (automated using `bash submit.sh` 
 
 Make sure to replace `[sim]` and `[snap]` with the appropriate simulation and snapshot values (see `job.sh`).
 
-## Halo Projections Instructions
+## Halo Projections Instructions (Outdated, use submit.sh instead)
 
 To run projections of each halo, follow these steps:
 
