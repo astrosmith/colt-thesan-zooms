@@ -21,7 +21,8 @@ if __name__ == '__main__':
 # Derived global variables
 cand_dir = f'{zoom_dir}/{sim}/postprocessing/candidates'
 colt_dir = f'{zoom_dir}-COLT/{sim}/ics'
-colt_dir = f'/orcd/data/mvogelsb/005/Lab/Thesan-Zooms-COLT/{sim}/ics'
+colt_dir = f'/nfs/mvogelsblab001/Lab/Thesan-Zooms-COLT/{sim}/ics'
+# colt_dir = f'/orcd/data/mvogelsb/005/Lab/Thesan-Zooms-COLT/{sim}/ics'
 os.makedirs(f'{colt_dir}_tree', exist_ok=True) # Ensure the new colt directory exists
 
 SOLAR_MASS = 1.989e33  # Solar masses
@@ -97,16 +98,25 @@ with h5py.File(tree_file, 'r') as f:
     subhalo_ids = f['Subhalo']['SubhaloID'][:] # Subhalo ID in the tree
     zs = f['Redshifts'][:] # Redshifts in the tree
 
-if False:
-    mask = np.zeros(len(snaps), dtype=bool)
-    mask[-1] = True
-    # n_start = 8
-    # mask = (snaps >= n_start*189//9) & (snaps <= (n_start+1)*189//9)
+# if True:  # Testing
+#     mask = np.zeros(len(snaps), dtype=bool)
+#     mask[-1] = True
+#     # n_start = 8
+#     # mask = (snaps >= n_start*189//9) & (snaps <= (n_start+1)*189//9)
+#     snaps = snaps[mask]
+#     zs = zs[mask]
+#     group_ids = group_ids[mask]
+#     subhalo_ids = subhalo_ids[mask]
+#     SmoothPos = SmoothPos[mask,:]
+
+if True:  # Fix g2/z4
+    mask = np.ones(len(snaps), dtype=bool)
+    mask[-1] = False
     snaps = snaps[mask]
     zs = zs[mask]
     group_ids = group_ids[mask]
     subhalo_ids = subhalo_ids[mask]
-    SmoothPos = SmoothPos[-1:,:]
+    # SmoothPos = SmoothPos[mask,:]  # Note: center.hdf5 is already masked
 
 n_snaps = len(snaps)
 group_indices = np.empty(n_snaps, dtype=np.int32) # Group index in the candidates
@@ -148,7 +158,8 @@ for i in progressbar(range(n_snaps)):
         subhalo_indices[i] = np.where(cand_subhalo_ids == subhalo_ids[i])[0][0] # Subhalo index in the candidates
         PosHR = header['PosHR'] # High-resolution center of mass position [BoxUnits]
         r_HRs[i] = length_to_cgs * header['PosHR'] # High-resolution center of mass position [cm]
-        r_virs[i] = length_to_cgs * f['Group']['GroupPos'][group_indices[i]] - r_HRs[i] # Group position [cm]
+        # r_virs[i] = length_to_cgs * f['Group']['GroupPos'][group_indices[i]] - r_HRs[i] # Group position [cm]
+        r_virs[i] = length_to_cgs * f['Subhalo']['SubhaloPos'][subhalo_indices[i]] - r_HRs[i] # Subhalo position [cm]
         # GroupPos = f['Group']['GroupPos'][group_indices[i]] # High-resolution center of mass position [BoxUnits]
         # SmoothPos[i] = GroupPos  # Remove comment to verify if the calculated R_vir goes to the one saved in tree file
 

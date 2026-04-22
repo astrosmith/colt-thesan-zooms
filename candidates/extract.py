@@ -19,7 +19,8 @@ if __name__ == '__main__':
 # Derived global variables
 cand_dir = f'{zoom_dir}/{sim}/postprocessing/candidates'
 colt_dir = f'{zoom_dir}-COLT/{sim}/ics'
-colt_dir = f'/orcd/data/mvogelsb/005/Lab/Thesan-Zooms-COLT/{sim}/ics'
+colt_dir = f'/nfs/mvogelsblab001/Lab/Thesan-Zooms-COLT/{sim}/ics'
+# colt_dir = f'/orcd/data/mvogelsb/005/Lab/Thesan-Zooms-COLT/{sim}/ics'
 states = 'states-no-UVB' # States prefix
 copy_states = True # Copy ionization states to the new colt file
 os.makedirs(f'{colt_dir}_tree', exist_ok=True) # Ensure the new colt directory exists
@@ -82,7 +83,11 @@ with h5py.File(tree_file, 'r') as f:
 
 if False:
     mask = np.zeros(len(snaps), dtype=bool)
-    mask[-2] = True
+    # mask[-2] = True
+    if sim == 'g39/z4':
+        mask[46:63] = True
+    elif sim == 'g205/z4':
+        mask[22:37] = True
     # n_start = 8
     # mask = (snaps >= n_start*189//9) & (snaps <= (n_start+1)*189//9)
     snaps = snaps[mask]

@@ -19,7 +19,8 @@ if __name__ == '__main__':
 # Derived global variables
 cand_dir = f'{zoom_dir}/{sim}/postprocessing/candidates'
 colt_dir = f'{zoom_dir}-COLT/{sim}/ics'
-colt_dir = f'/orcd/data/mvogelsb/005/Lab/Thesan-Zooms-COLT/{sim}/ics'
+colt_dir = f'/nfs/mvogelsblab001/Lab/Thesan-Zooms-COLT/{sim}/ics'
+# colt_dir = f'/orcd/data/mvogelsb/005/Lab/Thesan-Zooms-COLT/{sim}/ics'
 os.makedirs(f'{colt_dir}_tree', exist_ok=True) # Ensure the new colt directory exists
 
 M_sun = 1.988435e33  # Solar mass in g
@@ -60,9 +61,18 @@ with h5py.File(tree_file, 'r') as f:
     R_virs = f['Group']['Group_R_Crit200'][:] # Group virial radii in the tree [ckpc/h]
     zs = f['Redshifts'][:] # Redshifts in the tree
 
-if False:
-    mask = np.zeros(len(snaps), dtype=bool)
-    mask[-2:] = True
+# if True:  # Testing
+#     mask = np.zeros(len(snaps), dtype=bool)
+#     mask[-2:] = True
+#     snaps = snaps[mask]
+#     R_virs = R_virs[mask]
+#     zs = zs[mask]
+#     group_ids = group_ids[mask]
+#     subhalo_ids = subhalo_ids[mask]
+
+if True:  # Fix g2/z4
+    mask = np.ones(len(snaps), dtype=bool)
+    mask[-1] = False
     snaps = snaps[mask]
     R_virs = R_virs[mask]
     zs = zs[mask]
@@ -100,9 +110,11 @@ for i in progressbar(range(n_snaps)):
         group_indices[i] = np.where(cand_group_ids == group_ids[i])[0][0] # Group index in the candidates
         subhalo_indices[i] = np.where(cand_subhalo_ids == subhalo_ids[i])[0][0] # Subhalo index in the candidates
         r_HRs[i] = length_to_cgs * header['PosHR'] # High-resolution center of mass position [cm]
-        r_virs[i] = length_to_cgs * f['Group']['GroupPos'][group_indices[i]] - r_HRs[i] # Group position relative to high-resolution center of mass [cm]
+        # r_virs[i] = length_to_cgs * f['Group']['GroupPos'][group_indices[i]] - r_HRs[i] # Group position relative to high-resolution center of mass [cm]
+        r_virs[i] = length_to_cgs * f['Subhalo']['SubhaloPos'][subhalo_indices[i]] - r_HRs[i] # Subhalo position relative to high-resolution center of mass [cm]
         R_virs[i] = length_to_cgs * R_virs[i] # Virial radius unit conversion [cm]
-        pos = f['Group']['GroupPos'][group_indices[i]]
+        # pos = f['Group']['GroupPos'][group_indices[i]]
+        pos = f['Subhalo']['SubhaloPos'][subhalo_indices[i]]
 
     with h5py.File(colt_file, 'r') as f:
         # Read gas and star coordinates for the radial masks
@@ -224,6 +236,12 @@ for i in progressbar(range(n_snaps)):
         np.sum(m_p2 * r_p2[:,j]) + np.sum(m_p3 * r_p3[:,j])) / tot_mass     # in cm
     com_kpc = com_new / (a * kpc) * h  # Convert to ckpc/h
     com_arepo_box[i] = com_kpc + com_kpc_2v + (r_virs[i]/length_to_cgs) + (r_HRs[i]/length_to_cgs)  # New center of mass in Arepo box units
+
+# Fix for specific snapshots
+# if sim == 'g205/z4':
+#     com_arepo_box[29,:] = 0.5 * (com_arepo_box[28,:] + com_arepo_box[30,:])
+# elif sim == 'g39/z4':
+#     com_arepo_box[54,:] = 0.5 * (com_arepo_box[53,:] + com_arepo_box[55,:])
 
 with h5py.File(f'{colt_dir}_tree/center.hdf5', 'w') as f:
     # Save the new COM

@@ -22,15 +22,16 @@ if __name__ == '__main__':
 
 # Derived global variables
 cand_dir = f'{zoom_dir}/{sim}/postprocessing/candidates'
-#colt_dir = f'{zoom_dir}-COLT/{sim}/ics'
-colt_dir = f'/orcd/data/mvogelsb/005/Lab/Thesan-Zooms-COLT/{sim}/ics'
+colt_dir = f'{zoom_dir}-COLT/{sim}/ics'
+colt_dir = f'/nfs/mvogelsblab001/Lab/Thesan-Zooms-COLT/{sim}/ics'
+# colt_dir = f'/orcd/data/mvogelsb/005/Lab/Thesan-Zooms-COLT/{sim}/ics'
 states = 'states-no-UVB'  # States prefix
 copy_states = True  # Copy ionization states to the new colt file
 interpolate_mass = True  # Interpolate mass fields
 jerk_interp = True  # Use linear interpolation
 UnitLength_in_cm = 3.08568e+21 # 1 kpc in cm [from Candidates files]
 MYR_TO_S = u.Myr.to(u.s)  # Myr -> s
-f_vir = 4.    # constant factor for virial radius (needs to be cross-referendced with extract.py, default value =4.) 
+f_vir = 4.    # constant factor for virial radius (needs to be cross-referendced with extract.py, default value =4.)
 
 use_smoothed = True # Use smoothed GroupPos
 # Overwrite for local testing
@@ -538,7 +539,8 @@ if False:
 
 n_snaps = len(snaps)
 file_count = np.array([])
-for i in progressbar(range(n_snaps-1)):
+# for i in progressbar(range(n_snaps-1)):
+for i in progressbar(range(169,n_snaps-1)):
     snap = snaps[i]
     snap_1, snap_2 = snap, snap + 1
     GroupPos1, GroupPos2 = GroupPos[i], GroupPos[i+1]

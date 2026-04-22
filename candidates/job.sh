@@ -5,22 +5,32 @@
 # SBATCH --partition=sched_mit_mvogelsb,sched_mit_mki
 # SBATCH --partition=ou_mki,mit_normal,sched_mit_mvogelsb,sched_mit_mki
 # SBATCH --partition=mit_normal,sched_mit_mvogelsb,sched_mit_mki,sched_mit_mki_preempt
-#SBATCH --partition=ou_mki,mit_normal,sched_mit_mvogelsb,sched_mit_mki,newnodes
+# SBATCH --partition=ou_mki,mit_normal,sched_mit_mvogelsb,sched_mit_mki
+# ,newnodes
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=16
+# SBATCH --cpus-per-task=64
+#SBATCH --cpus-per-task=32
 # SBATCH --constraint=centos7
 # SBATCH --mem-per-cpu=3000 # 3GB of memory per CPU
-#SBATCH --mem-per-cpu=4000 # 4GB of memory per CPU
+# SBATCH --mem-per-cpu=4000 # 4GB of memory per CPU
 # SBATCH --mem-per-cpu=6000 # 6GB of memory per CPU
+# SBATCH --mem-per-cpu=15500 # 15.5GB of memory per CPU
 # SBATCH --mem=0 # All of memory
+#
+#SBATCH --partition=mit_normal_gpu,mit_preemptable,ou_mki_preempt,sched_mit_mki_r8,sched_mit_mki_preempt_r8
+#SBATCH --gpus-per-node=1
+#SBATCH --mem=1000000 # 1000GB of memory
+#
 #SBATCH --export=ALL
 # SBATCH --time=96:00:00
-#SBATCH --time=12:00:00
+# SBATCH --time=48:00:00
+#SBATCH --time=24:00:00
+# SBATCH --time=12:00:00
 #SBATCH --mail-type=END
 #SBATCH --mail-user=arsmith@mit.edu
-# SBATCH --dependency=afterok:6747646
-# SBATCH --dependency=afterany:4125079
+# SBATCH --dependency=afterok:
+# SBATCH --dependency=afterany:
 
 py="/home/arsmith/miniforge3/bin/python3 -u"
 
@@ -39,10 +49,10 @@ sim=${group}/${run}
 ## long
 # run g2/z4  # A
 # run g39/z4  # B long
-# run g205/z4  # C long
-# run g578/z4  # D long
+# run g205/z4  # C+ long
+# run g578/z4  # D+ long
 # run g1163/z4  # E+
-# run g5760/z8  # F long
+# run g5760/z8  # F+ long
 # run g10304/z8  # G+
 # run g137030/z16  # J+
 # run g500531/z16  # K+

@@ -1,0 +1,71 @@
+# COLT config file
+--- !mcrt                     # Monte Carlo radiative transfer module
+
+init_dir: ics                 # Initial conditions directory (default: "ics")
+init_base: colt               # Initial conditions base name (optional)
+output_dir: output            # Output directory name (default: "output")
+output_base: halo-OII-3727-3730 # Output file base name (default: "colt")
+abundances_base: states-no-UVB # Output a separate abundances file
+cell_center_emission: true    # Cell center emission instead of uniform sampling
+
+# Group information
+group_base: halo              # Group catalog base name (default: init_base)
+select_group: true            # Specified halo is a group
+use_all_groups: true          # Use all groups in the catalog file
+use_group_catalog: true       # Use group catalog file
+filter_group_catalog: true    # Filter group catalog file
+focus_groups_on_emission: true # Center of luminosity position and velocity
+output_groups_obs: true       # Output group statistics for observations
+output_groups_vir: true       # Output group statistics for virial quantities
+output_groups_gal: true       # Output group statistics for galaxy quantities
+output_flux_avg_groups: true  # Output angle-averaged spectral flux
+freq_min_groups: -300         # Frequency minimum [km/s]
+freq_max_groups: 300          # Frequency maximum [km/s]
+n_bins_groups: 60             # Number of frequency bins for group flux avgs
+output_radial_avg_groups: true # Output angle-averaged radial surface brightness
+radius_kpc_groups: 500        # Radial group avgs radius [kpc]
+min_radius_pc_groups: 0.5     # Minimum radial distance for group avgs [pc]
+n_pixels_groups: 60           # Number of radial pixels for group radial avgs
+group_flows:                  # Group flow statistics
+  radial_logspace_Rvir: [-3, 1, 21] # Logarithmically spaced radial bins [Rvir]
+
+# Subhalo information
+subhalo_base: halo            # Subhalo catalog base name (default: init_base)
+use_all_subhalos: true        # Use all subhalos in the catalog file
+use_subhalo_catalog: true     # Use subhalo catalog file
+focus_subhalos_on_emission: true # Center of luminosity position and velocity
+output_subhalos_obs: true     # Output subhalo statistics for observations
+output_subhalos_vir: true     # Output subhalo statistics for virial quantities
+output_subhalos_gal: true     # Output subhalo statistics for galaxy quantities
+output_flux_avg_subhalos: true # Output angle-averaged spectral flux
+freq_min_subhalos: -300       # Frequency minimum [km/s]
+freq_max_subhalos: 300        # Frequency maximum [km/s]
+n_bins_subhalos: 60           # Number of frequency bins for subhalo flux avgs
+output_radial_avg_subhalos: true # Output angle-averaged radial surface brightness
+radius_kpc_subhalos: 500      # Radial subhalo avgs radius [kpc]
+min_radius_pc_subhalos: 0.5   # Minimum radial distance for subhalo avgs [pc]
+n_pixels_subhalos: 60         # Number of radial pixels for subhalo radial avgs
+subhalo_flows:                # Subhalo flow statistics
+  radial_logspace_Rvir: [-3, 1, 21] # Logarithmically spaced radial bins [Rvir]
+
+# Information about sources
+cosmological: true            # Indicates whether the simulation is cosmological
+recombinations: false         # Include recombination emission
+collisions: true              # Include collisional excitation
+dust_model: SMC               # Dust model: SMC, MW, etc.
+line: OII-3727-3730           # Name of the line (default "Lyman-alpha")
+v_turb_kms: 10                # Microturbulent velocity [km/s]
+
+n_photons: 10000            # Number of photon packets (10^4)
+j_exp: 0.75                   # Luminosity boosting exponent
+max_streaming_kpc: 50         # Maximum free-streaming distance [kpc]
+
+# Information about escape
+output_photons: false         # Output escaped photon packets
+
+# Information about cameras
+freq_min: -500                # Frequency minimum [km/s]
+freq_max: 500                 # Frequency maximum [km/s]
+n_bins: 100                   # Number of frequency bins
+
+#verbose: true                 # Verbose output for tests and debugging

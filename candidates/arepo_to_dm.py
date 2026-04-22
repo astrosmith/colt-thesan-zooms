@@ -37,7 +37,8 @@ if __name__ == '__main__':
 out_dir = f'{zoom_dir}/{sim}/output'
 dist_dir = f'{zoom_dir}/{sim}/postprocessing/distances'
 colt_dir = f'{zoom_dir}-COLT/{sim}/ics'
-colt_dir = f'/orcd/data/mvogelsb/005/Lab/Thesan-Zooms-COLT/{sim}/ics'
+colt_dir = f'/nfs/mvogelsblab001/Lab/Thesan-Zooms-COLT/{sim}/ics'
+# colt_dir = f'/orcd/data/mvogelsb/005/Lab/Thesan-Zooms-COLT/{sim}/ics'
 
 # Overwrite for local testing
 #out_dir = '.'
@@ -178,7 +179,7 @@ class Simulation:
         # PartType3 data
         for i in range(self.n_files):
             with h5py.File(snap_pre + f'{i}.hdf5', 'r') as f:
-                if 'PartType0' in f:
+                if 'PartType3' in f:
                     g = f['PartType3']
                     for field in ['Coordinates']:
                         shape, dtype = g[field].shape, g[field].dtype

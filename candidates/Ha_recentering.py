@@ -30,7 +30,8 @@ if __name__ == '__main__':
         raise ValueError('Usage: python group_radius.py [sim] [zoom_dir]')
 
 # colt_dir = f'/orcd/data/mvogelsb/004/Thesan-Zooms-COLT/{sim}/ics_tree'
-colt_dir = f'/orcd/data/mvogelsb/005/Lab/Thesan-Zooms-COLT/{sim}/ics_tree'
+colt_dir = f'/nfs/mvogelsblab001/Lab/Thesan-Zooms-COLT/{sim}/ics_tree'
+# colt_dir = f'/orcd/data/mvogelsb/005/Lab/Thesan-Zooms-COLT/{sim}/ics_tree'
 
 # Universal constants
 X = 0.76                   # Primordial mass fraction of hydrogen
@@ -121,7 +122,12 @@ def alpha_eff_B_Ha(T, n_e):
     return np.array([P_B(P_Ha_SH95, T[i], n_e[i]) for i in range(len(T))]) * alpha_B(T) # α_eff_B = P_B α_B
 
 print(f"Processing simulation {sim}")
-for snap in progressbar(np.arange(0, 189,1)):
+first_snap, last_snap = 0, 189
+# if sim == 'g39/z4':
+#     first_snap, last_snap = 46, 63
+# elif sim == 'g205/z4':
+#     first_snap, last_snap = 22, 37
+for snap in progressbar(range(first_snap, last_snap)):
     colt_file = f'{colt_dir}/colt_{snap:03d}.hdf5'
     state_file = f'{colt_dir}/states-no-UVB_{snap:03d}.hdf5'
     try:

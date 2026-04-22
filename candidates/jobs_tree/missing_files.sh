@@ -7,15 +7,19 @@ colt_dir="/nfs/mvogelsblab001/Lab/Thesan-Zooms-COLT"
 # colt_dir="/orcd/data/mvogelsb/005/Lab/Thesan-Zooms-COLT"
 
 # Directory containing the output files
+# field="colt"; out_pre="${colt_dir}"; out_post="ics_tree"; check="V"
 # field="proj_rho"; out_pre="${colt_dir}"; out_post="output_tree"; check="proj_rho"
 # field="M1500"; out_pre="${colt_dir}"; out_post="output_tree"; check="images"
 # field="optical"; out_pre="${colt_dir}"; out_post="output_tree"; check="images"
 # field="ion-eq-RHD"; out_pre="${colt_dir}"; out_post="output_tree"; check="images"
 # field="ion-eq"; out_pre="${colt_dir}"; out_post="output_tree"; check="images"
+# field="ion-esc"; out_pre="${colt_dir}"; out_post="output_tree"; check="HI_columns_int"
+field="proj"; out_pre="${colt_dir}"; out_post="output_tree"; check="proj_xHI_nH"
 # field="Ha-RHD"; out_pre="${colt_dir}"; out_post="output_tree"; check="images"
 # field="Ha-cont"; out_pre="${colt_dir}"; out_post="output_tree"; check="images"
 # field="Ha"; out_pre="${colt_dir}"; out_post="output_tree"; check="images"
-field="Hb"; out_pre="${colt_dir}"; out_post="output_tree"; check="images"
+# field="Hb"; out_pre="${colt_dir}"; out_post="output_tree"; check="images"
+# field="NII-6585"; out_pre="${colt_dir}"; out_post="output_tree"; check="images"
 # field="OIII-5008"; out_pre="${colt_dir}"; out_post="output_tree"; check="images"
 # field="OII-3727-3730"; out_pre="${colt_dir}"; out_post="output_tree"; check="images"
 # field="SiII-1190"; out_pre="${colt_dir}"; out_post="output_tree"; check="images"
@@ -35,13 +39,12 @@ job_sets=(
 # "job='E'; group='g1163'; runs=('noESF_z4'); first_snap=0; last_snap=188"       # 0-188  ->  0-188
 # "job='H'; group='g33206'; runs=('z16'); first_snap=0; last_snap=8"             # 0-8    ->  0-8
 # Fiducial:
-#"job='A'; group='g2'; runs=('z4'); first_snap=40; last_snap=67"                 # 0-67   ->  0-67
 #"job='A'; group='g2'; runs=('z4'); first_snap=0; last_snap=67"                 # 0-67   ->  0-67
-"job='B'; group='g39'; runs=('z4'); first_snap=0; last_snap=188"               # 0-188  ->  0-188
+# "job='B'; group='g39'; runs=('z4'); first_snap=0; last_snap=188"               # 0-188  ->  0-188
 # "job='C'; group='g205'; runs=('z4'); first_snap=0; last_snap=188"              # 0-188  ->  0-188
 # "job='D'; group='g578'; runs=('z4'); first_snap=0; last_snap=188"              # 0-188  ->  0-188
 # "job='E'; group='g1163'; runs=('z4'); first_snap=8; last_snap=188"             # 0-188  ->  0-188
-# "job='F'; group='g5760'; runs=('z8'); first_snap=4; last_snap=188"             # 0-188  ->  0-188
+"job='F'; group='g5760'; runs=('z8'); first_snap=4; last_snap=188"             # 0-188  ->  0-188
 # "job='G'; group='g10304'; runs=('z8'); first_snap=0; last_snap=188"            # 0-188  ->  0-188
 # "job='J'; group='g137030'; runs=('z16'); first_snap=5; last_snap=188"          # 0-188  ->  5-188
 # "job='K'; group='g500531'; runs=('z16'); first_snap=13; last_snap=188"          # 0-188  ->  9-188

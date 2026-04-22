@@ -38,7 +38,8 @@ if __name__ == '__main__':
 out_dir = f'{zoom_dir}/{sim}/output'
 dist_dir = f'{zoom_dir}/{sim}/postprocessing/distances'
 colt_dir = f'{zoom_dir}-COLT/{sim}/ics'
-colt_dir = f'/orcd/data/mvogelsb/005/Lab/Thesan-Zooms-COLT/{sim}/ics'
+colt_dir = f'/nfs/mvogelsblab001/Lab/Thesan-Zooms-COLT/{sim}/ics'
+# colt_dir = f'/orcd/data/mvogelsb/005/Lab/Thesan-Zooms-COLT/{sim}/ics'
 
 # Overwrite for local testing
 #out_dir = '.'
