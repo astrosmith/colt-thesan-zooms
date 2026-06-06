@@ -357,6 +357,20 @@ def boundary_indices_to_csr(group_inner_indices, group_outer_indices):
 
     return inner_indices, outer_indices, indptr
 
+def group_vertices_to_csr(group_vertices):
+    """Pack variable-length group vertex arrays into vertices/indptr arrays."""
+    lengths = np.array([len(vertices) for vertices in group_vertices],
+                       dtype=np.int32)
+    indptr = np.zeros(len(group_vertices)+1, dtype=np.int32)
+    indptr[1:] = np.cumsum(lengths)
+    vertices = np.zeros((indptr[-1], 2), dtype=np.float64)
+
+    for group_id, values in enumerate(group_vertices):
+        start, stop = indptr[group_id], indptr[group_id+1]
+        vertices[start:stop] = np.asarray(values, dtype=np.float64)
+
+    return vertices, indptr
+
 def neighbor_cycle_index(neighbors, ipix, neib):
     """Return the clockwise neighbor-cycle index linking ipix to neib."""
     matches = np.where(neighbors[ipix] == neib)[0]
@@ -364,6 +378,74 @@ def neighbor_cycle_index(neighbors, ipix, neib):
         raise RuntimeError(
             f'Pixel {ipix} does not have unique face neighbor {neib}')
     return int(matches[0])
+
+def theta_phi_from_vec(vertices):
+    """Convert unit vectors to HEALPix theta/phi coordinates in radians."""
+    vertices = np.asarray(vertices, dtype=np.float64)
+    theta = np.arccos(np.clip(vertices[:, 2], -1., 1.))
+    phi = np.mod(np.arctan2(vertices[:, 1], vertices[:, 0]), 2.*np.pi)
+    return np.vstack([theta, phi]).T
+
+def get_ordered_edge_vertices(nside, neighbors, nest=False,
+                              edge_step=8, cross_edge_eps=1.e-6):
+    """Return pixel edge vertices ordered to match neib_n/e/s/w cycles."""
+    edge_vertices = np.zeros((neighbors.shape[0], 4, 2, 3), dtype=np.float64)
+
+    for ipix in range(neighbors.shape[0]):
+        center = np.array(hp.pix2vec(nside, ipix, nest=nest))
+        boundary = hp.boundaries(nside, ipix, step=edge_step, nest=nest)
+        corners = hp.boundaries(nside, ipix, step=1, nest=nest)
+
+        raw_neibs = np.zeros(4, dtype=np.int32)
+        raw_angles = np.zeros(4, dtype=np.float64)
+        raw_vertices = np.zeros((4, 2, 3), dtype=np.float64)
+        for edge in range(4):
+            midpoint = boundary[:, edge*edge_step + edge_step//2]
+            outside = normalize(midpoint + cross_edge_eps * (midpoint - center))
+            neib = hp.vec2pix(nside, outside[0], outside[1], outside[2],
+                              nest=nest)
+            raw_neibs[edge] = neib
+            raw_angles[edge] = local_bearing(nside, ipix, neib, nest=nest)
+            raw_vertices[edge, 0] = corners[:, edge]
+            raw_vertices[edge, 1] = corners[:, (edge+1) % 4]
+
+        order = clockwise_cardinal_order(raw_angles)
+        if not np.array_equal(raw_neibs[order], neighbors[ipix]):
+            raise RuntimeError(
+                f'Neighbor cycle mismatch while building vertices for pixel {ipix}')
+        edge_vertices[ipix] = raw_vertices[order]
+
+    return edge_vertices
+
+def face_segment_edge_vertices(neighbors, edge_vertices, inner, outer):
+    """Return the two Cartesian vertices for a directed face boundary segment."""
+    cycle = neighbor_cycle_index(neighbors, int(inner), int(outer))
+    return edge_vertices[int(inner), cycle]
+
+def common_edge_vertex(edge_a, edge_b, tol=1.e-8):
+    """Return the common endpoint of two adjacent boundary edges."""
+    dots = np.dot(edge_a, edge_b.T)
+    idx = np.unravel_index(np.argmax(dots), dots.shape)
+    if dots[idx] < 1. - tol:
+        raise RuntimeError('Adjacent boundary edges do not share a vertex')
+    return edge_a[idx[0]]
+
+def boundary_loop_vertices(loop_segments, neighbors, edge_vertices):
+    """Return closed theta/phi vertices for one ordered boundary loop."""
+    n_segments = len(loop_segments)
+    if n_segments == 0:
+        return np.empty((0, 2), dtype=np.float64)
+
+    segment_edges = [
+        face_segment_edge_vertices(neighbors, edge_vertices, inner, outer)
+        for inner, outer in loop_segments
+    ]
+    end_vertices = [
+        common_edge_vertex(segment_edges[i], segment_edges[(i+1) % n_segments])
+        for i in range(n_segments)
+    ]
+    vertices = np.vstack([end_vertices[-1], end_vertices])
+    return theta_phi_from_vec(vertices)
 
 def next_clockwise_boundary_segment(group, neighbors, group_id, inner, outer):
     """
@@ -395,8 +477,8 @@ def next_clockwise_boundary_segment(group, neighbors, group_id, inner, outer):
 
     raise RuntimeError(f'Boundary walk exceeded max steps for group {group_id}')
 
-def walk_group_boundary(group, neighbors, group_id):
-    """Return clockwise ordered inner/outer boundary pixel indices for one group."""
+def walk_group_boundary(group, neighbors, edge_vertices, group_id):
+    """Return clockwise ordered boundary segments and vertices for one group."""
     remaining = set()
     members = np.where(group == group_id)[0]
     for ipix in members:
@@ -406,41 +488,61 @@ def walk_group_boundary(group, neighbors, group_id):
 
     inner_indices = []
     outer_indices = []
+    group_vertices = []
     n_expected = len(remaining)
     while remaining:
         start_segment = min(remaining)
         segment = start_segment
+        loop_segments = []
         while segment in remaining:
             remaining.remove(segment)
             inner_indices.append(segment[0])
             outer_indices.append(segment[1])
+            loop_segments.append(segment)
 
             next_segment = next_clockwise_boundary_segment(
                 group, neighbors, group_id, segment[0], segment[1])
             if next_segment == start_segment:
                 break
             segment = next_segment
+        loop_vertices = boundary_loop_vertices(
+            loop_segments, neighbors, edge_vertices)
+        if len(group_vertices) > 0 and loop_vertices.size > 0:
+            group_vertices.append(np.array([[np.nan, np.nan]],
+                                           dtype=np.float64))
+        if loop_vertices.size > 0:
+            group_vertices.append(loop_vertices)
 
     if len(inner_indices) != n_expected:
         raise RuntimeError(
             f'Boundary walk stored {len(inner_indices)} segments for group '
             f'{group_id}, expected {n_expected}')
 
-    return (np.asarray(inner_indices, dtype=np.int32),
-            np.asarray(outer_indices, dtype=np.int32))
+    if len(group_vertices) == 0:
+        vertices = np.empty((0, 2), dtype=np.float64)
+    else:
+        vertices = np.vstack(group_vertices)
 
-def get_group_boundaries(group, neighbors):
-    """Return ordered inner/outer boundary pixel arrays for all groups."""
+    return (np.asarray(inner_indices, dtype=np.int32),
+            np.asarray(outer_indices, dtype=np.int32),
+            vertices)
+
+def get_group_boundaries(group, neighbors, nside, nest=False):
+    """Return ordered inner/outer boundary pixel arrays and vertices."""
     n_groups = int(np.max(group)) + 1
+    edge_vertices = get_ordered_edge_vertices(nside, neighbors, nest=nest)
     group_inner_indices = np.empty(n_groups, dtype=object)
     group_outer_indices = np.empty(n_groups, dtype=object)
+    group_vertices = np.empty(n_groups, dtype=object)
 
     for group_id in range(n_groups):
-        inner, outer = walk_group_boundary(group, neighbors, group_id)
+        inner, outer, vertices = walk_group_boundary(
+            group, neighbors, edge_vertices, group_id)
         group_inner_indices[group_id] = inner
         group_outer_indices[group_id] = outer
+        group_vertices[group_id] = vertices
 
-    return group_inner_indices, group_outer_indices
+    return group_inner_indices, group_outer_indices, group_vertices
 
 def write_segmented_groups(seg_file=seg_file_default, nside=10,
                            segment_file=None, map_file=map_file_default,
@@ -466,14 +568,17 @@ def write_segmented_groups(seg_file=seg_file_default, nside=10,
 
     group_inner_indices = None
     group_outer_indices = None
+    group_vertices = None
     boundary_indptr = None
+    vertex_indptr = None
     if write_boundaries and n_pixels.size > 1:
         neib_n, neib_e, neib_s, neib_w = load_pixel_segments(nside, segment_file)
         neighbors = np.vstack([neib_n, neib_e, neib_s, neib_w]).T
-        group_inner_indices, group_outer_indices = get_group_boundaries(
-            group, neighbors)
+        group_inner_indices, group_outer_indices, group_vertices = (
+            get_group_boundaries(group, neighbors, nside))
         boundary_inner, boundary_outer, boundary_indptr = boundary_indices_to_csr(
             group_inner_indices, group_outer_indices)
+        boundary_vertices, vertex_indptr = group_vertices_to_csr(group_vertices)
 
     with h5py.File(seg_file, 'w') as f:
         f.create_dataset('group', data=group)
@@ -486,6 +591,8 @@ def write_segmented_groups(seg_file=seg_file_default, nside=10,
             f.create_dataset('group_inner_indices', data=boundary_inner)
             f.create_dataset('group_outer_indices', data=boundary_outer)
             f.create_dataset('group_boundary_indptr', data=boundary_indptr)
+            f.create_dataset('group_vertices', data=boundary_vertices)
+            f.create_dataset('group_vertex_indptr', data=vertex_indptr)
         f.attrs['nside'] = np.int32(nside)
         f.attrs['npix'] = np.int32(group.size)
         f.attrs['n_groups'] = np.int32(n_pixels.size)
@@ -495,6 +602,9 @@ def write_segmented_groups(seg_file=seg_file_default, nside=10,
                 b'group boundary inner/outer indices stored as CSR-style arrays')
             f.attrs['boundary_order'] = (
                 b'clockwise face walk in neib_n,neib_e,neib_s,neib_w order')
+            f.attrs['group_vertices_coord'] = b'theta_phi_radians'
+            f.attrs['group_vertices_note'] = (
+                b'closed boundary polylines; NaN rows separate multiple loops')
 
     if VERBOSE:
         print(f'Segmented groups saved to {seg_file}')
@@ -502,6 +612,10 @@ def write_segmented_groups(seg_file=seg_file_default, nside=10,
             lengths = np.diff(boundary_indptr)
             print(f'Boundary segments saved: min/max/total = '
                   f'{np.min(lengths)} / {np.max(lengths)} / {boundary_indptr[-1]}')
+            vertex_lengths = np.diff(vertex_indptr)
+            print(f'Boundary vertices saved: min/max/total = '
+                  f'{np.min(vertex_lengths)} / {np.max(vertex_lengths)} / '
+                  f'{vertex_indptr[-1]}')
     return group, np.array([np.array(sorted(values), dtype=np.int32)
                             for values in group_indices], dtype=object), n_pixels, flux, max_flux
 
@@ -530,10 +644,17 @@ def read_segmented_groups(seg_file=seg_file_default, read_boundaries=False):
         if read_boundaries:
             group_inner_indices = np.empty(group_indices.size, dtype=object)
             group_outer_indices = np.empty(group_indices.size, dtype=object)
+            group_vertices = np.empty(group_indices.size, dtype=object)
             if 'group_inner_indices' in f:
                 boundary_inner = f['group_inner_indices'][:].astype(np.int32)
                 boundary_outer = f['group_outer_indices'][:].astype(np.int32)
                 boundary_indptr = f['group_boundary_indptr'][:].astype(np.int32)
+                if 'group_vertices' in f:
+                    boundary_vertices = f['group_vertices'][:].astype(np.float64)
+                    vertex_indptr = f['group_vertex_indptr'][:].astype(np.int32)
+                else:
+                    boundary_vertices = None
+                    vertex_indptr = None
                 for group_id in range(group_indices.size):
                     start = boundary_indptr[group_id]
                     stop = boundary_indptr[group_id+1]
@@ -541,16 +662,25 @@ def read_segmented_groups(seg_file=seg_file_default, read_boundaries=False):
                         start:stop].astype(np.int32, copy=True)
                     group_outer_indices[group_id] = boundary_outer[
                         start:stop].astype(np.int32, copy=True)
+                    if boundary_vertices is not None:
+                        start = vertex_indptr[group_id]
+                        stop = vertex_indptr[group_id+1]
+                        group_vertices[group_id] = boundary_vertices[
+                            start:stop].astype(np.float64, copy=True)
+                    else:
+                        group_vertices[group_id] = np.empty((0, 2),
+                                                            dtype=np.float64)
             else:
                 for group_id in range(group_indices.size):
                     group_inner_indices[group_id] = np.array([], dtype=np.int32)
                     group_outer_indices[group_id] = np.array([], dtype=np.int32)
+                    group_vertices[group_id] = np.empty((0, 2), dtype=np.float64)
 
     if VERBOSE:
         print(f'Segmented groups loaded from {seg_file}')
     if read_boundaries:
         return (group, group_indices, n_pixels, flux, max_flux,
-                group_inner_indices, group_outer_indices)
+                group_inner_indices, group_outer_indices, group_vertices)
     return group, group_indices, n_pixels, flux, max_flux
 
 def get_group_arrays(group, map):
@@ -742,8 +872,36 @@ def print_map_limits(label, data, lims):
           f'Avg/Min/Max: {np.mean(data):g}  [{np.min(data):g}, {np.max(data):g}]')
     print(f'{label} lims: [{lims[0]:g}, {lims[1]:g}]')
 
+def finite_vertex_chunks(vertices):
+    """Yield finite vertex chunks, using NaN rows as loop separators."""
+    vertices = np.asarray(vertices, dtype=np.float64)
+    if vertices.size == 0:
+        return
+
+    finite = np.all(np.isfinite(vertices), axis=1)
+    start = None
+    for i, is_finite in enumerate(finite):
+        if is_finite and start is None:
+            start = i
+        if start is not None and ((not is_finite) or i == finite.size-1):
+            stop = i if not is_finite else i+1
+            if stop - start >= 2:
+                yield vertices[start:stop]
+            start = None
+
+def plot_group_vertices(ax, group_vertices, color='white', linewidth=0.35):
+    """Overlay group boundary vertices on a HEALPix projection axis."""
+    if group_vertices is None:
+        return
+
+    for vertices in group_vertices:
+        for chunk in finite_vertex_chunks(vertices):
+            ax.projplot(chunk[:, 0], chunk[:, 1], color=color,
+                        linewidth=linewidth, alpha=0.95, zorder=20,
+                        solid_capstyle='round', solid_joinstyle='round')
+
 def HpPlot(f, extent, map, u_str=None, w_str=None, lims=None, cmap=None,
-           n_format=0):
+           n_format=0, group_vertices=None):
     """Plot a HEALPix map using the compact plot-maps.py Mollweide style."""
     import copy
     import matplotlib.pyplot as plt
@@ -778,6 +936,7 @@ def HpPlot(f, extent, map, u_str=None, w_str=None, lims=None, cmap=None,
     if u_str is not None:
         cb.ax.text(0.5, -2.0, u_str, fontsize=14.5,
                    transform=cb.ax.transAxes, ha='center', va='center')
+    plot_group_vertices(ax, group_vertices)
     f.sca(ax)
 
 def discrete_group_cmap(n_groups):
@@ -792,7 +951,7 @@ def discrete_group_cmap(n_groups):
     rgb = colors.hsv_to_rgb(np.vstack([hue, sat, val]).T)
     return colors.ListedColormap(rgb, name=f'groups_{n_groups}')
 
-def HpGroupPlot(f, extent, group, n_groups, u_str=None):
+def HpGroupPlot(f, extent, group, n_groups, u_str=None, group_vertices=None):
     """Plot a segmented HEALPix group map with one discrete color per group."""
     from healpy import projaxes as PA
     from healpy import pixelfunc
@@ -815,6 +974,7 @@ def HpGroupPlot(f, extent, group, n_groups, u_str=None):
     cb.solids.set_rasterized(True)
     cb.ax.text(0.5, -2.0, u_str, fontsize=14.5,
                transform=cb.ax.transAxes, ha='center', va='center')
+    plot_group_vertices(ax, group_vertices)
     f.sca(ax)
 
 def test_plot_neighbor_differences(nside=10, segment_file=None,
@@ -847,17 +1007,26 @@ def test_plot_neighbor_differences(nside=10, segment_file=None,
 
     group = None
     group_indices = None
+    group_vertices = None
     group_unmerged = None
     group_indices_unmerged = None
     if seg_file is not None:
-        group, group_indices, n_pixels, flux, max_flux = read_segmented_groups(seg_file)
+        (group, group_indices, n_pixels, flux, max_flux,
+         group_inner_indices, group_outer_indices, group_vertices) = (
+            read_segmented_groups(seg_file, read_boundaries=True))
         assert group.size == map.size, (
             f'group size {group.size} does not match map size {map.size}')
+        if np.sum([len(vertices) for vertices in group_vertices]) == 0:
+            group_vertices = None
         if VERBOSE:
             print(f'Segmented groups: n_groups={len(group_indices)}, '
                   f'n_pixels min/max={np.min(n_pixels)}/{np.max(n_pixels)}, '
                   f'flux sum={np.sum(flux):g}, '
                   f'max_flux min/max={np.nanmin(max_flux):g}/{np.nanmax(max_flux):g}')
+            if group_vertices is not None:
+                n_vertex_rows = np.sum([
+                    len(vertices) for vertices in group_vertices])
+                print(f'Boundary vertex rows={n_vertex_rows}')
 
         if unmerged_seg_file is None:
             unmerged_seg_file = default_unmerged_seg_file(seg_file)
@@ -880,20 +1049,25 @@ def test_plot_neighbor_differences(nside=10, segment_file=None,
     HpPlot(fig, (0, dy_map, 1, 1), fesc,
            u_str=r'$f_{\rm esc}^{\rm\,LyC}\ \ (\%)$',
            w_str=percentile_string(fesc, n_format=1),
-           lims=fesc_lims, cmap=cmr.ember, n_format=0)
+           lims=fesc_lims, cmap=cmr.ember, n_format=0,
+           group_vertices=group_vertices)
     HpPlot(fig, (0, 0, 1, 1), delta_fesc,
            u_str=r'$\Delta f_{\rm esc}^{\rm\,LyC}\ \ (\%)$',
            w_str=percentile_string(delta_fesc, n_format=1),
-           lims=delta_lims, cmap=cmr.amber, n_format=0)
+           lims=delta_lims, cmap=cmr.amber, n_format=0,
+           group_vertices=group_vertices)
     if group is not None:
         if group_unmerged is not None:
             HpGroupPlot(fig, (1.01, dy_map, 1, 1), group_unmerged,
                         len(group_indices_unmerged),
-                        u_str=r'$%d\ {\rm Groups}\ ({\rm Pre\!-\!merge})$' % len(group_indices_unmerged))
+                        u_str=r'$%d\ {\rm Groups}\ ({\rm Pre\!-\!merge})$' % len(group_indices_unmerged),
+                        group_vertices=group_vertices)
             HpGroupPlot(fig, (1.01, 0, 1, 1), group, len(group_indices),
-                        u_str=r'$%d\ {\rm Groups}\ ({\rm Post\!-\!merge})$' % len(group_indices))
+                        u_str=r'$%d\ {\rm Groups}\ ({\rm Post\!-\!merge})$' % len(group_indices),
+                        group_vertices=group_vertices)
         else:
-            HpGroupPlot(fig, (1.01, dy_map, 1, 1), group, len(group_indices))
+            HpGroupPlot(fig, (1.01, dy_map, 1, 1), group, len(group_indices),
+                        group_vertices=group_vertices)
 
     sargs = {'bbox_inches':'tight', 'pad_inches':0.,
              'transparent':False, 'dpi':640}
