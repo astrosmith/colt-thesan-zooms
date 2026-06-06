@@ -1,6 +1,10 @@
 import numpy as np
 import h5py
 import healpy as hp
+from pathlib import Path
+
+base_dir = Path(__file__).resolve().parent
+map_file_default = base_dir / 'ion-eq_map_g5760_z8_168.hdf5'
 
 def normalize(vec):
     """Return a normalized vector."""
@@ -61,7 +65,7 @@ def create_pixel_segments(nside=10, save_file=None, nest=False):
     For each pixel, save the four side-sharing neighbors in clockwise order.
     """
     if save_file is None:
-        save_file = f'nside_{nside}_segments.hdf5'
+        save_file = base_dir / f'nside_{nside}_segments.hdf5'
 
     npix = hp.nside2npix(nside)
     print(f"Creating face-neighbor segments for {npix} pixels (nside={nside})")
@@ -101,7 +105,7 @@ def create_pixel_segments(nside=10, save_file=None, nest=False):
 def load_pixel_segments(nside=10, filename=None):
     """Load pre-computed HEALPix face-neighbor segments from HDF5 file."""
     if filename is None:
-        filename = f'nside_{nside}_segments.hdf5'
+        filename = base_dir / f'nside_{nside}_segments.hdf5'
 
     with h5py.File(filename, 'r') as f:
         neib_n = f['neib_n'][:]
@@ -111,5 +115,128 @@ def load_pixel_segments(nside=10, filename=None):
         assert f.attrs['nside'] == nside
     return neib_n, neib_e, neib_s, neib_w
 
+def compute_neighbor_differences(nside=10, segment_file=None,
+                                 map_file=map_file_default):
+    """
+    Load face neighbors and f_esc map, then compute absolute neighbor differences.
+    The returned differences are in the same units as the input map.
+    """
+    neib_n, neib_e, neib_s, neib_w = load_pixel_segments(nside, segment_file)
+
+    with h5py.File(map_file, 'r') as f:
+        map = f['map'][:]
+
+    assert map.size == hp.nside2npix(nside), (
+        f'map size {map.size} does not match nside={nside}')
+
+    diff_n = np.abs(map[neib_n] - map)
+    diff_e = np.abs(map[neib_e] - map)
+    diff_s = np.abs(map[neib_s] - map)
+    diff_w = np.abs(map[neib_w] - map)
+
+    diff_all = np.concatenate([diff_n, diff_e, diff_s, diff_w])
+    print('Neighbor |Delta f_esc| statistics:')
+    print(f"min={np.min(diff_all):g}, max={np.max(diff_all):g}, "
+          f"mean={np.mean(diff_all):g}, median={np.median(diff_all):g}")
+
+    return map, diff_n, diff_e, diff_s, diff_w
+
+def percentile_string(data, n_format=1):
+    """Return median and 68-percent range in the plot-maps.py text style."""
+    lo, med, hi = np.percentile(data, [15.865525393145708, 50.,
+                                       84.1344746068543])
+    fmt = f'%0.{n_format}f'
+    return r'$' + fmt % med + r'^{+' + fmt % (hi-med) + r'}_{-' + fmt % (med-lo) + r'}$'
+
+def print_map_limits(label, data, lims):
+    """Print map statistics and colorbar limits."""
+    lo, med, hi = np.percentile(data, [15.865525393145708, 50.,
+                                       84.1344746068543])
+    print(f'{label}: {med:g}  [{lo:g}, {hi:g}]  '
+          f'Avg/Min/Max: {np.mean(data):g}  [{np.min(data):g}, {np.max(data):g}]')
+    print(f'{label} lims: [{lims[0]:g}, {lims[1]:g}]')
+
+def HpPlot(f, extent, map, u_str=None, w_str=None, lims=None, cmap=None,
+           n_format=0):
+    """Plot a HEALPix map using the compact plot-maps.py Mollweide style."""
+    import copy
+    import matplotlib.pyplot as plt
+    from healpy import projaxes as PA
+    from healpy import pixelfunc
+
+    if cmap is None:
+        cmap = plt.cm.afmhot
+    cmap = copy.copy(cmap)
+    cmap.set_under('w')
+
+    map = pixelfunc.ma_to_array(map)
+    ax = PA.HpxMollweideAxes(f, extent)
+    f.add_axes(ax)
+    if lims is None:
+        img = ax.projmap(map, cmap=cmap)
+    else:
+        img = ax.projmap(map, cmap=cmap, vmin=lims[0], vmax=lims[1])
+
+    im = ax.get_images()[0]
+    b = im.norm.inverse(np.linspace(0, 1, im.cmap.N+1))
+    v = np.linspace(im.norm.vmin, im.norm.vmax, im.cmap.N)
+    cb = f.colorbar(im, ax=ax, orientation='horizontal',
+                    shrink=0.75, aspect=25, ticks=PA.BoundaryLocator(),
+                    pad=0.05, fraction=0.1, boundaries=b, values=v,
+                    format=r'${\rm '+str('%0.'+str(n_format)+'f')+r'}$')
+    cb.solids.set_rasterized(True)
+
+    if w_str is not None:
+        ax.text(0.875, -.025, w_str, fontsize=12, ha='center',
+                va='baseline', transform=ax.transAxes)
+    if u_str is not None:
+        cb.ax.text(0.5, -2.0, u_str, fontsize=14.5,
+                   transform=cb.ax.transAxes, ha='center', va='center')
+    f.sca(ax)
+
+def test_plot_neighbor_differences(nside=10, segment_file=None,
+                                   map_file=map_file_default,
+                                   save_file=None):
+    """
+    Plot the original f_esc HEALPix map and mean neighbor Delta f_esc map.
+    Plotted values are percentages, matching plot-maps.py's LyC map units.
+    """
+    import matplotlib.pyplot as plt
+    import cmasher as cmr
+
+    if save_file is None:
+        save_file = base_dir / 'delta_fesc_segments.pdf'
+
+    map, diff_n, diff_e, diff_s, diff_w = compute_neighbor_differences(
+        nside=nside, segment_file=segment_file, map_file=map_file)
+    diff_map = (diff_n + diff_e + diff_s + diff_w) / 4.
+
+    fesc = map / 0.01
+    delta_fesc = diff_map / 0.01
+    fesc_lims = [0., np.max(fesc)]
+    delta_lims = [0., np.max(delta_fesc)]
+
+    print_map_limits('f_esc (%)', fesc, fesc_lims)
+    print_map_limits('Delta f_esc (%)', delta_fesc, delta_lims)
+
+    fig = plt.figure(figsize=(3., 2.))
+    dy_map = 1.045
+    HpPlot(fig, (0, dy_map, 1, 1), fesc,
+           u_str=r'$f_{\rm esc}^{\rm\,LyC}\ \ (\%)$',
+           w_str=percentile_string(fesc, n_format=1),
+           lims=fesc_lims, cmap=cmr.ember, n_format=0)
+    HpPlot(fig, (0, 0, 1, 1), delta_fesc,
+           u_str=r'$\Delta f_{\rm esc}^{\rm\,LyC}\ \ (\%)$',
+           w_str=percentile_string(delta_fesc, n_format=1),
+           lims=delta_lims, cmap=cmr.ember, n_format=0)
+
+    sargs = {'bbox_inches':'tight', 'pad_inches':0.,
+             'transparent':False, 'dpi':640}
+    plt.savefig(save_file, **sargs)
+    plt.close(fig)
+    print(f"Neighbor difference plot saved to {save_file}")
+    return fesc, delta_fesc
+
 if __name__ == "__main__":
-    create_pixel_segments()
+    # create_pixel_segments()
+    test_plot_neighbor_differences()
