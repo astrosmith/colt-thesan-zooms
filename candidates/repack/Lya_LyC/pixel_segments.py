@@ -152,7 +152,7 @@ def compute_neighbor_differences(nside=10, segment_file=None,
 def watershed_from_maxima(nside=10, segment_file=None, map_file=map_file_default):
     """
     Identify deterministic local maxima, then grow watershed basins.
-    Return group labels plus per-group member/frontier sets, sizes, and fluxes.
+    Return group labels plus per-group member/frontier sets, sizes, sums, and peaks.
     """
     UNASSIGNED = -1
     neib_n, neib_e, neib_s, neib_w = load_pixel_segments(nside, segment_file)
@@ -168,6 +168,7 @@ def watershed_from_maxima(nside=10, segment_file=None, map_file=map_file_default
     neib_indices = []
     n_pixels = []
     flux = []
+    max_flux = []
     n_groups = 0
     n_ties = 0
     n_tie_inherits = 0
@@ -180,6 +181,7 @@ def watershed_from_maxima(nside=10, segment_file=None, map_file=map_file_default
         group_indices[group_id].add(int(ipix))
         n_pixels[group_id] += 1
         flux[group_id] += map[ipix]
+        max_flux[group_id] = max(max_flux[group_id], map[ipix])
         for neib in neighbors[ipix]:
             if group[neib] == UNASSIGNED:
                 neib_indices[group_id].add(int(neib))
@@ -206,11 +208,13 @@ def watershed_from_maxima(nside=10, segment_file=None, map_file=map_file_default
         neib_indices.append(set())
         n_pixels.append(0)
         flux.append(0.)
+        max_flux.append(-np.inf)
         add_pixel_to_group(ipix, n_groups)
         n_groups += 1
 
     n_pixels = np.array(n_pixels, dtype=np.int32)
     flux = np.array(flux, dtype=np.float64)
+    max_flux = np.array(max_flux, dtype=np.float64)
     active_groups = [True] * n_groups
     max_neib_index = np.full(n_groups, UNASSIGNED, dtype=np.int32)
     max_neib_value = np.full(n_groups, -np.inf, dtype=np.float64)
@@ -272,6 +276,7 @@ def watershed_from_maxima(nside=10, segment_file=None, map_file=map_file_default
         group_indices[group_id].add(ipix)
         n_pixels[group_id] += 1
         flux[group_id] += map[ipix]
+        max_flux[group_id] = max(max_flux[group_id], map[ipix])
 
         for i in affected_groups:
             neib_indices[i].discard(ipix)
@@ -308,11 +313,14 @@ def watershed_from_maxima(nside=10, segment_file=None, map_file=map_file_default
             f'{np.median(n_pixels):g}')
         print(f'group flux min/max/sum: {np.min(flux):g} / '
             f'{np.max(flux):g} / {flux_total:g}')
+        print(f'group max_flux min/max: {np.min(max_flux):g} / '
+            f'{np.max(max_flux):g}')
         # print(f'group = {group}')
         # print(f'group_indices = {group_indices}')
         # print(f'n_pixels = {n_pixels}')
         # print(f'flux = {flux}')
-    return group, group_indices, n_pixels, flux
+        # print(f'max_flux = {max_flux}')
+    return group, group_indices, n_pixels, flux, max_flux
 
 def group_indices_to_csr(group_indices):
     """Pack variable-length group index arrays into indices/indptr arrays."""
@@ -330,26 +338,29 @@ def group_indices_to_csr(group_indices):
 def write_segmented_groups(seg_file=seg_file_default, nside=10,
                            segment_file=None, map_file=map_file_default,
                            group=None, group_indices=None,
-                           n_pixels=None, flux=None):
+                           n_pixels=None, flux=None, max_flux=None):
     """Write watershed segmented groups to HDF5."""
-    if group is None or group_indices is None or n_pixels is None or flux is None:
-        group, group_indices, n_pixels, flux = watershed_from_maxima(
+    if (group is None or group_indices is None or n_pixels is None or
+            flux is None or max_flux is None):
+        group, group_indices, n_pixels, flux, max_flux = watershed_from_maxima(
             nside=nside, segment_file=segment_file, map_file=map_file)
 
     group = np.asarray(group, dtype=np.int32)
     n_pixels = np.asarray(n_pixels, dtype=np.int32)
     flux = np.asarray(flux, dtype=np.float64)
+    max_flux = np.asarray(max_flux, dtype=np.float64)
     indices, indptr = group_indices_to_csr(group_indices)
 
     assert group.size == hp.nside2npix(nside), (
         f'group size {group.size} does not match nside={nside}')
-    assert len(group_indices) == n_pixels.size == flux.size
+    assert len(group_indices) == n_pixels.size == flux.size == max_flux.size
     assert indptr[-1] == group.size
 
     with h5py.File(seg_file, 'w') as f:
         f.create_dataset('group', data=group)
         f.create_dataset('n_pixels', data=n_pixels)
         f.create_dataset('flux', data=flux)
+        f.create_dataset('max_flux', data=max_flux)
         f.create_dataset('group_indices', data=indices)
         f.create_dataset('group_indptr', data=indptr)
         f.attrs['nside'] = np.int32(nside)
@@ -360,7 +371,7 @@ def write_segmented_groups(seg_file=seg_file_default, nside=10,
     if VERBOSE:
         print(f'Segmented groups saved to {seg_file}')
     return group, np.array([np.array(sorted(values), dtype=np.int32)
-                            for values in group_indices], dtype=object), n_pixels, flux
+                            for values in group_indices], dtype=object), n_pixels, flux, max_flux
 
 def read_segmented_groups(seg_file=seg_file_default):
     """Read watershed segmented groups from HDF5."""
@@ -368,6 +379,10 @@ def read_segmented_groups(seg_file=seg_file_default):
         group = f['group'][:].astype(np.int32)
         n_pixels = f['n_pixels'][:].astype(np.int32)
         flux = f['flux'][:].astype(np.float64)
+        if 'max_flux' in f:
+            max_flux = f['max_flux'][:].astype(np.float64)
+        else:
+            max_flux = np.full(flux.size, np.nan, dtype=np.float64)
         indices = f['group_indices'][:].astype(np.int32)
         indptr = f['group_indptr'][:].astype(np.int32)
 
@@ -378,25 +393,28 @@ def read_segmented_groups(seg_file=seg_file_default):
 
         assert f.attrs['npix'] == group.size
         assert f.attrs['n_groups'] == group_indices.size
+        assert max_flux.size == group_indices.size
 
     if VERBOSE:
         print(f'Segmented groups loaded from {seg_file}')
-    return group, group_indices, n_pixels, flux
+    return group, group_indices, n_pixels, flux, max_flux
 
 def get_group_arrays(group, map):
-    """Return group_indices, n_pixels, and flux for a group label map."""
+    """Return group_indices, n_pixels, flux, and max_flux for a group map."""
     n_groups = int(np.max(group)) + 1
     group_indices = np.empty(n_groups, dtype=object)
     n_pixels = np.zeros(n_groups, dtype=np.int32)
     flux = np.zeros(n_groups, dtype=np.float64)
+    max_flux = np.zeros(n_groups, dtype=np.float64)
 
     for group_id in range(n_groups):
         indices = np.where(group == group_id)[0].astype(np.int32)
         group_indices[group_id] = indices
         n_pixels[group_id] = indices.size
         flux[group_id] = np.sum(map[indices])
+        max_flux[group_id] = np.max(map[indices])
 
-    return group_indices, n_pixels, flux
+    return group_indices, n_pixels, flux, max_flux
 
 def get_group_saddles(group, map, neighbors):
     """Return highest saddle value for each neighboring group pair."""
@@ -419,14 +437,17 @@ def get_group_saddles(group, map, neighbors):
 
     return saddles, boundary_counts
 
-def merge_groups_by_persistence(persistence_min=0.01, nside=10,
+def merge_groups_by_persistence(persistence_min=0.05, nside=10,
                                 segment_file=None, map_file=map_file_default,
                                 seg_file=seg_file_default):
     """
     Merge neighboring watershed groups by topological persistence.
     persistence_min is in raw f_esc units, so 0.01 is one percentage point.
+    Group pairs are considered in descending saddle value, matching the
+    superlevel-set filtration; this is deterministic and peak-centered rather
+    than ordered by basin area or summed flux.
     """
-    group, group_indices, n_pixels, flux = read_segmented_groups(seg_file)
+    group, group_indices, n_pixels, flux, max_flux = read_segmented_groups(seg_file)
     neib_n, neib_e, neib_s, neib_w = load_pixel_segments(nside, segment_file)
     neighbors = np.vstack([neib_n, neib_e, neib_s, neib_w]).T
 
@@ -436,21 +457,18 @@ def merge_groups_by_persistence(persistence_min=0.01, nside=10,
     assert group.size == map.size == hp.nside2npix(nside)
     n_groups = len(group_indices)
 
-    peak_value = np.zeros(n_groups, dtype=np.float64)
-    peak_index = np.zeros(n_groups, dtype=np.int32)
-    for group_id, indices in enumerate(group_indices):
-        imax = np.argmax(map[indices])
-        peak_index[group_id] = indices[imax]
-        peak_value[group_id] = map[indices[imax]]
+    if np.any(~np.isfinite(max_flux)):
+        max_flux = np.array([np.max(map[indices]) for indices in group_indices],
+                            dtype=np.float64)
 
     saddles, boundary_counts = get_group_saddles(group, map, neighbors)
     persistence_values = np.array([
-        min(peak_value[i], peak_value[j]) - saddle
+        min(max_flux[i], max_flux[j]) - saddle
         for (i, j), saddle in saddles.items()
     ])
 
     parent = np.arange(n_groups, dtype=np.int32)
-    root_peak = peak_value.copy()
+    root_peak = max_flux.copy()
     root_size = n_pixels.astype(np.int32).copy()
     root_flux = flux.astype(np.float64).copy()
     merge_records = []
@@ -487,7 +505,7 @@ def merge_groups_by_persistence(persistence_min=0.01, nside=10,
     root_to_group = {root: i for i, root in enumerate(roots)}
     merged_group = np.array([root_to_group[find(group_id)]
                              for group_id in group], dtype=np.int32)
-    merged_group_indices, merged_n_pixels, merged_flux = get_group_arrays(
+    merged_group_indices, merged_n_pixels, merged_flux, merged_max_flux = get_group_arrays(
         merged_group, map)
 
     if VERBOSE:
@@ -504,23 +522,26 @@ def merge_groups_by_persistence(persistence_min=0.01, nside=10,
         print(f'merged group size min/max/mean/median: '
               f'{np.min(merged_n_pixels)} / {np.max(merged_n_pixels)} / '
               f'{np.mean(merged_n_pixels):g} / {np.median(merged_n_pixels):g}')
+        print(f'merged max_flux min/max: {np.min(merged_max_flux):g} / '
+              f'{np.max(merged_max_flux):g}')
 
-    return merged_group, merged_group_indices, merged_n_pixels, merged_flux
+    return merged_group, merged_group_indices, merged_n_pixels, merged_flux, merged_max_flux
 
 def write_persistent_segmented_groups(seg_file=seg_pers_file_default,
-                                      persistence_min=0.01, nside=10,
+                                      persistence_min=0.05, nside=10,
                                       segment_file=None,
                                       map_file=map_file_default,
                                       source_seg_file=seg_file_default):
     """Merge watershed groups by persistence and write the result to HDF5."""
-    group, group_indices, n_pixels, flux = merge_groups_by_persistence(
+    group, group_indices, n_pixels, flux, max_flux = merge_groups_by_persistence(
         persistence_min=persistence_min, nside=nside,
         segment_file=segment_file, map_file=map_file,
         seg_file=source_seg_file)
     return write_segmented_groups(seg_file=seg_file, nside=nside,
                                   map_file=map_file, group=group,
                                   group_indices=group_indices,
-                                  n_pixels=n_pixels, flux=flux)
+                                  n_pixels=n_pixels, flux=flux,
+                                  max_flux=max_flux)
 
 def default_unmerged_seg_file(seg_file):
     """Return the default companion filename for pre-merge groups."""
@@ -648,13 +669,14 @@ def test_plot_neighbor_differences(nside=10, segment_file=None,
     group_unmerged = None
     group_indices_unmerged = None
     if seg_file is not None:
-        group, group_indices, n_pixels, flux = read_segmented_groups(seg_file)
+        group, group_indices, n_pixels, flux, max_flux = read_segmented_groups(seg_file)
         assert group.size == map.size, (
             f'group size {group.size} does not match map size {map.size}')
         if VERBOSE:
             print(f'Segmented groups: n_groups={len(group_indices)}, '
                   f'n_pixels min/max={np.min(n_pixels)}/{np.max(n_pixels)}, '
-                  f'flux sum={np.sum(flux):g}')
+                  f'flux sum={np.sum(flux):g}, '
+                  f'max_flux min/max={np.nanmin(max_flux):g}/{np.nanmax(max_flux):g}')
 
         if unmerged_seg_file is None:
             unmerged_seg_file = default_unmerged_seg_file(seg_file)
@@ -663,13 +685,14 @@ def test_plot_neighbor_differences(nside=10, segment_file=None,
                                    segment_file=segment_file,
                                    map_file=map_file)
         if Path(unmerged_seg_file).exists():
-            group_unmerged, group_indices_unmerged, n_pixels_unmerged, flux_unmerged = read_segmented_groups(unmerged_seg_file)
+            group_unmerged, group_indices_unmerged, n_pixels_unmerged, flux_unmerged, max_flux_unmerged = read_segmented_groups(unmerged_seg_file)
             assert group_unmerged.size == map.size, (
                 f'unmerged group size {group_unmerged.size} does not match map size {map.size}')
             if VERBOSE:
                 print(f'Unmerged segmented groups: n_groups={len(group_indices_unmerged)}, '
                       f'n_pixels min/max={np.min(n_pixels_unmerged)}/{np.max(n_pixels_unmerged)}, '
-                      f'flux sum={np.sum(flux_unmerged):g}')
+                      f'flux sum={np.sum(flux_unmerged):g}, '
+                      f'max_flux min/max={np.nanmin(max_flux_unmerged):g}/{np.nanmax(max_flux_unmerged):g}')
 
     fig = plt.figure(figsize=(3., 2.))
     dy_map = 1.045
