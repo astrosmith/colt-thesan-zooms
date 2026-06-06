@@ -5,6 +5,9 @@ from pathlib import Path
 
 base_dir = Path(__file__).resolve().parent
 map_file_default = base_dir / 'ion-eq_map_g5760_z8_168.hdf5'
+seg_file_default = base_dir / 'ion-eq_seg_g5760_z8_168.hdf5'
+
+VERBOSE = True
 
 def normalize(vec):
     """Return a normalized vector."""
@@ -68,7 +71,8 @@ def create_pixel_segments(nside=10, save_file=None, nest=False):
         save_file = base_dir / f'nside_{nside}_segments.hdf5'
 
     npix = hp.nside2npix(nside)
-    print(f'Creating face-neighbor segments for {npix} pixels (nside={nside})')
+    if VERBOSE:
+        print(f'Creating face-neighbor segments for {npix} pixels (nside={nside})')
 
     neib_n = np.zeros(npix, dtype=np.int32)
     neib_e = np.zeros(npix, dtype=np.int32)
@@ -83,8 +87,9 @@ def create_pixel_segments(nside=10, save_file=None, nest=False):
         len({neib_n[i], neib_e[i], neib_s[i], neib_w[i]}) != 4
         for i in range(npix)
     ])
-    print_segment_ranges(neib_n, neib_e, neib_s, neib_w)
-    print(f'Pixels with duplicate face neighbors: {duplicate_rows}')
+    if VERBOSE:
+        print_segment_ranges(neib_n, neib_e, neib_s, neib_w)
+        print(f'Pixels with duplicate face neighbors: {duplicate_rows}')
 
     # Save to HDF5
     with h5py.File(save_file, 'w') as f:
@@ -92,14 +97,15 @@ def create_pixel_segments(nside=10, save_file=None, nest=False):
         f.create_dataset('neib_e', data=neib_e)
         f.create_dataset('neib_s', data=neib_s)
         f.create_dataset('neib_w', data=neib_w)
-        f.attrs['nside'] = nside
-        f.attrs['npix'] = npix
-        f.attrs['nest'] = nest
-        f.attrs['neighbor_order'] = 'neib_n,neib_e,neib_s,neib_w'
-        f.attrs['ordering_note'] = 'side-sharing neighbors, clockwise from local north'
-        f.attrs['construction'] = 'pixel boundary midpoint crossed with healpy.vec2pix'
+        f.attrs['nside'] = np.int32(nside)
+        f.attrs['npix'] = np.int32(npix)
+        f.attrs['nest'] = np.int32(nest)
+        f.attrs['neighbor_order'] = b'neib_n,neib_e,neib_s,neib_w'
+        f.attrs['ordering_note'] = b'side-sharing neighbors, clockwise from local north'
+        f.attrs['construction'] = b'pixel boundary midpoint crossed with healpy.vec2pix'
 
-    print(f'Pixel segments saved to {save_file}')
+    if VERBOSE:
+        print(f'Pixel segments saved to {save_file}')
     return neib_n, neib_e, neib_s, neib_w
 
 def load_pixel_segments(nside=10, filename=None):
@@ -135,9 +141,10 @@ def compute_neighbor_differences(nside=10, segment_file=None,
     diff_w = np.abs(map[neib_w] - map)
 
     diff_all = np.concatenate([diff_n, diff_e, diff_s, diff_w])
-    print('Neighbor |Delta f_esc| statistics:')
-    print(f'min={np.min(diff_all):g}, max={np.max(diff_all):g}, '
-          f'mean={np.mean(diff_all):g}, median={np.median(diff_all):g}')
+    if VERBOSE:
+        print('Neighbor |Delta f_esc| statistics:')
+        print(f'min={np.min(diff_all):g}, max={np.max(diff_all):g}, '
+              f'mean={np.mean(diff_all):g}, median={np.median(diff_all):g}')
 
     return map, diff_n, diff_e, diff_s, diff_w
 
@@ -153,8 +160,7 @@ def watershed_from_maxima(nside=10, segment_file=None, map_file=map_file_default
     with h5py.File(map_file, 'r') as f:
         map = f['map'][:]
 
-    assert map.size == hp.nside2npix(nside), (
-        f'map size {map.size} does not match nside={nside}')
+    assert map.size == hp.nside2npix(nside), (f'map size {map.size} does not match nside={nside}')
 
     group = np.full(map.size, UNASSIGNED, dtype=np.int32)
     group_indices = []
@@ -223,11 +229,12 @@ def watershed_from_maxima(nside=10, segment_file=None, map_file=map_file_default
     for group_id in range(n_groups):
         update_group_max(group_id)
 
-    print('Watershed maxima:')
-    print(f'maxima={n_groups}, encountered_ties={n_ties}, '
-          f'tie_inherits={n_tie_inherits}')
-    print(f'group index sets={len(group_indices)}, '
-          f'neighbor index sets={len(neib_indices)}')
+    if VERBOSE:
+        print('Watershed maxima:')
+        print(f'maxima={n_groups}, encountered_ties={n_ties}, '
+            f'tie_inherits={n_tie_inherits}')
+        print(f'group index sets={len(group_indices)}, '
+            f'neighbor index sets={len(neib_indices)}')
 
     n_steps = 0
     n_value_ties = 0
@@ -291,31 +298,99 @@ def watershed_from_maxima(nside=10, segment_file=None, map_file=map_file_default
         if len(neib_indices[i]) != 0:
             raise RuntimeError(f'neib_indices[{i}] is not empty after watershed: {neib_indices[i]}')
 
-    print('Watershed growth:')
-    print(f'steps={n_steps}, value_ties={n_value_ties}, '
-          f'pixel_ties={n_pixel_ties}')
-    print(f'group size min/max/mean/median: {np.min(n_pixels)} / '
-          f'{np.max(n_pixels)} / {np.mean(n_pixels):g} / '
-          f'{np.median(n_pixels):g}')
-    print(f'group flux min/max/sum: {np.min(flux):g} / '
-          f'{np.max(flux):g} / {flux_total:g}')
-    # print(f'group = {group}')
-    # print(f'group_indices = {group_indices}')
-    # print(f'n_pixels = {n_pixels}')
-    # print(f'flux = {flux}')
+    if VERBOSE:
+        print('Watershed growth:')
+        print(f'steps={n_steps}, value_ties={n_value_ties}, '
+            f'pixel_ties={n_pixel_ties}')
+        print(f'group size min/max/mean/median: {np.min(n_pixels)} / '
+            f'{np.max(n_pixels)} / {np.mean(n_pixels):g} / '
+            f'{np.median(n_pixels):g}')
+        print(f'group flux min/max/sum: {np.min(flux):g} / '
+            f'{np.max(flux):g} / {flux_total:g}')
+        # print(f'group = {group}')
+        # print(f'group_indices = {group_indices}')
+        # print(f'n_pixels = {n_pixels}')
+        # print(f'flux = {flux}')
+    return group, group_indices, n_pixels, flux
+
+def group_indices_to_csr(group_indices):
+    """Pack variable-length group index arrays into indices/indptr arrays."""
+    lengths = np.array([len(indices) for indices in group_indices], dtype=np.int32)
+    indptr = np.zeros(len(group_indices)+1, dtype=np.int32)
+    indptr[1:] = np.cumsum(lengths)
+    indices = np.zeros(indptr[-1], dtype=np.int32)
+
+    for group_id, values in enumerate(group_indices):
+        start, stop = indptr[group_id], indptr[group_id+1]
+        indices[start:stop] = np.array(sorted(values), dtype=np.int32)
+
+    return indices, indptr
+
+def write_segmented_groups(seg_file=seg_file_default, nside=10,
+                           segment_file=None, map_file=map_file_default,
+                           group=None, group_indices=None,
+                           n_pixels=None, flux=None):
+    """Write watershed segmented groups to HDF5."""
+    if group is None or group_indices is None or n_pixels is None or flux is None:
+        group, group_indices, n_pixels, flux = watershed_from_maxima(
+            nside=nside, segment_file=segment_file, map_file=map_file)
+
+    group = np.asarray(group, dtype=np.int32)
+    n_pixels = np.asarray(n_pixels, dtype=np.int32)
+    flux = np.asarray(flux, dtype=np.float64)
+    indices, indptr = group_indices_to_csr(group_indices)
+
+    assert group.size == hp.nside2npix(nside), (
+        f'group size {group.size} does not match nside={nside}')
+    assert len(group_indices) == n_pixels.size == flux.size
+    assert indptr[-1] == group.size
+
+    with h5py.File(seg_file, 'w') as f:
+        f.create_dataset('group', data=group)
+        f.create_dataset('n_pixels', data=n_pixels)
+        f.create_dataset('flux', data=flux)
+        f.create_dataset('group_indices', data=indices)
+        f.create_dataset('group_indptr', data=indptr)
+        f.attrs['nside'] = np.int32(nside)
+        f.attrs['npix'] = np.int32(group.size)
+        f.attrs['n_groups'] = np.int32(n_pixels.size)
+        f.attrs['format'] = b'group indices stored as CSR-style indices/indptr'
+
+    if VERBOSE:
+        print(f'Segmented groups saved to {seg_file}')
+    return group, np.array([np.array(sorted(values), dtype=np.int32)
+                            for values in group_indices], dtype=object), n_pixels, flux
+
+def read_segmented_groups(seg_file=seg_file_default):
+    """Read watershed segmented groups from HDF5."""
+    with h5py.File(seg_file, 'r') as f:
+        group = f['group'][:].astype(np.int32)
+        n_pixels = f['n_pixels'][:].astype(np.int32)
+        flux = f['flux'][:].astype(np.float64)
+        indices = f['group_indices'][:].astype(np.int32)
+        indptr = f['group_indptr'][:].astype(np.int32)
+
+        group_indices = np.empty(indptr.size-1, dtype=object)
+        for group_id in range(group_indices.size):
+            start, stop = indptr[group_id], indptr[group_id+1]
+            group_indices[group_id] = indices[start:stop].astype(np.int32, copy=True)
+
+        assert f.attrs['npix'] == group.size
+        assert f.attrs['n_groups'] == group_indices.size
+
+    if VERBOSE:
+        print(f'Segmented groups loaded from {seg_file}')
     return group, group_indices, n_pixels, flux
 
 def percentile_string(data, n_format=1):
     """Return median and 68-percent range in the plot-maps.py text style."""
-    lo, med, hi = np.percentile(data, [15.865525393145708, 50.,
-                                       84.1344746068543])
+    lo, med, hi = np.percentile(data, [15.865525393145708, 50., 84.1344746068543])
     fmt = f'%0.{n_format}f'
     return r'$' + fmt % med + r'^{+' + fmt % (hi-med) + r'}_{-' + fmt % (med-lo) + r'}$'
 
 def print_map_limits(label, data, lims):
     """Print map statistics and colorbar limits."""
-    lo, med, hi = np.percentile(data, [15.865525393145708, 50.,
-                                       84.1344746068543])
+    lo, med, hi = np.percentile(data, [15.865525393145708, 50., 84.1344746068543])
     print(f'{label}: {med:g}  [{lo:g}, {hi:g}]  '
           f'Avg/Min/Max: {np.mean(data):g}  [{np.min(data):g}, {np.max(data):g}]')
     print(f'{label} lims: [{lims[0]:g}, {lims[1]:g}]')
@@ -358,9 +433,46 @@ def HpPlot(f, extent, map, u_str=None, w_str=None, lims=None, cmap=None,
                    transform=cb.ax.transAxes, ha='center', va='center')
     f.sca(ax)
 
+def discrete_group_cmap(n_groups):
+    """Create a deterministic, visually varied discrete colormap."""
+    import matplotlib.colors as colors
+
+    golden = 0.6180339887498949
+    i = np.arange(n_groups)
+    hue = (i * golden) % 1.
+    sat = 0.58 + 0.34 * ((i * 7) % 11) / 10.
+    val = 0.68 + 0.28 * ((i * 5) % 13) / 12.
+    rgb = colors.hsv_to_rgb(np.vstack([hue, sat, val]).T)
+    return colors.ListedColormap(rgb, name=f'groups_{n_groups}')
+
+def HpGroupPlot(f, extent, group, n_groups, u_str=None):
+    """Plot a segmented HEALPix group map with one discrete color per group."""
+    from healpy import projaxes as PA
+    from healpy import pixelfunc
+
+    if u_str is None:
+        u_str = r'${\rm %d\ Groups}$' % n_groups
+
+    group = pixelfunc.ma_to_array(group)
+    cmap = discrete_group_cmap(n_groups)
+    ax = PA.HpxMollweideAxes(f, extent)
+    f.add_axes(ax)
+    ax.projmap(group, cmap=cmap, vmin=-0.5, vmax=n_groups-0.5)
+    im = ax.get_images()[0]
+    boundaries = np.arange(n_groups+1) - 0.5
+    values = np.arange(n_groups)
+    cb = f.colorbar(im, ax=ax, orientation='horizontal',
+                    shrink=0.75, aspect=25, ticks=[],
+                    pad=0.05, fraction=0.1,
+                    boundaries=boundaries, values=values)
+    cb.solids.set_rasterized(True)
+    cb.ax.text(0.5, -2.0, u_str, fontsize=14.5,
+               transform=cb.ax.transAxes, ha='center', va='center')
+    f.sca(ax)
+
 def test_plot_neighbor_differences(nside=10, segment_file=None,
                                    map_file=map_file_default,
-                                   save_file=None):
+                                   save_file=None, seg_file=None):
     """
     Plot the original f_esc HEALPix map and mean neighbor Delta f_esc map.
     Plotted values are percentages, matching plot-maps.py's LyC map units.
@@ -380,8 +492,19 @@ def test_plot_neighbor_differences(nside=10, segment_file=None,
     fesc_lims = [0., np.max(fesc)]
     delta_lims = [0., np.max(delta_fesc)]
 
-    print_map_limits('f_esc (%)', fesc, fesc_lims)
-    print_map_limits('Delta f_esc (%)', delta_fesc, delta_lims)
+    if VERBOSE:
+        print_map_limits('f_esc (%)', fesc, fesc_lims)
+        print_map_limits('Delta f_esc (%)', delta_fesc, delta_lims)
+
+    group = None
+    if seg_file is not None:
+        group, group_indices, n_pixels, flux = read_segmented_groups(seg_file)
+        assert group.size == map.size, (
+            f'group size {group.size} does not match map size {map.size}')
+        if VERBOSE:
+            print(f'Segmented groups: n_groups={len(group_indices)}, '
+                  f'n_pixels min/max={np.min(n_pixels)}/{np.max(n_pixels)}, '
+                  f'flux sum={np.sum(flux):g}')
 
     fig = plt.figure(figsize=(3., 2.))
     dy_map = 1.045
@@ -392,16 +515,21 @@ def test_plot_neighbor_differences(nside=10, segment_file=None,
     HpPlot(fig, (0, 0, 1, 1), delta_fesc,
            u_str=r'$\Delta f_{\rm esc}^{\rm\,LyC}\ \ (\%)$',
            w_str=percentile_string(delta_fesc, n_format=1),
-           lims=delta_lims, cmap=cmr.ember, n_format=0)
+           lims=delta_lims, cmap=cmr.amber, n_format=0)
+    if group is not None:
+        HpGroupPlot(fig, (1.01, dy_map, 1, 1), group, len(group_indices))
 
     sargs = {'bbox_inches':'tight', 'pad_inches':0.,
              'transparent':False, 'dpi':640}
     plt.savefig(save_file, **sargs)
     plt.close(fig)
-    print(f'Neighbor difference plot saved to {save_file}')
-    return fesc, delta_fesc
+    if VERBOSE:
+        print(f'Neighbor difference plot saved to {save_file}')
+    if group is None:
+        return fesc, delta_fesc
+    return fesc, delta_fesc, group
 
 if __name__ == '__main__':
     # create_pixel_segments()
-    # test_plot_neighbor_differences()
-    watershed_from_maxima()
+    write_segmented_groups()
+    test_plot_neighbor_differences(seg_file=seg_file_default)
