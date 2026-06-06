@@ -57,7 +57,7 @@ def print_segment_ranges(neib_n, neib_e, neib_s, neib_w):
     for name, segment in zip(['neib_n', 'neib_e', 'neib_s', 'neib_w'],
                              [neib_n, neib_e, neib_s, neib_w]):
         missing = np.count_nonzero(segment < 0)
-        print(f"{name}: min={segment.min()}, max={segment.max()}, missing={missing}")
+        print(f'{name}: min={segment.min()}, max={segment.max()}, missing={missing}')
 
 def create_pixel_segments(nside=10, save_file=None, nest=False):
     """
@@ -68,7 +68,7 @@ def create_pixel_segments(nside=10, save_file=None, nest=False):
         save_file = base_dir / f'nside_{nside}_segments.hdf5'
 
     npix = hp.nside2npix(nside)
-    print(f"Creating face-neighbor segments for {npix} pixels (nside={nside})")
+    print(f'Creating face-neighbor segments for {npix} pixels (nside={nside})')
 
     neib_n = np.zeros(npix, dtype=np.int32)
     neib_e = np.zeros(npix, dtype=np.int32)
@@ -84,7 +84,7 @@ def create_pixel_segments(nside=10, save_file=None, nest=False):
         for i in range(npix)
     ])
     print_segment_ranges(neib_n, neib_e, neib_s, neib_w)
-    print(f"Pixels with duplicate face neighbors: {duplicate_rows}")
+    print(f'Pixels with duplicate face neighbors: {duplicate_rows}')
 
     # Save to HDF5
     with h5py.File(save_file, 'w') as f:
@@ -99,7 +99,7 @@ def create_pixel_segments(nside=10, save_file=None, nest=False):
         f.attrs['ordering_note'] = 'side-sharing neighbors, clockwise from local north'
         f.attrs['construction'] = 'pixel boundary midpoint crossed with healpy.vec2pix'
 
-    print(f"Pixel segments saved to {save_file}")
+    print(f'Pixel segments saved to {save_file}')
     return neib_n, neib_e, neib_s, neib_w
 
 def load_pixel_segments(nside=10, filename=None):
@@ -136,18 +136,17 @@ def compute_neighbor_differences(nside=10, segment_file=None,
 
     diff_all = np.concatenate([diff_n, diff_e, diff_s, diff_w])
     print('Neighbor |Delta f_esc| statistics:')
-    print(f"min={np.min(diff_all):g}, max={np.max(diff_all):g}, "
-          f"mean={np.mean(diff_all):g}, median={np.median(diff_all):g}")
+    print(f'min={np.min(diff_all):g}, max={np.max(diff_all):g}, '
+          f'mean={np.mean(diff_all):g}, median={np.median(diff_all):g}')
 
     return map, diff_n, diff_e, diff_s, diff_w
 
-def watershed_find_maxima(nside=10, segment_file=None, map_file=map_file_default):
+def watershed_from_maxima(nside=10, segment_file=None, map_file=map_file_default):
     """
-    First watershed stage: identify deterministic local maxima on the sphere.
-    Pixels not assigned to a maximum or tied maximum plateau remain UNSET=-1.
-    Return group labels plus per-group member and unset-neighbor index sets.
+    Identify deterministic local maxima, then grow watershed basins.
+    Return group labels plus per-group member/frontier sets, sizes, and fluxes.
     """
-    UNSET = -1
+    UNASSIGNED = -1
     neib_n, neib_e, neib_s, neib_w = load_pixel_segments(nside, segment_file)
     neighbors = np.vstack([neib_n, neib_e, neib_s, neib_w]).T
 
@@ -157,9 +156,11 @@ def watershed_find_maxima(nside=10, segment_file=None, map_file=map_file_default
     assert map.size == hp.nside2npix(nside), (
         f'map size {map.size} does not match nside={nside}')
 
-    group = np.full(map.size, UNSET, dtype=np.int32)
+    group = np.full(map.size, UNASSIGNED, dtype=np.int32)
     group_indices = []
     neib_indices = []
+    n_pixels = []
+    flux = []
     n_groups = 0
     n_ties = 0
     n_tie_inherits = 0
@@ -170,8 +171,10 @@ def watershed_find_maxima(nside=10, segment_file=None, map_file=map_file_default
         for group_neibs in neib_indices:
             group_neibs.discard(ipix)
         group_indices[group_id].add(int(ipix))
+        n_pixels[group_id] += 1
+        flux[group_id] += map[ipix]
         for neib in neighbors[ipix]:
-            if group[neib] == UNSET:
+            if group[neib] == UNASSIGNED:
                 neib_indices[group_id].add(int(neib))
 
     for ipix in range(map.size):
@@ -194,15 +197,113 @@ def watershed_find_maxima(nside=10, segment_file=None, map_file=map_file_default
 
         group_indices.append(set())
         neib_indices.append(set())
+        n_pixels.append(0)
+        flux.append(0.)
         add_pixel_to_group(ipix, n_groups)
         n_groups += 1
 
+    n_pixels = np.array(n_pixels, dtype=np.int32)
+    flux = np.array(flux, dtype=np.float64)
+    active_groups = [True] * n_groups
+    max_neib_index = np.full(n_groups, UNASSIGNED, dtype=np.int32)
+    max_neib_value = np.full(n_groups, -np.inf, dtype=np.float64)
+
+    def update_group_max(group_id):
+        if len(neib_indices[group_id]) == 0:
+            active_groups[group_id] = False
+            max_neib_index[group_id] = UNASSIGNED
+            max_neib_value[group_id] = -np.inf
+            return
+
+        active_groups[group_id] = True
+        best = max(neib_indices[group_id], key=lambda ipix: (map[ipix], -ipix))
+        max_neib_index[group_id] = best
+        max_neib_value[group_id] = map[best]
+
+    for group_id in range(n_groups):
+        update_group_max(group_id)
+
     print('Watershed maxima:')
-    print(f"maxima={n_groups}, encountered_ties={n_ties}, "
-          f"tie_inherits={n_tie_inherits}")
-    print(f"group index sets={len(group_indices)}, "
-          f"neighbor index sets={len(neib_indices)}")
-    return group, group_indices, neib_indices
+    print(f'maxima={n_groups}, encountered_ties={n_ties}, '
+          f'tie_inherits={n_tie_inherits}')
+    print(f'group index sets={len(group_indices)}, '
+          f'neighbor index sets={len(neib_indices)}')
+
+    n_steps = 0
+    n_value_ties = 0
+    n_pixel_ties = 0
+    while any(active_groups):
+        active_ids = [i for i, active in enumerate(active_groups) if active]
+        best_value = np.max(max_neib_value[active_ids])
+        candidate_groups = [
+            i for i in active_ids if max_neib_value[i] == best_value
+        ]
+        if len(candidate_groups) > 1:
+            n_value_ties += 1
+
+        group_id = max(candidate_groups,
+                       key=lambda i: (n_pixels[i], flux[i], -i))
+        ipix = int(max_neib_index[group_id])
+
+        tied_groups = [
+            i for i in candidate_groups if int(max_neib_index[i]) == ipix
+        ]
+        if len(tied_groups) > 1:
+            n_pixel_ties += 1
+            group_id = max(tied_groups,
+                           key=lambda i: (n_pixels[i], flux[i], -i))
+
+        affected_groups = [
+            i for i in active_ids if ipix in neib_indices[i]
+        ]
+
+        if group[ipix] != UNASSIGNED:
+            raise RuntimeError(f'Pixel {ipix} was selected after assignment')
+
+        group[ipix] = group_id
+        group_indices[group_id].add(ipix)
+        n_pixels[group_id] += 1
+        flux[group_id] += map[ipix]
+
+        for i in affected_groups:
+            neib_indices[i].discard(ipix)
+        for neib in neighbors[ipix]:
+            if group[neib] == UNASSIGNED:
+                neib_indices[group_id].add(int(neib))
+
+        for i in set(affected_groups + [group_id]):
+            update_group_max(i)
+
+        n_steps += 1
+
+    n_pixels_total = np.sum(n_pixels)
+    flux_total = np.sum(flux)
+    map_flux = np.sum(map)
+    if n_pixels_total != map.size:
+        raise RuntimeError(
+            f'Watershed assigned {n_pixels_total} pixels, expected {map.size}')
+    if np.any(group == UNASSIGNED):
+        raise RuntimeError('Watershed ended with unASSIGNED pixels')
+    if not np.isclose(flux_total, map_flux, rtol=1.e-12, atol=1.e-14):
+        raise RuntimeError(
+            f'Watershed flux {flux_total:g} does not match map sum {map_flux:g}')
+    for i in range(len(neib_indices)):
+        if len(neib_indices[i]) != 0:
+            raise RuntimeError(f'neib_indices[{i}] is not empty after watershed: {neib_indices[i]}')
+
+    print('Watershed growth:')
+    print(f'steps={n_steps}, value_ties={n_value_ties}, '
+          f'pixel_ties={n_pixel_ties}')
+    print(f'group size min/max/mean/median: {np.min(n_pixels)} / '
+          f'{np.max(n_pixels)} / {np.mean(n_pixels):g} / '
+          f'{np.median(n_pixels):g}')
+    print(f'group flux min/max/sum: {np.min(flux):g} / '
+          f'{np.max(flux):g} / {flux_total:g}')
+    # print(f'group = {group}')
+    # print(f'group_indices = {group_indices}')
+    # print(f'n_pixels = {n_pixels}')
+    # print(f'flux = {flux}')
+    return group, group_indices, n_pixels, flux
 
 def percentile_string(data, n_format=1):
     """Return median and 68-percent range in the plot-maps.py text style."""
@@ -297,10 +398,10 @@ def test_plot_neighbor_differences(nside=10, segment_file=None,
              'transparent':False, 'dpi':640}
     plt.savefig(save_file, **sargs)
     plt.close(fig)
-    print(f"Neighbor difference plot saved to {save_file}")
+    print(f'Neighbor difference plot saved to {save_file}')
     return fesc, delta_fesc
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     # create_pixel_segments()
     # test_plot_neighbor_differences()
-    watershed_find_maxima()
+    watershed_from_maxima()
