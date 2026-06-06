@@ -387,9 +387,10 @@ def theta_phi_from_vec(vertices):
     return np.vstack([theta, phi]).T
 
 def get_ordered_edge_vertices(nside, neighbors, nest=False,
-                              edge_step=8, cross_edge_eps=1.e-6):
-    """Return pixel edge vertices ordered to match neib_n/e/s/w cycles."""
-    edge_vertices = np.zeros((neighbors.shape[0], 4, 2, 3), dtype=np.float64)
+                              edge_step=16, cross_edge_eps=1.e-6):
+    """Return sampled pixel edge vertices matching neib_n/e/s/w cycles."""
+    edge_vertices = np.zeros((neighbors.shape[0], 4, edge_step+1, 3),
+                             dtype=np.float64)
 
     for ipix in range(neighbors.shape[0]):
         center = np.array(hp.pix2vec(nside, ipix, nest=nest))
@@ -398,7 +399,7 @@ def get_ordered_edge_vertices(nside, neighbors, nest=False,
 
         raw_neibs = np.zeros(4, dtype=np.int32)
         raw_angles = np.zeros(4, dtype=np.float64)
-        raw_vertices = np.zeros((4, 2, 3), dtype=np.float64)
+        raw_vertices = np.zeros((4, edge_step+1, 3), dtype=np.float64)
         for edge in range(4):
             midpoint = boundary[:, edge*edge_step + edge_step//2]
             outside = normalize(midpoint + cross_edge_eps * (midpoint - center))
@@ -406,8 +407,10 @@ def get_ordered_edge_vertices(nside, neighbors, nest=False,
                               nest=nest)
             raw_neibs[edge] = neib
             raw_angles[edge] = local_bearing(nside, ipix, neib, nest=nest)
-            raw_vertices[edge, 0] = corners[:, edge]
-            raw_vertices[edge, 1] = corners[:, (edge+1) % 4]
+            start = edge * edge_step
+            stop = (edge + 1) * edge_step
+            raw_vertices[edge, :-1] = boundary[:, start:stop].T
+            raw_vertices[edge, -1] = corners[:, (edge+1) % 4]
 
         order = clockwise_cardinal_order(raw_angles)
         if not np.array_equal(raw_neibs[order], neighbors[ipix]):
@@ -418,7 +421,7 @@ def get_ordered_edge_vertices(nside, neighbors, nest=False,
     return edge_vertices
 
 def face_segment_edge_vertices(neighbors, edge_vertices, inner, outer):
-    """Return the two Cartesian vertices for a directed face boundary segment."""
+    """Return Cartesian vertex samples for a directed face boundary segment."""
     cycle = neighbor_cycle_index(neighbors, int(inner), int(outer))
     return edge_vertices[int(inner), cycle]
 
@@ -430,6 +433,14 @@ def common_edge_vertex(edge_a, edge_b, tol=1.e-8):
         raise RuntimeError('Adjacent boundary edges do not share a vertex')
     return edge_a[idx[0]]
 
+def orient_edge_vertices(edge, start_vertex, end_vertex):
+    """Orient sampled edge vertices from start_vertex to end_vertex."""
+    forward = np.dot(edge[0], start_vertex) + np.dot(edge[-1], end_vertex)
+    reverse = np.dot(edge[-1], start_vertex) + np.dot(edge[0], end_vertex)
+    if forward >= reverse:
+        return edge
+    return edge[::-1]
+
 def boundary_loop_vertices(loop_segments, neighbors, edge_vertices):
     """Return closed theta/phi vertices for one ordered boundary loop."""
     n_segments = len(loop_segments)
@@ -440,11 +451,21 @@ def boundary_loop_vertices(loop_segments, neighbors, edge_vertices):
         face_segment_edge_vertices(neighbors, edge_vertices, inner, outer)
         for inner, outer in loop_segments
     ]
-    end_vertices = [
-        common_edge_vertex(segment_edges[i], segment_edges[(i+1) % n_segments])
-        for i in range(n_segments)
-    ]
-    vertices = np.vstack([end_vertices[-1], end_vertices])
+    loop_samples = []
+    for i, edge in enumerate(segment_edges):
+        start_vertex = common_edge_vertex(segment_edges[i-1], edge)
+        end_vertex = common_edge_vertex(edge, segment_edges[(i+1) % n_segments])
+        edge = orient_edge_vertices(edge, start_vertex, end_vertex)
+        if i == 0:
+            loop_samples.append(edge)
+        else:
+            loop_samples.append(edge[1:])
+
+    vertices = np.vstack(loop_samples)
+    if np.dot(vertices[0], vertices[-1]) < 1. - 1.e-12:
+        vertices = np.vstack([vertices, vertices[0]])
+    else:
+        vertices[-1] = vertices[0]
     return theta_phi_from_vec(vertices)
 
 def next_clockwise_boundary_segment(group, neighbors, group_id, inner, outer):
@@ -889,6 +910,15 @@ def finite_vertex_chunks(vertices):
                 yield vertices[start:stop]
             start = None
 
+def close_vertex_chunk(vertices):
+    """Return vertices with the first point explicitly repeated at the end."""
+    vertices = np.asarray(vertices, dtype=np.float64)
+    if vertices.shape[0] < 2:
+        return vertices
+    if np.allclose(vertices[0], vertices[-1], rtol=0., atol=1.e-12):
+        return vertices
+    return np.vstack([vertices, vertices[0]])
+
 def plot_group_vertices(ax, group_vertices, color='white', linewidth=0.35):
     """Overlay group boundary vertices on a HEALPix projection axis."""
     if group_vertices is None:
@@ -896,6 +926,7 @@ def plot_group_vertices(ax, group_vertices, color='white', linewidth=0.35):
 
     for vertices in group_vertices:
         for chunk in finite_vertex_chunks(vertices):
+            chunk = close_vertex_chunk(chunk)
             ax.projplot(chunk[:, 0], chunk[:, 1], color=color,
                         linewidth=linewidth, alpha=0.95, zorder=20,
                         solid_capstyle='round', solid_joinstyle='round')
