@@ -335,11 +335,119 @@ def group_indices_to_csr(group_indices):
 
     return indices, indptr
 
+def boundary_indices_to_csr(group_inner_indices, group_outer_indices):
+    """Pack ordered boundary inner/outer arrays into CSR-style arrays."""
+    lengths = np.array([len(indices) for indices in group_inner_indices],
+                       dtype=np.int32)
+    indptr = np.zeros(len(group_inner_indices)+1, dtype=np.int32)
+    indptr[1:] = np.cumsum(lengths)
+    inner_indices = np.zeros(indptr[-1], dtype=np.int32)
+    outer_indices = np.zeros(indptr[-1], dtype=np.int32)
+
+    for group_id in range(len(group_inner_indices)):
+        inner = np.asarray(group_inner_indices[group_id], dtype=np.int32)
+        outer = np.asarray(group_outer_indices[group_id], dtype=np.int32)
+        if inner.size != outer.size:
+            raise RuntimeError(
+                f'Boundary inner/outer lengths differ for group {group_id}')
+
+        start, stop = indptr[group_id], indptr[group_id+1]
+        inner_indices[start:stop] = inner
+        outer_indices[start:stop] = outer
+
+    return inner_indices, outer_indices, indptr
+
+def neighbor_cycle_index(neighbors, ipix, neib):
+    """Return the clockwise neighbor-cycle index linking ipix to neib."""
+    matches = np.where(neighbors[ipix] == neib)[0]
+    if matches.size != 1:
+        raise RuntimeError(
+            f'Pixel {ipix} does not have unique face neighbor {neib}')
+    return int(matches[0])
+
+def next_clockwise_boundary_segment(group, neighbors, group_id, inner, outer):
+    """
+    Return the next clockwise directed boundary segment.
+    A segment is (inner group pixel, outer face-neighbor pixel).
+    """
+    current_inner = int(inner)
+    current_outer = int(outer)
+    cycle = (
+        neighbor_cycle_index(neighbors, current_inner, current_outer) + 1) % 4
+    visited = set()
+    max_steps = 4 * np.count_nonzero(group == group_id) + 4
+
+    for _ in range(max_steps):
+        state = (current_inner, cycle)
+        if state in visited:
+            raise RuntimeError(
+                f'Boundary walk cycled before finding an edge for group {group_id}')
+        visited.add(state)
+
+        candidate = int(neighbors[current_inner, cycle])
+        if group[candidate] != group_id:
+            return current_inner, candidate
+
+        previous_inner = current_inner
+        current_inner = candidate
+        back_cycle = neighbor_cycle_index(neighbors, current_inner, previous_inner)
+        cycle = (back_cycle + 1) % 4
+
+    raise RuntimeError(f'Boundary walk exceeded max steps for group {group_id}')
+
+def walk_group_boundary(group, neighbors, group_id):
+    """Return clockwise ordered inner/outer boundary pixel indices for one group."""
+    remaining = set()
+    members = np.where(group == group_id)[0]
+    for ipix in members:
+        for neib in neighbors[ipix]:
+            if group[neib] != group_id:
+                remaining.add((int(ipix), int(neib)))
+
+    inner_indices = []
+    outer_indices = []
+    n_expected = len(remaining)
+    while remaining:
+        start_segment = min(remaining)
+        segment = start_segment
+        while segment in remaining:
+            remaining.remove(segment)
+            inner_indices.append(segment[0])
+            outer_indices.append(segment[1])
+
+            next_segment = next_clockwise_boundary_segment(
+                group, neighbors, group_id, segment[0], segment[1])
+            if next_segment == start_segment:
+                break
+            segment = next_segment
+
+    if len(inner_indices) != n_expected:
+        raise RuntimeError(
+            f'Boundary walk stored {len(inner_indices)} segments for group '
+            f'{group_id}, expected {n_expected}')
+
+    return (np.asarray(inner_indices, dtype=np.int32),
+            np.asarray(outer_indices, dtype=np.int32))
+
+def get_group_boundaries(group, neighbors):
+    """Return ordered inner/outer boundary pixel arrays for all groups."""
+    n_groups = int(np.max(group)) + 1
+    group_inner_indices = np.empty(n_groups, dtype=object)
+    group_outer_indices = np.empty(n_groups, dtype=object)
+
+    for group_id in range(n_groups):
+        inner, outer = walk_group_boundary(group, neighbors, group_id)
+        group_inner_indices[group_id] = inner
+        group_outer_indices[group_id] = outer
+
+    return group_inner_indices, group_outer_indices
+
 def write_segmented_groups(seg_file=seg_file_default, nside=10,
                            segment_file=None, map_file=map_file_default,
                            group=None, group_indices=None,
-                           n_pixels=None, flux=None, max_flux=None):
-    """Write watershed segmented groups to HDF5."""
+                           n_pixels=None, flux=None, max_flux=None,
+                           write_boundaries=False):
+    """Write watershed segmented groups to HDF5, optionally with boundaries."""
     if (group is None or group_indices is None or n_pixels is None or
             flux is None or max_flux is None):
         group, group_indices, n_pixels, flux, max_flux = watershed_from_maxima(
@@ -356,6 +464,17 @@ def write_segmented_groups(seg_file=seg_file_default, nside=10,
     assert len(group_indices) == n_pixels.size == flux.size == max_flux.size
     assert indptr[-1] == group.size
 
+    group_inner_indices = None
+    group_outer_indices = None
+    boundary_indptr = None
+    if write_boundaries and n_pixels.size > 1:
+        neib_n, neib_e, neib_s, neib_w = load_pixel_segments(nside, segment_file)
+        neighbors = np.vstack([neib_n, neib_e, neib_s, neib_w]).T
+        group_inner_indices, group_outer_indices = get_group_boundaries(
+            group, neighbors)
+        boundary_inner, boundary_outer, boundary_indptr = boundary_indices_to_csr(
+            group_inner_indices, group_outer_indices)
+
     with h5py.File(seg_file, 'w') as f:
         f.create_dataset('group', data=group)
         f.create_dataset('n_pixels', data=n_pixels)
@@ -363,17 +482,30 @@ def write_segmented_groups(seg_file=seg_file_default, nside=10,
         f.create_dataset('max_flux', data=max_flux)
         f.create_dataset('group_indices', data=indices)
         f.create_dataset('group_indptr', data=indptr)
+        if boundary_indptr is not None:
+            f.create_dataset('group_inner_indices', data=boundary_inner)
+            f.create_dataset('group_outer_indices', data=boundary_outer)
+            f.create_dataset('group_boundary_indptr', data=boundary_indptr)
         f.attrs['nside'] = np.int32(nside)
         f.attrs['npix'] = np.int32(group.size)
         f.attrs['n_groups'] = np.int32(n_pixels.size)
         f.attrs['format'] = b'group indices stored as CSR-style indices/indptr'
+        if boundary_indptr is not None:
+            f.attrs['boundary_format'] = (
+                b'group boundary inner/outer indices stored as CSR-style arrays')
+            f.attrs['boundary_order'] = (
+                b'clockwise face walk in neib_n,neib_e,neib_s,neib_w order')
 
     if VERBOSE:
         print(f'Segmented groups saved to {seg_file}')
+        if boundary_indptr is not None:
+            lengths = np.diff(boundary_indptr)
+            print(f'Boundary segments saved: min/max/total = '
+                  f'{np.min(lengths)} / {np.max(lengths)} / {boundary_indptr[-1]}')
     return group, np.array([np.array(sorted(values), dtype=np.int32)
                             for values in group_indices], dtype=object), n_pixels, flux, max_flux
 
-def read_segmented_groups(seg_file=seg_file_default):
+def read_segmented_groups(seg_file=seg_file_default, read_boundaries=False):
     """Read watershed segmented groups from HDF5."""
     with h5py.File(seg_file, 'r') as f:
         group = f['group'][:].astype(np.int32)
@@ -395,8 +527,30 @@ def read_segmented_groups(seg_file=seg_file_default):
         assert f.attrs['n_groups'] == group_indices.size
         assert max_flux.size == group_indices.size
 
+        if read_boundaries:
+            group_inner_indices = np.empty(group_indices.size, dtype=object)
+            group_outer_indices = np.empty(group_indices.size, dtype=object)
+            if 'group_inner_indices' in f:
+                boundary_inner = f['group_inner_indices'][:].astype(np.int32)
+                boundary_outer = f['group_outer_indices'][:].astype(np.int32)
+                boundary_indptr = f['group_boundary_indptr'][:].astype(np.int32)
+                for group_id in range(group_indices.size):
+                    start = boundary_indptr[group_id]
+                    stop = boundary_indptr[group_id+1]
+                    group_inner_indices[group_id] = boundary_inner[
+                        start:stop].astype(np.int32, copy=True)
+                    group_outer_indices[group_id] = boundary_outer[
+                        start:stop].astype(np.int32, copy=True)
+            else:
+                for group_id in range(group_indices.size):
+                    group_inner_indices[group_id] = np.array([], dtype=np.int32)
+                    group_outer_indices[group_id] = np.array([], dtype=np.int32)
+
     if VERBOSE:
         print(f'Segmented groups loaded from {seg_file}')
+    if read_boundaries:
+        return (group, group_indices, n_pixels, flux, max_flux,
+                group_inner_indices, group_outer_indices)
     return group, group_indices, n_pixels, flux, max_flux
 
 def get_group_arrays(group, map):
@@ -416,9 +570,15 @@ def get_group_arrays(group, map):
 
     return group_indices, n_pixels, flux, max_flux
 
-def get_group_saddles(group, map, neighbors):
-    """Return highest saddle value for each neighboring group pair."""
-    saddles = {}
+def compact_group_labels(group):
+    """Return group labels compacted to 0..n_groups-1."""
+    labels, compact = np.unique(group, return_inverse=True)
+    assert labels.size == np.max(compact) + 1
+    return compact.astype(np.int32)
+
+def get_group_boundary_fluxes(group, map, neighbors):
+    """Return max adjoining average flux for each neighboring group pair."""
+    max_boundary_flux = {}
     boundary_counts = {}
     for ipix in range(group.size):
         group_i = int(group[ipix])
@@ -430,12 +590,13 @@ def get_group_saddles(group, map, neighbors):
                 continue
 
             pair = tuple(sorted((group_i, group_j)))
-            saddle = min(map[ipix], map[neib])
-            if pair not in saddles or saddle > saddles[pair]:
-                saddles[pair] = saddle
+            boundary_flux = 0.5 * (map[ipix] + map[neib])
+            if (pair not in max_boundary_flux or
+                    boundary_flux > max_boundary_flux[pair]):
+                max_boundary_flux[pair] = boundary_flux
             boundary_counts[pair] = boundary_counts.get(pair, 0) + 1
 
-    return saddles, boundary_counts
+    return max_boundary_flux, boundary_counts
 
 def merge_groups_by_persistence(persistence_min=0.05, nside=10,
                                 segment_file=None, map_file=map_file_default,
@@ -443,9 +604,10 @@ def merge_groups_by_persistence(persistence_min=0.05, nside=10,
     """
     Merge neighboring watershed groups by topological persistence.
     persistence_min is in raw f_esc units, so 0.01 is one percentage point.
-    Group pairs are considered in descending saddle value, matching the
-    superlevel-set filtration; this is deterministic and peak-centered rather
-    than ordered by basin area or summed flux.
+    After each merge, all current group boundaries are recomputed and
+    reconsidered. Group pairs are considered in descending max boundary flux,
+    matching a superlevel-set filtration. This is deterministic and
+    peak-centered rather than ordered by basin area or summed flux.
     """
     group, group_indices, n_pixels, flux, max_flux = read_segmented_groups(seg_file)
     neib_n, neib_e, neib_s, neib_w = load_pixel_segments(nside, segment_file)
@@ -461,63 +623,79 @@ def merge_groups_by_persistence(persistence_min=0.05, nside=10,
         max_flux = np.array([np.max(map[indices]) for indices in group_indices],
                             dtype=np.float64)
 
-    saddles, boundary_counts = get_group_saddles(group, map, neighbors)
-    persistence_values = np.array([
-        min(max_flux[i], max_flux[j]) - saddle
-        for (i, j), saddle in saddles.items()
-    ])
-
-    parent = np.arange(n_groups, dtype=np.int32)
-    root_peak = max_flux.copy()
-    root_size = n_pixels.astype(np.int32).copy()
-    root_flux = flux.astype(np.float64).copy()
+    current_group = compact_group_labels(group)
     merge_records = []
+    initial_persistence_values = None
+    initial_boundary_counts = None
+    final_boundary_counts = None
 
-    def find(group_id):
-        while parent[group_id] != group_id:
-            parent[group_id] = parent[parent[group_id]]
-            group_id = parent[group_id]
-        return group_id
-
-    def better_root(group_a, group_b):
-        key_a = (root_peak[group_a], root_size[group_a], root_flux[group_a], -group_a)
-        key_b = (root_peak[group_b], root_size[group_b], root_flux[group_b], -group_b)
+    def better_group(group_a, group_b, group_n_pixels, group_flux,
+                     group_max_flux):
+        key_a = (group_max_flux[group_a], group_n_pixels[group_a],
+                 group_flux[group_a], -group_a)
+        key_b = (group_max_flux[group_b], group_n_pixels[group_b],
+                 group_flux[group_b], -group_b)
         return group_a if key_a >= key_b else group_b
 
-    for (group_i, group_j), saddle in sorted(saddles.items(),
-                                             key=lambda item: -item[1]):
-        root_i, root_j = find(group_i), find(group_j)
-        if root_i == root_j:
-            continue
+    while True:
+        (current_group_indices, current_n_pixels, current_flux,
+         current_max_flux) = get_group_arrays(current_group, map)
+        max_boundary_flux, boundary_counts = get_group_boundary_fluxes(
+            current_group, map, neighbors)
+        persistence_values = np.array([
+            min(current_max_flux[i], current_max_flux[j]) - boundary_flux
+            for (i, j), boundary_flux in max_boundary_flux.items()
+        ])
+        if initial_persistence_values is None:
+            initial_persistence_values = persistence_values
+            initial_boundary_counts = boundary_counts
 
-        high_root = better_root(root_i, root_j)
-        low_root = root_j if high_root == root_i else root_i
-        persistence = root_peak[low_root] - saddle
+        merge = None
+        for (group_i, group_j), boundary_flux in sorted(
+                max_boundary_flux.items(), key=lambda item: (-item[1], item[0])):
+            min_peak = min(current_max_flux[group_i], current_max_flux[group_j])
+            persistence = min_peak - boundary_flux
+            if persistence < persistence_min:
+                high_group = better_group(group_i, group_j, current_n_pixels,
+                                          current_flux, current_max_flux)
+                low_group = group_j if high_group == group_i else group_i
+                merge = (low_group, high_group, boundary_flux, persistence,
+                         len(current_group_indices))
+                break
 
-        if persistence <= persistence_min:
-            parent[low_root] = high_root
-            root_size[high_root] += root_size[low_root]
-            root_flux[high_root] += root_flux[low_root]
-            root_peak[high_root] = max(root_peak[high_root], root_peak[low_root])
-            merge_records.append((low_root, high_root, saddle, persistence))
+        if merge is None:
+            final_boundary_counts = boundary_counts
+            break
 
-    roots = sorted({find(group_id) for group_id in range(n_groups)})
-    root_to_group = {root: i for i, root in enumerate(roots)}
-    merged_group = np.array([root_to_group[find(group_id)]
-                             for group_id in group], dtype=np.int32)
-    merged_group_indices, merged_n_pixels, merged_flux, merged_max_flux = get_group_arrays(
-        merged_group, map)
+        low_group, high_group, boundary_flux, persistence, n_groups_before = merge
+        current_group[current_group == low_group] = high_group
+        current_group = compact_group_labels(current_group)
+        merge_records.append((low_group, high_group, boundary_flux,
+                              persistence, n_groups_before))
+
+    merged_group = current_group
+    merged_group_indices, merged_n_pixels, merged_flux, merged_max_flux = (
+        get_group_arrays(merged_group, map))
 
     if VERBOSE:
         print('Persistence merge:')
         print(f'persistence_min={persistence_min:g} '
               f'({100.*persistence_min:g} percentage points)')
-        if persistence_values.size > 0:
-            p10, p50, p90 = np.percentile(persistence_values, [10., 50., 90.])
-            print(f'boundary pairs={len(saddles)}, persistence min/p10/median/p90/max '
-                  f'= {np.min(persistence_values):g} / {p10:g} / {p50:g} / '
-                  f'{p90:g} / {np.max(persistence_values):g}')
-        print(f'merges={len(merge_records)}, groups={n_groups} -> '
+        if initial_persistence_values.size > 0:
+            p10, p50, p90 = np.percentile(
+                initial_persistence_values, [10., 50., 90.])
+            counts = np.array(list(initial_boundary_counts.values()),
+                              dtype=np.int32)
+            print(f'initial boundary pairs={len(initial_boundary_counts)}, '
+                  f'boundary pixels min/max={np.min(counts)}/{np.max(counts)}')
+            print(f'initial persistence min/p10/median/p90/max = '
+                  f'{np.min(initial_persistence_values):g} / {p10:g} / '
+                  f'{p50:g} / {p90:g} / '
+                  f'{np.max(initial_persistence_values):g}')
+        if final_boundary_counts is not None:
+            print(f'final boundary pairs={len(final_boundary_counts)}')
+        print(f'merges={len(merge_records)}, merge passes={len(merge_records)+1}, '
+              f'groups={n_groups} -> '
               f'{len(merged_group_indices)}')
         print(f'merged group size min/max/mean/median: '
               f'{np.min(merged_n_pixels)} / {np.max(merged_n_pixels)} / '
@@ -531,17 +709,20 @@ def write_persistent_segmented_groups(seg_file=seg_pers_file_default,
                                       persistence_min=0.05, nside=10,
                                       segment_file=None,
                                       map_file=map_file_default,
-                                      source_seg_file=seg_file_default):
+                                      source_seg_file=seg_file_default,
+                                      write_boundaries=True):
     """Merge watershed groups by persistence and write the result to HDF5."""
     group, group_indices, n_pixels, flux, max_flux = merge_groups_by_persistence(
         persistence_min=persistence_min, nside=nside,
         segment_file=segment_file, map_file=map_file,
         seg_file=source_seg_file)
     return write_segmented_groups(seg_file=seg_file, nside=nside,
+                                  segment_file=segment_file,
                                   map_file=map_file, group=group,
                                   group_indices=group_indices,
                                   n_pixels=n_pixels, flux=flux,
-                                  max_flux=max_flux)
+                                  max_flux=max_flux,
+                                  write_boundaries=write_boundaries)
 
 def default_unmerged_seg_file(seg_file):
     """Return the default companion filename for pre-merge groups."""
