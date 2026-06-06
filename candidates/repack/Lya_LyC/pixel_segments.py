@@ -6,6 +6,7 @@ from pathlib import Path
 base_dir = Path(__file__).resolve().parent
 map_file_default = base_dir / 'ion-eq_map_g5760_z8_168.hdf5'
 seg_file_default = base_dir / 'ion-eq_seg_g5760_z8_168.hdf5'
+seg_pers_file_default = base_dir / 'ion-eq_seg_pers_g5760_z8_168.hdf5'
 
 VERBOSE = True
 
@@ -290,7 +291,7 @@ def watershed_from_maxima(nside=10, segment_file=None, map_file=map_file_default
         raise RuntimeError(
             f'Watershed assigned {n_pixels_total} pixels, expected {map.size}')
     if np.any(group == UNASSIGNED):
-        raise RuntimeError('Watershed ended with unASSIGNED pixels')
+        raise RuntimeError('Watershed ended with unassigned pixels')
     if not np.isclose(flux_total, map_flux, rtol=1.e-12, atol=1.e-14):
         raise RuntimeError(
             f'Watershed flux {flux_total:g} does not match map sum {map_flux:g}')
@@ -382,6 +383,150 @@ def read_segmented_groups(seg_file=seg_file_default):
         print(f'Segmented groups loaded from {seg_file}')
     return group, group_indices, n_pixels, flux
 
+def get_group_arrays(group, map):
+    """Return group_indices, n_pixels, and flux for a group label map."""
+    n_groups = int(np.max(group)) + 1
+    group_indices = np.empty(n_groups, dtype=object)
+    n_pixels = np.zeros(n_groups, dtype=np.int32)
+    flux = np.zeros(n_groups, dtype=np.float64)
+
+    for group_id in range(n_groups):
+        indices = np.where(group == group_id)[0].astype(np.int32)
+        group_indices[group_id] = indices
+        n_pixels[group_id] = indices.size
+        flux[group_id] = np.sum(map[indices])
+
+    return group_indices, n_pixels, flux
+
+def get_group_saddles(group, map, neighbors):
+    """Return highest saddle value for each neighboring group pair."""
+    saddles = {}
+    boundary_counts = {}
+    for ipix in range(group.size):
+        group_i = int(group[ipix])
+        for neib in neighbors[ipix]:
+            if ipix >= neib:
+                continue
+            group_j = int(group[neib])
+            if group_i == group_j:
+                continue
+
+            pair = tuple(sorted((group_i, group_j)))
+            saddle = min(map[ipix], map[neib])
+            if pair not in saddles or saddle > saddles[pair]:
+                saddles[pair] = saddle
+            boundary_counts[pair] = boundary_counts.get(pair, 0) + 1
+
+    return saddles, boundary_counts
+
+def merge_groups_by_persistence(persistence_min=0.01, nside=10,
+                                segment_file=None, map_file=map_file_default,
+                                seg_file=seg_file_default):
+    """
+    Merge neighboring watershed groups by topological persistence.
+    persistence_min is in raw f_esc units, so 0.01 is one percentage point.
+    """
+    group, group_indices, n_pixels, flux = read_segmented_groups(seg_file)
+    neib_n, neib_e, neib_s, neib_w = load_pixel_segments(nside, segment_file)
+    neighbors = np.vstack([neib_n, neib_e, neib_s, neib_w]).T
+
+    with h5py.File(map_file, 'r') as f:
+        map = f['map'][:]
+
+    assert group.size == map.size == hp.nside2npix(nside)
+    n_groups = len(group_indices)
+
+    peak_value = np.zeros(n_groups, dtype=np.float64)
+    peak_index = np.zeros(n_groups, dtype=np.int32)
+    for group_id, indices in enumerate(group_indices):
+        imax = np.argmax(map[indices])
+        peak_index[group_id] = indices[imax]
+        peak_value[group_id] = map[indices[imax]]
+
+    saddles, boundary_counts = get_group_saddles(group, map, neighbors)
+    persistence_values = np.array([
+        min(peak_value[i], peak_value[j]) - saddle
+        for (i, j), saddle in saddles.items()
+    ])
+
+    parent = np.arange(n_groups, dtype=np.int32)
+    root_peak = peak_value.copy()
+    root_size = n_pixels.astype(np.int32).copy()
+    root_flux = flux.astype(np.float64).copy()
+    merge_records = []
+
+    def find(group_id):
+        while parent[group_id] != group_id:
+            parent[group_id] = parent[parent[group_id]]
+            group_id = parent[group_id]
+        return group_id
+
+    def better_root(group_a, group_b):
+        key_a = (root_peak[group_a], root_size[group_a], root_flux[group_a], -group_a)
+        key_b = (root_peak[group_b], root_size[group_b], root_flux[group_b], -group_b)
+        return group_a if key_a >= key_b else group_b
+
+    for (group_i, group_j), saddle in sorted(saddles.items(),
+                                             key=lambda item: -item[1]):
+        root_i, root_j = find(group_i), find(group_j)
+        if root_i == root_j:
+            continue
+
+        high_root = better_root(root_i, root_j)
+        low_root = root_j if high_root == root_i else root_i
+        persistence = root_peak[low_root] - saddle
+
+        if persistence <= persistence_min:
+            parent[low_root] = high_root
+            root_size[high_root] += root_size[low_root]
+            root_flux[high_root] += root_flux[low_root]
+            root_peak[high_root] = max(root_peak[high_root], root_peak[low_root])
+            merge_records.append((low_root, high_root, saddle, persistence))
+
+    roots = sorted({find(group_id) for group_id in range(n_groups)})
+    root_to_group = {root: i for i, root in enumerate(roots)}
+    merged_group = np.array([root_to_group[find(group_id)]
+                             for group_id in group], dtype=np.int32)
+    merged_group_indices, merged_n_pixels, merged_flux = get_group_arrays(
+        merged_group, map)
+
+    if VERBOSE:
+        print('Persistence merge:')
+        print(f'persistence_min={persistence_min:g} '
+              f'({100.*persistence_min:g} percentage points)')
+        if persistence_values.size > 0:
+            p10, p50, p90 = np.percentile(persistence_values, [10., 50., 90.])
+            print(f'boundary pairs={len(saddles)}, persistence min/p10/median/p90/max '
+                  f'= {np.min(persistence_values):g} / {p10:g} / {p50:g} / '
+                  f'{p90:g} / {np.max(persistence_values):g}')
+        print(f'merges={len(merge_records)}, groups={n_groups} -> '
+              f'{len(merged_group_indices)}')
+        print(f'merged group size min/max/mean/median: '
+              f'{np.min(merged_n_pixels)} / {np.max(merged_n_pixels)} / '
+              f'{np.mean(merged_n_pixels):g} / {np.median(merged_n_pixels):g}')
+
+    return merged_group, merged_group_indices, merged_n_pixels, merged_flux
+
+def write_persistent_segmented_groups(seg_file=seg_pers_file_default,
+                                      persistence_min=0.01, nside=10,
+                                      segment_file=None,
+                                      map_file=map_file_default,
+                                      source_seg_file=seg_file_default):
+    """Merge watershed groups by persistence and write the result to HDF5."""
+    group, group_indices, n_pixels, flux = merge_groups_by_persistence(
+        persistence_min=persistence_min, nside=nside,
+        segment_file=segment_file, map_file=map_file,
+        seg_file=source_seg_file)
+    return write_segmented_groups(seg_file=seg_file, nside=nside,
+                                  map_file=map_file, group=group,
+                                  group_indices=group_indices,
+                                  n_pixels=n_pixels, flux=flux)
+
+def default_unmerged_seg_file(seg_file):
+    """Return the default companion filename for pre-merge groups."""
+    seg_file = Path(seg_file)
+    return seg_file.with_name(f'{seg_file.stem}_unmerged{seg_file.suffix}')
+
 def percentile_string(data, n_format=1):
     """Return median and 68-percent range in the plot-maps.py text style."""
     lo, med, hi = np.percentile(data, [15.865525393145708, 50., 84.1344746068543])
@@ -472,7 +617,9 @@ def HpGroupPlot(f, extent, group, n_groups, u_str=None):
 
 def test_plot_neighbor_differences(nside=10, segment_file=None,
                                    map_file=map_file_default,
-                                   save_file=None, seg_file=None):
+                                   save_file=None, seg_file=None,
+                                   unmerged_seg_file=None,
+                                   write_unmerged=False):
     """
     Plot the original f_esc HEALPix map and mean neighbor Delta f_esc map.
     Plotted values are percentages, matching plot-maps.py's LyC map units.
@@ -497,6 +644,9 @@ def test_plot_neighbor_differences(nside=10, segment_file=None,
         print_map_limits('Delta f_esc (%)', delta_fesc, delta_lims)
 
     group = None
+    group_indices = None
+    group_unmerged = None
+    group_indices_unmerged = None
     if seg_file is not None:
         group, group_indices, n_pixels, flux = read_segmented_groups(seg_file)
         assert group.size == map.size, (
@@ -505,6 +655,21 @@ def test_plot_neighbor_differences(nside=10, segment_file=None,
             print(f'Segmented groups: n_groups={len(group_indices)}, '
                   f'n_pixels min/max={np.min(n_pixels)}/{np.max(n_pixels)}, '
                   f'flux sum={np.sum(flux):g}')
+
+        if unmerged_seg_file is None:
+            unmerged_seg_file = default_unmerged_seg_file(seg_file)
+        if write_unmerged:
+            write_segmented_groups(seg_file=unmerged_seg_file, nside=nside,
+                                   segment_file=segment_file,
+                                   map_file=map_file)
+        if Path(unmerged_seg_file).exists():
+            group_unmerged, group_indices_unmerged, n_pixels_unmerged, flux_unmerged = read_segmented_groups(unmerged_seg_file)
+            assert group_unmerged.size == map.size, (
+                f'unmerged group size {group_unmerged.size} does not match map size {map.size}')
+            if VERBOSE:
+                print(f'Unmerged segmented groups: n_groups={len(group_indices_unmerged)}, '
+                      f'n_pixels min/max={np.min(n_pixels_unmerged)}/{np.max(n_pixels_unmerged)}, '
+                      f'flux sum={np.sum(flux_unmerged):g}')
 
     fig = plt.figure(figsize=(3., 2.))
     dy_map = 1.045
@@ -517,7 +682,14 @@ def test_plot_neighbor_differences(nside=10, segment_file=None,
            w_str=percentile_string(delta_fesc, n_format=1),
            lims=delta_lims, cmap=cmr.amber, n_format=0)
     if group is not None:
-        HpGroupPlot(fig, (1.01, dy_map, 1, 1), group, len(group_indices))
+        if group_unmerged is not None:
+            HpGroupPlot(fig, (1.01, dy_map, 1, 1), group_unmerged,
+                        len(group_indices_unmerged),
+                        u_str=r'$%d\ {\rm Groups}\ ({\rm Pre\!-\!merge})$' % len(group_indices_unmerged))
+            HpGroupPlot(fig, (1.01, 0, 1, 1), group, len(group_indices),
+                        u_str=r'$%d\ {\rm Groups}\ ({\rm Post\!-\!merge})$' % len(group_indices))
+        else:
+            HpGroupPlot(fig, (1.01, dy_map, 1, 1), group, len(group_indices))
 
     sargs = {'bbox_inches':'tight', 'pad_inches':0.,
              'transparent':False, 'dpi':640}
@@ -527,9 +699,14 @@ def test_plot_neighbor_differences(nside=10, segment_file=None,
         print(f'Neighbor difference plot saved to {save_file}')
     if group is None:
         return fesc, delta_fesc
+    if group_unmerged is not None:
+        return fesc, delta_fesc, group_unmerged, group
     return fesc, delta_fesc, group
 
 if __name__ == '__main__':
     # create_pixel_segments()
-    write_segmented_groups()
-    test_plot_neighbor_differences(seg_file=seg_file_default)
+    unmerged_seg_file = default_unmerged_seg_file(seg_pers_file_default)
+    write_segmented_groups(seg_file=unmerged_seg_file)
+    write_persistent_segmented_groups(source_seg_file=unmerged_seg_file)
+    test_plot_neighbor_differences(seg_file=seg_pers_file_default,
+                                   unmerged_seg_file=unmerged_seg_file)
