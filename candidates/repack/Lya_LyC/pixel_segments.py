@@ -141,6 +141,69 @@ def compute_neighbor_differences(nside=10, segment_file=None,
 
     return map, diff_n, diff_e, diff_s, diff_w
 
+def watershed_find_maxima(nside=10, segment_file=None, map_file=map_file_default):
+    """
+    First watershed stage: identify deterministic local maxima on the sphere.
+    Pixels not assigned to a maximum or tied maximum plateau remain UNSET=-1.
+    Return group labels plus per-group member and unset-neighbor index sets.
+    """
+    UNSET = -1
+    neib_n, neib_e, neib_s, neib_w = load_pixel_segments(nside, segment_file)
+    neighbors = np.vstack([neib_n, neib_e, neib_s, neib_w]).T
+
+    with h5py.File(map_file, 'r') as f:
+        map = f['map'][:]
+
+    assert map.size == hp.nside2npix(nside), (
+        f'map size {map.size} does not match nside={nside}')
+
+    group = np.full(map.size, UNSET, dtype=np.int32)
+    group_indices = []
+    neib_indices = []
+    n_groups = 0
+    n_ties = 0
+    n_tie_inherits = 0
+
+    def add_pixel_to_group(ipix, group_id):
+        ipix = int(ipix)
+        group[ipix] = group_id
+        for group_neibs in neib_indices:
+            group_neibs.discard(ipix)
+        group_indices[group_id].add(int(ipix))
+        for neib in neighbors[ipix]:
+            if group[neib] == UNSET:
+                neib_indices[group_id].add(int(neib))
+
+    for ipix in range(map.size):
+        neibs = neighbors[ipix]
+        neib_values = map[neibs]
+        value = map[ipix]
+
+        if np.any(neib_values > value):
+            continue
+
+        tie_mask = (neib_values == value)
+        if np.any(tie_mask):
+            n_ties += 1
+            tie_groups = group[neibs[tie_mask]]
+            tie_groups = tie_groups[tie_groups >= 0]
+            if tie_groups.size > 0:
+                add_pixel_to_group(ipix, int(np.min(tie_groups)))
+                n_tie_inherits += 1
+                continue
+
+        group_indices.append(set())
+        neib_indices.append(set())
+        add_pixel_to_group(ipix, n_groups)
+        n_groups += 1
+
+    print('Watershed maxima:')
+    print(f"maxima={n_groups}, encountered_ties={n_ties}, "
+          f"tie_inherits={n_tie_inherits}")
+    print(f"group index sets={len(group_indices)}, "
+          f"neighbor index sets={len(neib_indices)}")
+    return group, group_indices, neib_indices
+
 def percentile_string(data, n_format=1):
     """Return median and 68-percent range in the plot-maps.py text style."""
     lo, med, hi = np.percentile(data, [15.865525393145708, 50.,
@@ -239,4 +302,5 @@ def test_plot_neighbor_differences(nside=10, segment_file=None,
 
 if __name__ == "__main__":
     # create_pixel_segments()
-    test_plot_neighbor_differences()
+    # test_plot_neighbor_differences()
+    watershed_find_maxima()
