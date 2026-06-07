@@ -348,6 +348,31 @@ def group_indices_to_csr(group_indices):
 
     return indices, indptr
 
+def sort_groups_by_flux(group, group_indices, n_pixels, flux, max_flux,
+                        n_pixels_sigma=None):
+    """Relabel groups and reorder per-group arrays from highest to lowest flux."""
+    n_groups = flux.size
+    order = np.lexsort((np.arange(n_groups), -flux))
+    remap = np.empty(n_groups, dtype=np.int32)
+    remap[order] = np.arange(n_groups, dtype=np.int32)
+
+    group_sorted = remap[group].astype(np.int32)
+    group_indices_sorted = np.empty(n_groups, dtype=object)
+    for new_group_id, old_group_id in enumerate(order):
+        group_indices_sorted[new_group_id] = group_values_array(
+            group_indices[old_group_id])
+
+    n_pixels_sorted = n_pixels[order]
+    flux_sorted = flux[order]
+    max_flux_sorted = max_flux[order]
+    if n_pixels_sigma is None:
+        n_pixels_sigma_sorted = None
+    else:
+        n_pixels_sigma_sorted = n_pixels_sigma[order]
+
+    return (group_sorted, group_indices_sorted, n_pixels_sorted, flux_sorted,
+            max_flux_sorted, n_pixels_sigma_sorted)
+
 def boundary_indices_to_csr(group_inner_indices, group_outer_indices):
     """Pack ordered boundary inner/outer arrays into CSR-style arrays."""
     lengths = np.array([len(indices) for indices in group_inner_indices],
@@ -591,14 +616,22 @@ def write_segmented_groups(seg_file=seg_file_default, nside=10,
             nside=nside, segment_file=segment_file, map_file=map_file)
 
     group = np.asarray(group, dtype=np.int32)
+    group_indices = np.asarray(group_indices, dtype=object)
     n_pixels = np.asarray(n_pixels, dtype=np.int32)
     flux = np.asarray(flux, dtype=np.float64)
     max_flux = np.asarray(max_flux, dtype=np.float64)
-    indices, indptr = group_indices_to_csr(group_indices)
+    if n_pixels_sigma is not None:
+        n_pixels_sigma = np.asarray(n_pixels_sigma, dtype=np.float64)
 
     assert group.size == hp.nside2npix(nside), (
         f'group size {group.size} does not match nside={nside}')
     assert len(group_indices) == n_pixels.size == flux.size == max_flux.size
+
+    (group, group_indices, n_pixels, flux, max_flux,
+     n_pixels_sigma) = sort_groups_by_flux(
+        group, group_indices, n_pixels, flux, max_flux,
+        n_pixels_sigma=n_pixels_sigma)
+    indices, indptr = group_indices_to_csr(group_indices)
     assert indptr[-1] == group.size
 
     with h5py.File(map_file, 'r') as f:
