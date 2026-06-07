@@ -2,13 +2,25 @@ import numpy as np
 import h5py
 import healpy as hp
 from pathlib import Path
+from scipy.special import erf
 
 base_dir = Path(__file__).resolve().parent
 map_file_default = base_dir / 'ion-eq_map_g5760_z8_168.hdf5'
 seg_file_default = base_dir / 'ion-eq_seg_g5760_z8_168.hdf5'
-seg_pers_file_default = base_dir / 'ion-eq_seg_pers_g5760_z8_168.hdf5'
 
 VERBOSE = True
+
+sigma_68 = erf(1./np.sqrt(2.))
+sigma_95 = erf(2./np.sqrt(2.))
+sigma_99 = erf(3./np.sqrt(2.))
+percentiles = np.array([
+    50.,
+    50.*(1.-sigma_68), 50.*(1.+sigma_68),
+    50.*(1.-sigma_95), 50.*(1.+sigma_95),
+    50.*(1.-sigma_99), 50.*(1.+sigma_99),
+], dtype=np.float64)
+n_percentiles = len(percentiles)
+percentiles_68 = percentiles[[1, 0, 2]]
 
 def normalize(vec):
     """Return a normalized vector."""
@@ -569,6 +581,7 @@ def write_segmented_groups(seg_file=seg_file_default, nside=10,
                            segment_file=None, map_file=map_file_default,
                            group=None, group_indices=None,
                            n_pixels=None, flux=None, max_flux=None,
+                           n_pixels_sigma=None,
                            write_boundaries=False):
     """Write watershed segmented groups to HDF5, optionally with boundaries."""
     if (group is None or group_indices is None or n_pixels is None or
@@ -586,6 +599,18 @@ def write_segmented_groups(seg_file=seg_file_default, nside=10,
         f'group size {group.size} does not match nside={nside}')
     assert len(group_indices) == n_pixels.size == flux.size == max_flux.size
     assert indptr[-1] == group.size
+
+    with h5py.File(map_file, 'r') as f:
+        map = f['map'][:]
+    assert map.size == group.size, (
+        f'map size {map.size} does not match group size {group.size}')
+
+    flux_sigma_targets = top_sigma_flux_targets()
+    if n_pixels_sigma is None:
+        n_pixels_sigma, flux_sigma_targets = get_group_flux_pixel_counts(
+            group_indices, map, targets=flux_sigma_targets)
+    n_pixels_sigma = np.asarray(n_pixels_sigma, dtype=np.float64)
+    assert n_pixels_sigma.shape == (n_pixels.size, flux_sigma_targets.size)
 
     group_inner_indices = None
     group_outer_indices = None
@@ -606,6 +631,8 @@ def write_segmented_groups(seg_file=seg_file_default, nside=10,
         f.create_dataset('n_pixels', data=n_pixels)
         f.create_dataset('flux', data=flux)
         f.create_dataset('max_flux', data=max_flux)
+        f.create_dataset('n_pixels_sigma', data=n_pixels_sigma)
+        f.create_dataset('flux_sigma_targets', data=flux_sigma_targets)
         f.create_dataset('group_indices', data=indices)
         f.create_dataset('group_indptr', data=indptr)
         if boundary_indptr is not None:
@@ -618,6 +645,10 @@ def write_segmented_groups(seg_file=seg_file_default, nside=10,
         f.attrs['npix'] = np.int32(group.size)
         f.attrs['n_groups'] = np.int32(n_pixels.size)
         f.attrs['format'] = b'group indices stored as CSR-style indices/indptr'
+        f.attrs['n_pixels_sigma_note'] = (
+            b'fractional brightest-pixel counts for flux_sigma_targets')
+        f.attrs['flux_sigma_targets_note'] = (
+            b'top-tail complements of central 1,2,3 sigma percentile ranges')
         if boundary_indptr is not None:
             f.attrs['boundary_format'] = (
                 b'group boundary inner/outer indices stored as CSR-style arrays')
@@ -629,6 +660,9 @@ def write_segmented_groups(seg_file=seg_file_default, nside=10,
 
     if VERBOSE:
         print(f'Segmented groups saved to {seg_file}')
+        print(f'n_pixels_sigma min/max by target: '
+              f'{np.min(n_pixels_sigma, axis=0)} / '
+              f'{np.max(n_pixels_sigma, axis=0)}')
         if boundary_indptr is not None:
             lengths = np.diff(boundary_indptr)
             print(f'Boundary segments saved: min/max/total = '
@@ -640,7 +674,8 @@ def write_segmented_groups(seg_file=seg_file_default, nside=10,
     return group, np.array([np.array(sorted(values), dtype=np.int32)
                             for values in group_indices], dtype=object), n_pixels, flux, max_flux
 
-def read_segmented_groups(seg_file=seg_file_default, read_boundaries=False):
+def read_segmented_groups(seg_file=seg_file_default, read_boundaries=False,
+                          read_sigma=False):
     """Read watershed segmented groups from HDF5."""
     with h5py.File(seg_file, 'r') as f:
         group = f['group'][:].astype(np.int32)
@@ -661,6 +696,16 @@ def read_segmented_groups(seg_file=seg_file_default, read_boundaries=False):
         assert f.attrs['npix'] == group.size
         assert f.attrs['n_groups'] == group_indices.size
         assert max_flux.size == group_indices.size
+
+        if read_sigma:
+            if 'n_pixels_sigma' in f:
+                n_pixels_sigma = f['n_pixels_sigma'][:].astype(np.float64)
+                flux_sigma_targets = f['flux_sigma_targets'][:].astype(
+                    np.float64)
+            else:
+                n_pixels_sigma = np.empty((group_indices.size, 0),
+                                          dtype=np.float64)
+                flux_sigma_targets = np.array([], dtype=np.float64)
 
         if read_boundaries:
             group_inner_indices = np.empty(group_indices.size, dtype=object)
@@ -699,10 +744,12 @@ def read_segmented_groups(seg_file=seg_file_default, read_boundaries=False):
 
     if VERBOSE:
         print(f'Segmented groups loaded from {seg_file}')
+    result = [group, group_indices, n_pixels, flux, max_flux]
     if read_boundaries:
-        return (group, group_indices, n_pixels, flux, max_flux,
-                group_inner_indices, group_outer_indices, group_vertices)
-    return group, group_indices, n_pixels, flux, max_flux
+        result += [group_inner_indices, group_outer_indices, group_vertices]
+    if read_sigma:
+        result += [n_pixels_sigma, flux_sigma_targets]
+    return tuple(result)
 
 def get_group_arrays(group, map):
     """Return group_indices, n_pixels, flux, and max_flux for a group map."""
@@ -720,6 +767,75 @@ def get_group_arrays(group, map):
         max_flux[group_id] = np.max(map[indices])
 
     return group_indices, n_pixels, flux, max_flux
+
+def top_sigma_flux_targets():
+    """Return top-tail fractions of the 1, 2, and 3 sigma percentile ranges."""
+    sigma_ranges = np.array([
+        percentiles[2] - percentiles[1],
+        percentiles[4] - percentiles[3],
+        percentiles[6] - percentiles[5],
+    ], dtype=np.float64)
+    return sigma_ranges / 100.
+
+def group_values_array(indices):
+    """Return group indices as a sorted int array."""
+    if isinstance(indices, set):
+        return np.array(sorted(indices), dtype=np.int32)
+    return np.asarray(indices, dtype=np.int32)
+
+def n_pixels_for_flux_targets(values, targets):
+    """
+    Return fractional pixel counts needed for top pixels to reach targets.
+    Values are sorted brightest first, and the final pixel is linearly split.
+    """
+    values = np.asarray(values, dtype=np.float64).ravel()
+    targets = np.asarray(targets, dtype=np.float64).ravel()
+
+    if values.size == 0:
+        return np.full(targets.size, np.nan, dtype=np.float64)
+    if np.any(targets <= 0.) or np.any(targets > 1.):
+        raise ValueError('flux targets must be in (0, 1].')
+    if np.any(values < 0.):
+        raise ValueError('group flux values must be non-negative.')
+
+    total = np.sum(values)
+    if total <= 0. or not np.isfinite(total):
+        return np.zeros(targets.size, dtype=np.float64)
+
+    values_sorted = np.sort(values)[::-1]
+    cumulative = np.cumsum(values_sorted)
+    counts = np.zeros(targets.size, dtype=np.float64)
+
+    for i_target, target in enumerate(targets):
+        target_flux = target * total
+        i = int(np.searchsorted(cumulative, target_flux, side='left'))
+        if i >= values_sorted.size:
+            counts[i_target] = float(values_sorted.size)
+            continue
+
+        previous_flux = 0. if i == 0 else cumulative[i-1]
+        residual = target_flux - previous_flux
+        if values_sorted[i] <= 0.:
+            counts[i_target] = float(i)
+        else:
+            counts[i_target] = float(i) + residual / values_sorted[i]
+
+    return counts
+
+def get_group_flux_pixel_counts(group_indices, map, targets=None):
+    """Return fractional pixel counts for top-tail group flux targets."""
+    if targets is None:
+        targets = top_sigma_flux_targets()
+    targets = np.asarray(targets, dtype=np.float64)
+    n_pixels_sigma = np.zeros((len(group_indices), targets.size),
+                              dtype=np.float64)
+
+    for group_id, indices in enumerate(group_indices):
+        indices = group_values_array(indices)
+        n_pixels_sigma[group_id] = n_pixels_for_flux_targets(
+            map[indices], targets)
+
+    return n_pixels_sigma, targets
 
 def compact_group_labels(group):
     """Return group labels compacted to 0..n_groups-1."""
@@ -856,7 +972,7 @@ def merge_groups_by_persistence(persistence_min=0.05, nside=10,
 
     return merged_group, merged_group_indices, merged_n_pixels, merged_flux, merged_max_flux
 
-def write_persistent_segmented_groups(seg_file=seg_pers_file_default,
+def write_persistent_segmented_groups(seg_file=seg_file_default,
                                       persistence_min=0.05, nside=10,
                                       segment_file=None,
                                       map_file=map_file_default,
@@ -882,13 +998,13 @@ def default_unmerged_seg_file(seg_file):
 
 def percentile_string(data, n_format=1):
     """Return median and 68-percent range in the plot-maps.py text style."""
-    lo, med, hi = np.percentile(data, [15.865525393145708, 50., 84.1344746068543])
+    lo, med, hi = np.percentile(data, percentiles_68)
     fmt = f'%0.{n_format}f'
     return r'$' + fmt % med + r'^{+' + fmt % (hi-med) + r'}_{-' + fmt % (med-lo) + r'}$'
 
 def print_map_limits(label, data, lims):
     """Print map statistics and colorbar limits."""
-    lo, med, hi = np.percentile(data, [15.865525393145708, 50., 84.1344746068543])
+    lo, med, hi = np.percentile(data, percentiles_68)
     print(f'{label}: {med:g}  [{lo:g}, {hi:g}]  '
           f'Avg/Min/Max: {np.mean(data):g}  [{np.min(data):g}, {np.max(data):g}]')
     print(f'{label} lims: [{lims[0]:g}, {lims[1]:g}]')
@@ -1114,8 +1230,8 @@ def test_plot_neighbor_differences(nside=10, segment_file=None,
 
 if __name__ == '__main__':
     # create_pixel_segments()
-    unmerged_seg_file = default_unmerged_seg_file(seg_pers_file_default)
+    unmerged_seg_file = default_unmerged_seg_file(seg_file_default)
     write_segmented_groups(seg_file=unmerged_seg_file)
     write_persistent_segmented_groups(source_seg_file=unmerged_seg_file)
-    test_plot_neighbor_differences(seg_file=seg_pers_file_default,
+    test_plot_neighbor_differences(seg_file=seg_file_default,
                                    unmerged_seg_file=unmerged_seg_file)
