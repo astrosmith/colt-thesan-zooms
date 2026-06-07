@@ -2,6 +2,7 @@ import numpy as np
 import h5py
 import healpy as hp
 from pathlib import Path
+from healpy import rotator as R
 from scipy.special import erf
 
 base_dir = Path(__file__).resolve().parent
@@ -1070,6 +1071,21 @@ def print_map_limits(label, data, lims):
           f'Avg/Min/Max: {np.mean(data):g}  [{np.min(data):g}, {np.max(data):g}]')
     print(f'{label} lims: [{lims[0]:g}, {lims[1]:g}]')
 
+def _smoothed_max_rot_from_map(map, smooth_pix=4.):
+    """Return a Healpy rotation centering the smoothed map maximum."""
+    nside = hp.npix2nside(map.size)
+    values = np.asarray(map, dtype=np.float64)
+    bad = (~np.isfinite(values)) | (values == hp.UNSEEN)
+    masked_map = hp.ma(values)
+    masked_map.mask = bad
+    fwhm = float(smooth_pix) * hp.nside2resol(nside)
+    smoothed_map = hp.smoothing(masked_map, fwhm=fwhm)
+    ipix = int(np.ma.argmax(smoothed_map))
+    theta, phi = hp.pix2ang(nside, ipix)
+    lon = np.degrees(phi)
+    lat = 90. - np.degrees(theta)
+    return (lon, lat, 0.)
+
 def finite_vertex_chunks(vertices):
     """Yield finite vertex chunks, using NaN rows as loop separators."""
     vertices = np.asarray(vertices, dtype=np.float64)
@@ -1096,7 +1112,19 @@ def close_vertex_chunk(vertices):
         return vertices
     return np.vstack([vertices, vertices[0]])
 
-def plot_group_vertices(ax, group_vertices, color='white', linewidth=0.35):
+def rotated_projplot(ax, theta, phi, rot=None, **kwargs):
+    """Plot theta/phi coordinates with the same rotation convention as projmap."""
+    vec = R.dir2vec(theta, phi, lonlat=False)
+    if rot is not None:
+        vec = R.Rotator(rot=rot)(vec)
+    x, y = ax.proj.vec2xy(vec, direct=False)
+    x, y = ax._make_segment(
+        x, y, threshold=kwargs.pop('threshold', ax._segment_threshold))
+    for xx, yy in zip(x, y):
+        ax.plot(xx, yy, **kwargs)
+
+def plot_group_vertices(ax, group_vertices, color='white', linewidth=0.35,
+                        rot=None):
     """Overlay group boundary vertices on a HEALPix projection axis."""
     if group_vertices is None:
         return
@@ -1104,12 +1132,13 @@ def plot_group_vertices(ax, group_vertices, color='white', linewidth=0.35):
     for vertices in group_vertices:
         for chunk in finite_vertex_chunks(vertices):
             chunk = close_vertex_chunk(chunk)
-            ax.projplot(chunk[:, 0], chunk[:, 1], color=color,
-                        linewidth=linewidth, alpha=0.95, zorder=20,
-                        solid_capstyle='round', solid_joinstyle='round')
+            rotated_projplot(ax, chunk[:, 0], chunk[:, 1], rot=rot,
+                             color=color, linewidth=linewidth, alpha=0.95,
+                             zorder=20, solid_capstyle='round',
+                             solid_joinstyle='round')
 
 def HpPlot(f, extent, map, u_str=None, w_str=None, lims=None, cmap=None,
-           n_format=0, group_vertices=None):
+           n_format=0, group_vertices=None, rot=None):
     """Plot a HEALPix map using the compact plot-maps.py Mollweide style."""
     import copy
     import matplotlib.pyplot as plt
@@ -1125,9 +1154,10 @@ def HpPlot(f, extent, map, u_str=None, w_str=None, lims=None, cmap=None,
     ax = PA.HpxMollweideAxes(f, extent)
     f.add_axes(ax)
     if lims is None:
-        img = ax.projmap(map, cmap=cmap)
+        img = ax.projmap(map, cmap=cmap, rot=rot)
     else:
-        img = ax.projmap(map, cmap=cmap, vmin=lims[0], vmax=lims[1])
+        img = ax.projmap(map, cmap=cmap, rot=rot,
+                         vmin=lims[0], vmax=lims[1])
 
     im = ax.get_images()[0]
     b = im.norm.inverse(np.linspace(0, 1, im.cmap.N+1))
@@ -1144,7 +1174,7 @@ def HpPlot(f, extent, map, u_str=None, w_str=None, lims=None, cmap=None,
     if u_str is not None:
         cb.ax.text(0.5, -2.0, u_str, fontsize=14.5,
                    transform=cb.ax.transAxes, ha='center', va='center')
-    plot_group_vertices(ax, group_vertices)
+    plot_group_vertices(ax, group_vertices, rot=rot)
     f.sca(ax)
 
 def discrete_group_cmap(n_groups):
@@ -1159,7 +1189,8 @@ def discrete_group_cmap(n_groups):
     rgb = colors.hsv_to_rgb(np.vstack([hue, sat, val]).T)
     return colors.ListedColormap(rgb, name=f'groups_{n_groups}')
 
-def HpGroupPlot(f, extent, group, n_groups, u_str=None, group_vertices=None):
+def HpGroupPlot(f, extent, group, n_groups, u_str=None, group_vertices=None,
+                rot=None):
     """Plot a segmented HEALPix group map with one discrete color per group."""
     from healpy import projaxes as PA
     from healpy import pixelfunc
@@ -1171,7 +1202,7 @@ def HpGroupPlot(f, extent, group, n_groups, u_str=None, group_vertices=None):
     cmap = discrete_group_cmap(n_groups)
     ax = PA.HpxMollweideAxes(f, extent)
     f.add_axes(ax)
-    ax.projmap(group, cmap=cmap, vmin=-0.5, vmax=n_groups-0.5)
+    ax.projmap(group, cmap=cmap, rot=rot, vmin=-0.5, vmax=n_groups-0.5)
     im = ax.get_images()[0]
     boundaries = np.arange(n_groups+1) - 0.5
     values = np.arange(n_groups)
@@ -1182,12 +1213,12 @@ def HpGroupPlot(f, extent, group, n_groups, u_str=None, group_vertices=None):
     cb.solids.set_rasterized(True)
     cb.ax.text(0.5, -2.0, u_str, fontsize=14.5,
                transform=cb.ax.transAxes, ha='center', va='center')
-    plot_group_vertices(ax, group_vertices)
+    plot_group_vertices(ax, group_vertices, rot=rot)
     f.sca(ax)
 
 def HpGroupSigmaPlot(f, extent, group, n_groups, group_indices, map,
                      u_str=None, group_vertices=None, n_pixels_sigma=None,
-                     flux_sigma_targets=None):
+                     flux_sigma_targets=None, rot=None):
     """Plot segmented groups with sigma-region alpha transparency."""
     from healpy import projaxes as PA
     from healpy import pixelfunc
@@ -1206,8 +1237,9 @@ def HpGroupSigmaPlot(f, extent, group, n_groups, group_indices, map,
     ax = PA.HpxMollweideAxes(f, extent)
     f.add_axes(ax)
     ax.projmap(np.zeros_like(group, dtype=np.float64), cmap='gray',
-               vmin=0., vmax=1.)
-    ax.projmap(group, alpha=alpha, cmap=cmap, vmin=-0.5, vmax=n_groups-0.5)
+               rot=rot, vmin=0., vmax=1.)
+    ax.projmap(group, alpha=alpha, cmap=cmap, rot=rot,
+               vmin=-0.5, vmax=n_groups-0.5)
     im = ax.get_images()[-1]
     boundaries = np.arange(n_groups+1) - 0.5
     values = np.arange(n_groups)
@@ -1218,14 +1250,16 @@ def HpGroupSigmaPlot(f, extent, group, n_groups, group_indices, map,
     cb.solids.set_rasterized(True)
     cb.ax.text(0.5, -2.0, u_str, fontsize=14.5,
                transform=cb.ax.transAxes, ha='center', va='center')
-    plot_group_vertices(ax, group_vertices)
+    plot_group_vertices(ax, group_vertices, rot=rot)
     f.sca(ax)
 
 def test_plot_neighbor_differences(nside=10, segment_file=None,
                                    map_file=map_file_default,
                                    save_file=None, seg_file=None,
                                    unmerged_seg_file=None,
-                                   write_unmerged=False):
+                                   write_unmerged=False,
+                                   recenter_on_smoothed_max=True,
+                                   smooth_pix=4.):
     """
     Plot the original f_esc HEALPix map and mean neighbor Delta f_esc map.
     Plotted values are percentages, matching plot-maps.py's LyC map units.
@@ -1248,6 +1282,12 @@ def test_plot_neighbor_differences(nside=10, segment_file=None,
     if VERBOSE:
         print_map_limits('f_esc (%)', fesc, fesc_lims)
         print_map_limits('Delta f_esc (%)', delta_fesc, delta_lims)
+
+    rot = None
+    if recenter_on_smoothed_max:
+        rot = _smoothed_max_rot_from_map(map, smooth_pix=smooth_pix)
+        if VERBOSE:
+            print(f'Plot rotation from smoothed f_esc maximum: {rot}')
 
     group = None
     group_indices = None
@@ -1308,12 +1348,12 @@ def test_plot_neighbor_differences(nside=10, segment_file=None,
            u_str=r'$f_{\rm esc}^{\rm\,LyC}\ \ (\%)$',
            w_str=percentile_string(fesc, n_format=1),
            lims=fesc_lims, cmap=cmr.ember, n_format=0,
-           group_vertices=group_vertices)
+           group_vertices=group_vertices, rot=rot)
     HpPlot(fig, (0, 0, 1, 1), delta_fesc,
            u_str=r'$\Delta f_{\rm esc}^{\rm\,LyC}\ \ (\%)$',
            w_str=percentile_string(delta_fesc, n_format=1),
            lims=delta_lims, cmap=cmr.amber, n_format=0,
-           group_vertices=group_vertices)
+           group_vertices=group_vertices, rot=rot)
     if group is not None:
         if group_unmerged is not None:
             HpGroupSigmaPlot(
@@ -1323,7 +1363,8 @@ def test_plot_neighbor_differences(nside=10, segment_file=None,
                 % len(group_indices_unmerged),
                 group_vertices=group_vertices,
                 n_pixels_sigma=n_pixels_sigma_unmerged,
-                flux_sigma_targets=flux_sigma_targets_unmerged)
+                flux_sigma_targets=flux_sigma_targets_unmerged,
+                rot=rot)
             HpGroupSigmaPlot(
                 fig, (1.01, 0, 1, 1), group, len(group_indices),
                 group_indices, map,
@@ -1331,13 +1372,15 @@ def test_plot_neighbor_differences(nside=10, segment_file=None,
                 % len(group_indices),
                 group_vertices=group_vertices,
                 n_pixels_sigma=n_pixels_sigma,
-                flux_sigma_targets=flux_sigma_targets)
+                flux_sigma_targets=flux_sigma_targets,
+                rot=rot)
         else:
             HpGroupSigmaPlot(fig, (1.01, dy_map, 1, 1), group,
                              len(group_indices), group_indices, map,
                              group_vertices=group_vertices,
                              n_pixels_sigma=n_pixels_sigma,
-                             flux_sigma_targets=flux_sigma_targets)
+                             flux_sigma_targets=flux_sigma_targets,
+                             rot=rot)
 
     sargs = {'bbox_inches':'tight', 'pad_inches':0.,
              'transparent':False, 'dpi':640}
