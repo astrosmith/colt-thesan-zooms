@@ -1394,7 +1394,7 @@ def test_plot_neighbor_differences(nside=10, segment_file=None,
             HpGroupSigmaPlot(
                 fig, (1.01, dy_map, 1, 1), group_unmerged,
                 len(group_indices_unmerged), group_indices_unmerged, map,
-                u_str=r'$%d\ {\rm Groups}\ ({\rm Pre\!-\!merge})$'
+                u_str=r'$%d\ {\rm Groups}\ ({\rm pre\!-\!merge})$'
                 % len(group_indices_unmerged),
                 group_vertices=group_vertices,
                 n_pixels_sigma=n_pixels_sigma_unmerged,
@@ -1403,7 +1403,7 @@ def test_plot_neighbor_differences(nside=10, segment_file=None,
             HpGroupSigmaPlot(
                 fig, (1.01, 0, 1, 1), group, len(group_indices),
                 group_indices, map,
-                u_str=r'$%d\ {\rm Groups}\ ({\rm Post\!-\!merge})$'
+                u_str=r'$%d\ {\rm Groups}\ ({\rm post\!-\!merge})$'
                 % len(group_indices),
                 group_vertices=group_vertices,
                 n_pixels_sigma=n_pixels_sigma,
