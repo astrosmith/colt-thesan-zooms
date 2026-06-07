@@ -9,7 +9,7 @@ base_dir = Path(__file__).resolve().parent
 map_file_default = base_dir / 'ion-eq_map_g5760_z8_168.hdf5'
 seg_file_default = base_dir / 'ion-eq_seg_g5760_z8_168.hdf5'
 
-VERBOSE = True
+VERBOSE = False
 
 sigma_68 = erf(1./np.sqrt(2.))
 sigma_95 = erf(2./np.sqrt(2.))
@@ -613,6 +613,9 @@ def write_segmented_groups(seg_file=seg_file_default, nside=10,
     n_pixels_sigma = np.asarray(n_pixels_sigma, dtype=np.float64)
     assert n_pixels_sigma.shape == (n_pixels.size, flux_sigma_targets.size)
 
+    (flux_centroid_theta, flux_centroid_phi, n_pixels_eff,
+     gini_flux) = get_group_flux_summary(group_indices, map, nside)
+
     group_inner_indices = None
     group_outer_indices = None
     group_vertices = None
@@ -634,6 +637,10 @@ def write_segmented_groups(seg_file=seg_file_default, nside=10,
         f.create_dataset('max_flux', data=max_flux)
         f.create_dataset('n_pixels_sigma', data=n_pixels_sigma)
         f.create_dataset('flux_sigma_targets', data=flux_sigma_targets)
+        f.create_dataset('flux_centroid_theta', data=flux_centroid_theta)
+        f.create_dataset('flux_centroid_phi', data=flux_centroid_phi)
+        f.create_dataset('n_pixels_eff', data=n_pixels_eff)
+        f.create_dataset('gini_flux', data=gini_flux)
         f.create_dataset('group_indices', data=indices)
         f.create_dataset('group_indptr', data=indptr)
         if boundary_indptr is not None:
@@ -650,6 +657,11 @@ def write_segmented_groups(seg_file=seg_file_default, nside=10,
         #     b'fractional brightest-pixel counts for flux_sigma_targets')
         # f.attrs['flux_sigma_targets_note'] = (
         #     b'top 1, 2, and 3 sigma percentile ranges')
+        # f.attrs['flux_centroid_coord'] = b'theta_phi_radians'
+        # f.attrs['n_pixels_eff_note'] = (
+        #     b'flux participation ratio, (sum flux)^2 / sum(flux^2)')
+        # f.attrs['gini_flux_note'] = (
+        #     b'Gini coefficient of per-pixel group flux values')
         # if boundary_indptr is not None:
         #     f.attrs['boundary_format'] = (
         #         b'group boundary inner/outer indices stored as CSR-style arrays')
@@ -664,6 +676,18 @@ def write_segmented_groups(seg_file=seg_file_default, nside=10,
         print(f'n_pixels_sigma min/max by target: '
               f'{np.min(n_pixels_sigma, axis=0)} / '
               f'{np.max(n_pixels_sigma, axis=0)}')
+        print(f'n_pixels_eff min/max/mean/median: '
+              f'{np.min(n_pixels_eff):g} / {np.max(n_pixels_eff):g} / '
+              f'{np.mean(n_pixels_eff):g} / {np.median(n_pixels_eff):g}')
+        print(f'gini_flux min/max/mean/median: '
+              f'{np.min(gini_flux):g} / {np.max(gini_flux):g} / '
+              f'{np.mean(gini_flux):g} / {np.median(gini_flux):g}')
+        print(f'flux centroid theta min/max: '
+              f'{np.nanmin(flux_centroid_theta):g} / '
+              f'{np.nanmax(flux_centroid_theta):g}')
+        print(f'flux centroid phi min/max: '
+              f'{np.nanmin(flux_centroid_phi):g} / '
+              f'{np.nanmax(flux_centroid_phi):g}')
         if boundary_indptr is not None:
             lengths = np.diff(boundary_indptr)
             print(f'Boundary segments saved: min/max/total = '
@@ -676,7 +700,7 @@ def write_segmented_groups(seg_file=seg_file_default, nside=10,
                             for values in group_indices], dtype=object), n_pixels, flux, max_flux
 
 def read_segmented_groups(seg_file=seg_file_default, read_boundaries=False,
-                          read_sigma=False):
+                          read_sigma=False, read_summary=False):
     """Read watershed segmented groups from HDF5."""
     with h5py.File(seg_file, 'r') as f:
         group = f['group'][:].astype(np.int32)
@@ -707,6 +731,24 @@ def read_segmented_groups(seg_file=seg_file_default, read_boundaries=False,
                 n_pixels_sigma = np.empty((group_indices.size, 0),
                                           dtype=np.float64)
                 flux_sigma_targets = np.array([], dtype=np.float64)
+
+        if read_summary:
+            if 'flux_centroid_theta' in f:
+                flux_centroid_theta = f['flux_centroid_theta'][:].astype(
+                    np.float64)
+                flux_centroid_phi = f['flux_centroid_phi'][:].astype(
+                    np.float64)
+                n_pixels_eff = f['n_pixels_eff'][:].astype(np.float64)
+                gini_flux = f['gini_flux'][:].astype(np.float64)
+            else:
+                flux_centroid_theta = np.full(group_indices.size, np.nan,
+                                              dtype=np.float64)
+                flux_centroid_phi = np.full(group_indices.size, np.nan,
+                                            dtype=np.float64)
+                n_pixels_eff = np.full(group_indices.size, np.nan,
+                                       dtype=np.float64)
+                gini_flux = np.full(group_indices.size, np.nan,
+                                    dtype=np.float64)
 
         if read_boundaries:
             group_inner_indices = np.empty(group_indices.size, dtype=object)
@@ -750,6 +792,9 @@ def read_segmented_groups(seg_file=seg_file_default, read_boundaries=False,
         result += [group_inner_indices, group_outer_indices, group_vertices]
     if read_sigma:
         result += [n_pixels_sigma, flux_sigma_targets]
+    if read_summary:
+        result += [flux_centroid_theta, flux_centroid_phi, n_pixels_eff,
+                   gini_flux]
     return tuple(result)
 
 def get_group_arrays(group, map):
@@ -768,6 +813,56 @@ def get_group_arrays(group, map):
         max_flux[group_id] = np.max(map[indices])
 
     return group_indices, n_pixels, flux, max_flux
+
+def gini_coefficient(values):
+    """Return the Gini coefficient for a non-negative 1D array."""
+    values = np.asarray(values, dtype=np.float64).ravel()
+    if values.size == 0:
+        return np.nan
+    if np.any(values < 0.):
+        raise ValueError('Gini coefficient expects non-negative flux values.')
+
+    total = np.sum(values)
+    if total <= 0.:
+        return 0.
+
+    sorted_values = np.sort(values)
+    n_values = sorted_values.size
+    weights = 2. * np.arange(1, n_values+1) - n_values - 1.
+    return np.sum(weights * sorted_values) / (n_values * total)
+
+def get_group_flux_summary(group_indices, map, nside):
+    """
+    Return flux-weighted spherical centroids, effective pixel counts, and Gini.
+    n_pixels_eff is the participation-ratio count, (sum f)^2 / sum(f^2).
+    """
+    n_groups = len(group_indices)
+    centroid_theta = np.full(n_groups, np.nan, dtype=np.float64)
+    centroid_phi = np.full(n_groups, np.nan, dtype=np.float64)
+    n_pixels_eff = np.zeros(n_groups, dtype=np.float64)
+    gini_flux = np.zeros(n_groups, dtype=np.float64)
+
+    for group_id, indices in enumerate(group_indices):
+        indices = group_values_array(indices)
+        values = np.asarray(map[indices], dtype=np.float64)
+        total = np.sum(values)
+        flux2 = np.sum(values * values)
+        if flux2 > 0.:
+            n_pixels_eff[group_id] = total * total / flux2
+        gini_flux[group_id] = gini_coefficient(values)
+
+        vec = np.array(hp.pix2vec(nside, indices)).T
+        if total > 0.:
+            centroid_vec = np.sum(vec * values[:, None], axis=0) / total
+        else:
+            centroid_vec = np.mean(vec, axis=0)
+        norm = np.linalg.norm(centroid_vec)
+        if norm > 0. and np.isfinite(norm):
+            theta, phi = hp.vec2ang(centroid_vec / norm)
+            centroid_theta[group_id] = theta
+            centroid_phi[group_id] = phi
+
+    return centroid_theta, centroid_phi, n_pixels_eff, gini_flux
 
 def top_sigma_flux_targets():
     """Return top-tail fractions of the 1, 2, and 3 sigma percentile ranges."""
@@ -1288,13 +1383,13 @@ def HpGroupSigmaPlot(f, extent, group, n_groups, group_indices, map,
     plot_group_vertices(ax, group_vertices, rot=rot)
     f.sca(ax)
 
-def test_plot_neighbor_differences(nside=10, segment_file=None,
-                                   map_file=map_file_default,
-                                   save_file=None, seg_file=None,
-                                   unmerged_seg_file=None,
-                                   write_unmerged=False,
-                                   recenter_on_smoothed_max=True,
-                                   smooth_pix=4.):
+def plot_groups(nside=10, segment_file=None,
+                map_file=map_file_default,
+                save_file=None, seg_file=None,
+                unmerged_seg_file=None,
+                write_unmerged=False,
+                recenter_on_smoothed_max=True,
+                smooth_pix=4.):
     """
     Plot the original f_esc HEALPix map and mean neighbor Delta f_esc map.
     Plotted values are percentages, matching plot-maps.py's LyC map units.
@@ -1434,5 +1529,4 @@ if __name__ == '__main__':
     unmerged_seg_file = default_unmerged_seg_file(seg_file_default)
     write_segmented_groups(seg_file=unmerged_seg_file)
     write_persistent_segmented_groups(source_seg_file=unmerged_seg_file)
-    test_plot_neighbor_differences(seg_file=seg_file_default,
-                                   unmerged_seg_file=unmerged_seg_file)
+    plot_groups(seg_file=seg_file_default, unmerged_seg_file=unmerged_seg_file)
