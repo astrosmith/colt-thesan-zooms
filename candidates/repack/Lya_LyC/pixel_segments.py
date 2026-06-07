@@ -113,9 +113,9 @@ def create_pixel_segments(nside=10, save_file=None, nest=False):
         f.attrs['nside'] = np.int32(nside)
         f.attrs['npix'] = np.int32(npix)
         f.attrs['nest'] = np.int32(nest)
-        f.attrs['neighbor_order'] = b'neib_n,neib_e,neib_s,neib_w'
-        f.attrs['ordering_note'] = b'side-sharing neighbors, clockwise from local north'
-        f.attrs['construction'] = b'pixel boundary midpoint crossed with healpy.vec2pix'
+        # f.attrs['neighbor_order'] = b'neib_n,neib_e,neib_s,neib_w'
+        # f.attrs['ordering_note'] = b'side-sharing neighbors, clockwise from local north'
+        # f.attrs['construction'] = b'pixel boundary midpoint crossed with healpy.vec2pix'
 
     if VERBOSE:
         print(f'Pixel segments saved to {save_file}')
@@ -644,19 +644,19 @@ def write_segmented_groups(seg_file=seg_file_default, nside=10,
         f.attrs['nside'] = np.int32(nside)
         f.attrs['npix'] = np.int32(group.size)
         f.attrs['n_groups'] = np.int32(n_pixels.size)
-        f.attrs['format'] = b'group indices stored as CSR-style indices/indptr'
-        f.attrs['n_pixels_sigma_note'] = (
-            b'fractional brightest-pixel counts for flux_sigma_targets')
-        f.attrs['flux_sigma_targets_note'] = (
-            b'top-tail complements of central 1,2,3 sigma percentile ranges')
-        if boundary_indptr is not None:
-            f.attrs['boundary_format'] = (
-                b'group boundary inner/outer indices stored as CSR-style arrays')
-            f.attrs['boundary_order'] = (
-                b'clockwise face walk in neib_n,neib_e,neib_s,neib_w order')
-            f.attrs['group_vertices_coord'] = b'theta_phi_radians'
-            f.attrs['group_vertices_note'] = (
-                b'closed boundary polylines; NaN rows separate multiple loops')
+        # f.attrs['format'] = b'group indices stored as CSR-style indices/indptr'
+        # f.attrs['n_pixels_sigma_note'] = (
+        #     b'fractional brightest-pixel counts for flux_sigma_targets')
+        # f.attrs['flux_sigma_targets_note'] = (
+        #     b'top 1, 2, and 3 sigma percentile ranges')
+        # if boundary_indptr is not None:
+        #     f.attrs['boundary_format'] = (
+        #         b'group boundary inner/outer indices stored as CSR-style arrays')
+        #     f.attrs['boundary_order'] = (
+        #         b'clockwise face walk in neib_n,neib_e,neib_s,neib_w order')
+        #     f.attrs['group_vertices_coord'] = b'theta_phi_radians'
+        #     f.attrs['group_vertices_note'] = (
+        #         b'closed boundary polylines; NaN rows separate multiple loops')
 
     if VERBOSE:
         print(f'Segmented groups saved to {seg_file}')
@@ -822,6 +822,49 @@ def n_pixels_for_flux_targets(values, targets):
 
     return counts
 
+def alpha_values_for_flux_targets(values, targets=None, counts=None,
+                                  alpha_levels=None):
+    """
+    Return per-pixel alpha values for nested top-flux sigma regions.
+    Cutoff pixels are linearly blended between adjacent alpha levels.
+    """
+    values = np.asarray(values, dtype=np.float64).ravel()
+    if values.size == 0:
+        return np.array([], dtype=np.float64)
+
+    if alpha_levels is None:
+        alpha_levels = np.array([1., 2./3., 1./3., 0.], dtype=np.float64)
+    else:
+        alpha_levels = np.asarray(alpha_levels, dtype=np.float64).ravel()
+
+    if counts is None:
+        if targets is None:
+            targets = top_sigma_flux_targets()
+        counts = n_pixels_for_flux_targets(values, targets)
+    counts = np.asarray(counts, dtype=np.float64).ravel()
+    if alpha_levels.size != counts.size + 1:
+        raise ValueError('alpha_levels must have one more value than counts.')
+
+    n_values = values.size
+    counts = np.clip(counts, 0., float(n_values))
+    counts = np.maximum.accumulate(counts)
+    bounds = np.concatenate([[0.], counts, [float(n_values)]])
+
+    order = np.lexsort((np.arange(n_values), -values))
+    sorted_alpha = np.zeros(n_values, dtype=np.float64)
+    for i_rank in range(n_values):
+        pixel_start = float(i_rank)
+        pixel_stop = float(i_rank + 1)
+        for i_level, alpha in enumerate(alpha_levels):
+            overlap = min(pixel_stop, bounds[i_level+1]) - max(
+                pixel_start, bounds[i_level])
+            if overlap > 0.:
+                sorted_alpha[i_rank] += overlap * alpha
+
+    alpha = np.zeros(n_values, dtype=np.float64)
+    alpha[order] = sorted_alpha
+    return alpha
+
 def get_group_flux_pixel_counts(group_indices, map, targets=None):
     """Return fractional pixel counts for top-tail group flux targets."""
     if targets is None:
@@ -836,6 +879,24 @@ def get_group_flux_pixel_counts(group_indices, map, targets=None):
             map[indices], targets)
 
     return n_pixels_sigma, targets
+
+def get_group_sigma_alpha(group_indices, map, targets=None,
+                          n_pixels_sigma=None):
+    """Return a HEALPix alpha map for per-group 1, 2, and 3 sigma regions."""
+    if targets is None:
+        targets = top_sigma_flux_targets()
+
+    alpha = np.zeros_like(map, dtype=np.float64)
+    if n_pixels_sigma is None:
+        n_pixels_sigma, targets = get_group_flux_pixel_counts(
+            group_indices, map, targets=targets)
+
+    for group_id, indices in enumerate(group_indices):
+        indices = group_values_array(indices)
+        alpha[indices] = alpha_values_for_flux_targets(
+            map[indices], targets=targets, counts=n_pixels_sigma[group_id])
+
+    return alpha
 
 def compact_group_labels(group):
     """Return group labels compacted to 0..n_groups-1."""
@@ -1124,6 +1185,42 @@ def HpGroupPlot(f, extent, group, n_groups, u_str=None, group_vertices=None):
     plot_group_vertices(ax, group_vertices)
     f.sca(ax)
 
+def HpGroupSigmaPlot(f, extent, group, n_groups, group_indices, map,
+                     u_str=None, group_vertices=None, n_pixels_sigma=None,
+                     flux_sigma_targets=None):
+    """Plot segmented groups with sigma-region alpha transparency."""
+    from healpy import projaxes as PA
+    from healpy import pixelfunc
+
+    if u_str is None:
+        u_str = r'${\rm %d\ Groups}$' % n_groups
+
+    group = pixelfunc.ma_to_array(group)
+    if flux_sigma_targets is None:
+        flux_sigma_targets = top_sigma_flux_targets()
+    alpha = get_group_sigma_alpha(group_indices, map,
+                                  targets=flux_sigma_targets,
+                                  n_pixels_sigma=n_pixels_sigma)
+
+    cmap = discrete_group_cmap(n_groups)
+    ax = PA.HpxMollweideAxes(f, extent)
+    f.add_axes(ax)
+    ax.projmap(np.zeros_like(group, dtype=np.float64), cmap='gray',
+               vmin=0., vmax=1.)
+    ax.projmap(group, alpha=alpha, cmap=cmap, vmin=-0.5, vmax=n_groups-0.5)
+    im = ax.get_images()[-1]
+    boundaries = np.arange(n_groups+1) - 0.5
+    values = np.arange(n_groups)
+    cb = f.colorbar(im, ax=ax, orientation='horizontal',
+                    shrink=0.75, aspect=25, ticks=[],
+                    pad=0.05, fraction=0.1,
+                    boundaries=boundaries, values=values)
+    cb.solids.set_rasterized(True)
+    cb.ax.text(0.5, -2.0, u_str, fontsize=14.5,
+               transform=cb.ax.transAxes, ha='center', va='center')
+    plot_group_vertices(ax, group_vertices)
+    f.sca(ax)
+
 def test_plot_neighbor_differences(nside=10, segment_file=None,
                                    map_file=map_file_default,
                                    save_file=None, seg_file=None,
@@ -1155,16 +1252,24 @@ def test_plot_neighbor_differences(nside=10, segment_file=None,
     group = None
     group_indices = None
     group_vertices = None
+    n_pixels_sigma = None
+    flux_sigma_targets = None
     group_unmerged = None
     group_indices_unmerged = None
+    n_pixels_sigma_unmerged = None
+    flux_sigma_targets_unmerged = None
     if seg_file is not None:
         (group, group_indices, n_pixels, flux, max_flux,
-         group_inner_indices, group_outer_indices, group_vertices) = (
-            read_segmented_groups(seg_file, read_boundaries=True))
+         group_inner_indices, group_outer_indices, group_vertices,
+         n_pixels_sigma, flux_sigma_targets) = read_segmented_groups(
+            seg_file, read_boundaries=True, read_sigma=True)
         assert group.size == map.size, (
             f'group size {group.size} does not match map size {map.size}')
         if np.sum([len(vertices) for vertices in group_vertices]) == 0:
             group_vertices = None
+        if n_pixels_sigma.size == 0:
+            n_pixels_sigma = None
+            flux_sigma_targets = None
         if VERBOSE:
             print(f'Segmented groups: n_groups={len(group_indices)}, '
                   f'n_pixels min/max={np.min(n_pixels)}/{np.max(n_pixels)}, '
@@ -1182,9 +1287,15 @@ def test_plot_neighbor_differences(nside=10, segment_file=None,
                                    segment_file=segment_file,
                                    map_file=map_file)
         if Path(unmerged_seg_file).exists():
-            group_unmerged, group_indices_unmerged, n_pixels_unmerged, flux_unmerged, max_flux_unmerged = read_segmented_groups(unmerged_seg_file)
+            (group_unmerged, group_indices_unmerged, n_pixels_unmerged,
+             flux_unmerged, max_flux_unmerged, n_pixels_sigma_unmerged,
+             flux_sigma_targets_unmerged) = read_segmented_groups(
+                unmerged_seg_file, read_sigma=True)
             assert group_unmerged.size == map.size, (
                 f'unmerged group size {group_unmerged.size} does not match map size {map.size}')
+            if n_pixels_sigma_unmerged.size == 0:
+                n_pixels_sigma_unmerged = None
+                flux_sigma_targets_unmerged = None
             if VERBOSE:
                 print(f'Unmerged segmented groups: n_groups={len(group_indices_unmerged)}, '
                       f'n_pixels min/max={np.min(n_pixels_unmerged)}/{np.max(n_pixels_unmerged)}, '
@@ -1205,16 +1316,28 @@ def test_plot_neighbor_differences(nside=10, segment_file=None,
            group_vertices=group_vertices)
     if group is not None:
         if group_unmerged is not None:
-            HpGroupPlot(fig, (1.01, dy_map, 1, 1), group_unmerged,
-                        len(group_indices_unmerged),
-                        u_str=r'$%d\ {\rm Groups}\ ({\rm Pre\!-\!merge})$' % len(group_indices_unmerged),
-                        group_vertices=group_vertices)
-            HpGroupPlot(fig, (1.01, 0, 1, 1), group, len(group_indices),
-                        u_str=r'$%d\ {\rm Groups}\ ({\rm Post\!-\!merge})$' % len(group_indices),
-                        group_vertices=group_vertices)
+            HpGroupSigmaPlot(
+                fig, (1.01, dy_map, 1, 1), group_unmerged,
+                len(group_indices_unmerged), group_indices_unmerged, map,
+                u_str=r'$%d\ {\rm Groups}\ ({\rm Pre\!-\!merge})$'
+                % len(group_indices_unmerged),
+                group_vertices=group_vertices,
+                n_pixels_sigma=n_pixels_sigma_unmerged,
+                flux_sigma_targets=flux_sigma_targets_unmerged)
+            HpGroupSigmaPlot(
+                fig, (1.01, 0, 1, 1), group, len(group_indices),
+                group_indices, map,
+                u_str=r'$%d\ {\rm Groups}\ ({\rm Post\!-\!merge})$'
+                % len(group_indices),
+                group_vertices=group_vertices,
+                n_pixels_sigma=n_pixels_sigma,
+                flux_sigma_targets=flux_sigma_targets)
         else:
-            HpGroupPlot(fig, (1.01, dy_map, 1, 1), group, len(group_indices),
-                        group_vertices=group_vertices)
+            HpGroupSigmaPlot(fig, (1.01, dy_map, 1, 1), group,
+                             len(group_indices), group_indices, map,
+                             group_vertices=group_vertices,
+                             n_pixels_sigma=n_pixels_sigma,
+                             flux_sigma_targets=flux_sigma_targets)
 
     sargs = {'bbox_inches':'tight', 'pad_inches':0.,
              'transparent':False, 'dpi':640}
