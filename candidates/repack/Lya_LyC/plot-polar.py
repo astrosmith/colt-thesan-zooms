@@ -151,15 +151,18 @@ def gini(x):
     Returns:
         float: Gini coefficient in [0, 1].
     """
-    # x = np.asarray(x, dtype=float).flatten()
+    x = np.asarray(x, dtype=float).ravel()
+    if np.any(~np.isfinite(x)):
+        raise ValueError("Gini coefficient requires finite values.")
     if np.any(x < 0.):
         raise ValueError("Gini coefficient requires non-negative values.")
-    if np.allclose(x, 0.):
+    total = np.sum(x)
+    if total <= 0.:
         return 0.
     n = float(x.size)
     x_sorted = np.sort(x)
     index = np.arange(1, x.size + 1)
-    return np.sum((2. * index - n - 1.) * x_sorted) / (n * np.sum(x_sorted))
+    return np.sum((2. * index - n - 1.) * x_sorted) / (n * total)
 
 def get_thetas_i(m, i_cam):
     nside = hp.npix2nside(m.size)
