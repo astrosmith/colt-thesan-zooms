@@ -49,6 +49,13 @@ def safe_ratio(numerator, denominator, zero=0.):
     ratio[~mask] = zero
     return ratio
 
+def safe_log10(x):
+    x = np.asarray(x, dtype=float)
+    y = np.full_like(x, np.nan, dtype=float)
+    mask = np.isfinite(x) & (x > 0.)
+    y[mask] = np.log10(x[mask])
+    return y
+
 def weighted_percentile(Z, W, q):
     # Z = data, W = weights, q = percentiles in [0,100]
     isort = np.argsort(Z)
@@ -276,15 +283,20 @@ def _wrap_angle(theta):
 
 def _zscore(x):
     x = np.asarray(x, dtype=float)
-    scale = np.nanmax(np.abs(x))
-    if not np.isfinite(scale) or scale <= 0.:
+    finite = np.isfinite(x)
+    if not np.any(finite):
+        return np.full_like(x, np.nan)
+    scale = np.max(np.abs(x[finite]))
+    if scale <= 0.:
         return np.full_like(x, np.nan)
     y = x / scale
-    mu = np.nanmean(y)
-    sig = np.nanstd(y)
-    if not np.isfinite(sig) or sig <= 0.:
+    mu = np.mean(y[finite])
+    sig = np.std(y[finite])
+    if sig <= 0.:
         return np.full_like(x, np.nan)
-    return (y - mu) / sig
+    z = np.full_like(x, np.nan)
+    z[finite] = (y[finite] - mu) / sig
+    return z
 
 def _ols_fit(X, y):
     """
@@ -393,6 +405,17 @@ def partial_corr_and_incremental_R2(
     if allow_nan:
         m = np.isfinite(lyc) & np.isfinite(o32) & np.isfinite(logOIII) & np.isfinite(logOII)
         lyc, o32, logOIII, logOII = lyc[m], o32[m], logOIII[m], logOII[m]
+
+    if len(lyc) < 5:
+        empty = np.full_like(lyc, np.nan, dtype=float)
+        return dict(
+            r_partial=np.nan,
+            R2_controls=np.nan,
+            R2_full=np.nan,
+            dR2=np.nan,
+            resid_lyc=empty,
+            resid_o32=empty.copy(),
+        )
 
     # Controls matrix
     C = np.column_stack([logOIII, logOII])
@@ -888,7 +911,7 @@ def zip_data(sim='g10304', run='z8', snaps=range(189), n_cameras=8, n_bins=181, 
                 rho_max_O32_LyC[i,i_cam], dtheta_star_O32_LyC[i,i_cam], _ = max_circular_xcorr_rho(T_centers, hist_O32[i_cam], hist_LyC[i_cam], use_fft=True)
                 rho_max_R3_LyC[i,i_cam], dtheta_star_R3_LyC[i,i_cam], _ = max_circular_xcorr_rho(T_centers, hist_R3[i_cam], hist_LyC[i_cam], use_fft=True)
                 rho_max_O32_R3[i,i_cam], dtheta_star_O32_R3[i,i_cam], _ = max_circular_xcorr_rho(T_centers, hist_O32[i_cam], hist_R3[i_cam], use_fft=True)
-                pa = partial_corr_and_incremental_R2(np.log10(hist_LyC[i_cam]), hist_O32[i_cam], np.log10(hist_O3[i_cam]), np.log10(hist_O2[i_cam]), allow_nan=False)
+                pa = partial_corr_and_incremental_R2(safe_log10(hist_LyC[i_cam]), hist_O32[i_cam], safe_log10(hist_O3[i_cam]), safe_log10(hist_O2[i_cam]), allow_nan=True)
                 R2_controls[i,i_cam], dR2_add_O32_to_controls[i,i_cam] = pa["R2_controls"], pa["dR2"]
                 O32_lowmode_frac_m2[i,i_cam], _ = low_mode_fourier_power_fraction(hist_O32[i_cam], mmax=2)
             if verbose:
@@ -973,7 +996,7 @@ def zip_data(sim='g10304', run='z8', snaps=range(189), n_cameras=8, n_bins=181, 
                 if i_cam == 7:
                     fig, axes = plt.subplots(6, 6, figsize=(15, 15))
                     # fig.suptitle(f'Corner Plot - Snapshot {snap:03d}', fontsize=16)
-                    hist_data = [np.log10(hist_O3[-1]), np.log10(hist_O2[-1]), np.log10(hist_Hb[-1]), hist_O32[-1], hist_R3[-1], np.log10(hist_LyC[-1])]
+                    hist_data = [safe_log10(hist_O3[-1]), safe_log10(hist_O2[-1]), safe_log10(hist_Hb[-1]), hist_O32[-1], hist_R3[-1], safe_log10(hist_LyC[-1])]
                     labels = ['log OIII', 'log OII', 'log Hβ', 'O32', 'R3', 'log LyC']
                     colors = ['blue', 'green', 'red', 'orange', 'purple', 'cyan']
                     for ii in range(6):
@@ -1010,12 +1033,12 @@ def zip_data(sim='g10304', run='z8', snaps=range(189), n_cameras=8, n_bins=181, 
                     plt.close()
                     if True:  # Explore additional statistics
                         stat_O32 = hist_O32[-1]
-                        stat_LyC = np.log10(hist_LyC[-1])
-                        stat_O3 = np.log10(hist_O3[-1])
-                        stat_O2 = np.log10(hist_O2[-1])
+                        stat_LyC = safe_log10(hist_LyC[-1])
+                        stat_O3 = safe_log10(hist_O3[-1])
+                        stat_O2 = safe_log10(hist_O2[-1])
                         stat_dict = {}
                         stat_dict['rho_max_O32_LyC'], stat_dict['dtheta_star_O32_LyC'], _ = max_circular_xcorr_rho(T_centers, hist_O32[-1], hist_LyC[-1], use_fft=True)
-                        pa = partial_corr_and_incremental_R2(np.log10(hist_LyC[-1]), hist_O32[-1], np.log10(hist_O3[-1]), np.log10(hist_O2[-1]), allow_nan=False)
+                        pa = partial_corr_and_incremental_R2(safe_log10(hist_LyC[-1]), hist_O32[-1], safe_log10(hist_O3[-1]), safe_log10(hist_O2[-1]), allow_nan=True)
                         stat_dict['dR2_add_O32_to_controls'] = pa["dR2"]
                         stat_dict['R2_controls'] = pa["R2_controls"]
                         stat_dict['R2_full'] = pa["R2_full"]
@@ -1163,6 +1186,6 @@ sim, run = 'g5760', 'z8'
 # sim, run = 'g2274036', 'z16'
 # sim, run = 'g5229300', 'z16'
 
-zip_data(sim=sim, run=run, snaps=[168], verbose=True, plot_theta=True)
-# zip_data(sim=sim, run=run)
+# zip_data(sim=sim, run=run, snaps=[168], verbose=True, plot_theta=True)
+zip_data(sim=sim, run=run)
 # plot_Dv(sim=sim, run=run)
