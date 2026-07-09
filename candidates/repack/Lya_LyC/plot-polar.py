@@ -107,9 +107,15 @@ def fraction_of_angles(data, thresholds):
         raise ValueError("thresholds must be in (0, 1].")
     if np.any(x < 0):
         raise ValueError("data should be non-negative weights.")
+    if np.any(~np.isfinite(x)):
+        raise ValueError("data should contain finite weights.")
+    scale = np.max(x)
+    if scale <= 0.:
+        # all zeros -> no meaningful concentration; define as 0
+        return np.zeros(thr.shape, dtype=float)
+    x = x / scale
     total = x.sum()
-    if total <= 0 or not np.isfinite(total):
-        # all zeros (or pathological) -> no meaningful concentration; define as 0
+    if total <= 0. or not np.isfinite(total):
         return np.zeros(thr.shape, dtype=float)
 
     # Sort ascending and compute normalized CDF
@@ -156,6 +162,10 @@ def gini(x):
         raise ValueError("Gini coefficient requires finite values.")
     if np.any(x < 0.):
         raise ValueError("Gini coefficient requires non-negative values.")
+    scale = np.max(x)
+    if scale <= 0.:
+        return 0.
+    x = x / scale
     total = np.sum(x)
     if total <= 0.:
         return 0.
@@ -264,13 +274,17 @@ def _wrap_angle(theta):
     """Wrap angle(s) to [-pi, pi)."""
     return (theta + np.pi) % (2 * np.pi) - np.pi
 
-def _zscore(x, eps=1e-15):
+def _zscore(x):
     x = np.asarray(x, dtype=float)
-    mu = np.nanmean(x)
-    sig = np.nanstd(x)
-    if not np.isfinite(sig) or sig < eps:
+    scale = np.nanmax(np.abs(x))
+    if not np.isfinite(scale) or scale <= 0.:
         return np.full_like(x, np.nan)
-    return (x - mu) / sig
+    y = x / scale
+    mu = np.nanmean(y)
+    sig = np.nanstd(y)
+    if not np.isfinite(sig) or sig <= 0.:
+        return np.full_like(x, np.nan)
+    return (y - mu) / sig
 
 def _ols_fit(X, y):
     """
