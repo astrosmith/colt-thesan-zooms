@@ -19,6 +19,11 @@ FESC_PLOT_MAX_MIN_PERCENT = 1.
 sigma_68 = erf(1./np.sqrt(2.))
 sigma_95 = erf(2./np.sqrt(2.))
 sigma_99 = erf(3./np.sqrt(2.))
+FLUX_VALUE_PERCENTILES = np.array(
+    [0., 10., 25., 50., 75., 90., 100.], dtype=np.float64)
+FLUX_ANGULAR_RADIUS_TARGETS = np.array(
+    [0.50, sigma_68, 0.90], dtype=np.float64)
+PERSISTENCE_VALUE_PERCENTILES = FLUX_VALUE_PERCENTILES.copy()
 percentiles = np.array([
     50.,
     50.*(1.-sigma_68), 50.*(1.+sigma_68),
@@ -613,7 +618,7 @@ def write_segmented_groups(seg_file=seg_file_default, nside=10,
                            group=None, group_indices=None,
                            n_pixels=None, flux=None, max_flux=None,
                            n_pixels_sigma=None,
-                           write_boundaries=False):
+                           write_boundaries=True):
     """Write watershed segmented groups to HDF5, optionally with boundaries."""
     if (group is None or group_indices is None or n_pixels is None or
             flux is None or max_flux is None):
@@ -651,63 +656,136 @@ def write_segmented_groups(seg_file=seg_file_default, nside=10,
     n_pixels_sigma = np.asarray(n_pixels_sigma, dtype=np.float64)
     assert n_pixels_sigma.shape == (n_pixels.size, flux_sigma_targets.size)
 
-    (flux_centroid_theta, flux_centroid_phi, n_pixels_eff,
-     gini_flux) = get_group_flux_summary(group_indices, map, nside)
+    region_metrics = get_group_flux_metrics(group_indices, map, nside)
+    full_sky_metrics = get_full_sky_flux_metrics(map, nside)
+    assert np.array_equal(region_metrics['n_pixels'], n_pixels)
+    assert np.allclose(region_metrics['flux'], flux,
+                       rtol=1.e-12, atol=1.e-14)
+    assert np.allclose(region_metrics['max_flux'], max_flux,
+                       rtol=0., atol=0.)
+    region_metrics['n_pixels_sigma'] = n_pixels_sigma
+    full_sky_metrics['n_pixels_sigma'] = n_pixels_for_flux_targets(
+        map, flux_sigma_targets)
+    flux_fraction_targets = np.concatenate([[0.5], flux_sigma_targets])
+    region_metrics['n_pixels_flux_targets'] = get_group_flux_pixel_counts(
+        group_indices, map, targets=flux_fraction_targets)[0]
+    full_sky_metrics['n_pixels_flux_targets'] = n_pixels_for_flux_targets(
+        map, flux_fraction_targets)
+    flux_centroid_theta = region_metrics['flux_centroid_theta']
+    flux_centroid_phi = region_metrics['flux_centroid_phi']
+    n_pixels_eff = region_metrics['n_pixels_eff']
+    gini_flux = region_metrics['gini_flux']
 
     group_inner_indices = None
     group_outer_indices = None
     group_vertices = None
     boundary_indptr = None
     vertex_indptr = None
-    if write_boundaries and n_pixels.size > 1:
-        neib_n, neib_e, neib_s, neib_w = load_pixel_segments(nside, segment_file)
-        neighbors = np.vstack([neib_n, neib_e, neib_s, neib_w]).T
-        group_inner_indices, group_outer_indices, group_vertices = (
-            get_group_boundaries(group, neighbors, nside))
-        boundary_inner, boundary_outer, boundary_indptr = boundary_indices_to_csr(
-            group_inner_indices, group_outer_indices)
-        boundary_vertices, vertex_indptr = group_vertices_to_csr(group_vertices)
+    if write_boundaries:
+        if n_pixels.size > 1:
+            neib_n, neib_e, neib_s, neib_w = load_pixel_segments(
+                nside, segment_file)
+            neighbors = np.vstack([neib_n, neib_e, neib_s, neib_w]).T
+            group_inner_indices, group_outer_indices, group_vertices = (
+                get_group_boundaries(group, neighbors, nside))
+            boundary_inner, boundary_outer, boundary_indptr = (
+                boundary_indices_to_csr(
+                    group_inner_indices, group_outer_indices))
+            boundary_vertices, vertex_indptr = group_vertices_to_csr(
+                group_vertices)
+        else:
+            group_inner_indices = np.empty(1, dtype=object)
+            group_outer_indices = np.empty(1, dtype=object)
+            group_vertices = np.empty(1, dtype=object)
+            group_inner_indices[0] = np.empty(0, dtype=np.int32)
+            group_outer_indices[0] = np.empty(0, dtype=np.int32)
+            group_vertices[0] = np.empty((0, 2), dtype=np.float64)
+            boundary_inner = np.empty(0, dtype=np.int32)
+            boundary_outer = np.empty(0, dtype=np.int32)
+            boundary_indptr = np.zeros(2, dtype=np.int32)
+            boundary_vertices = np.empty((0, 2), dtype=np.float64)
+            vertex_indptr = np.zeros(2, dtype=np.int32)
+        region_metrics.update(get_group_boundary_metrics(
+            group_inner_indices, group_vertices,
+            region_metrics['solid_angle_sr']))
 
     with h5py.File(seg_file, 'w') as f:
-        f.create_dataset('group', data=group)
-        f.create_dataset('n_pixels', data=n_pixels)
-        f.create_dataset('flux', data=flux)
-        f.create_dataset('max_flux', data=max_flux)
-        f.create_dataset('n_pixels_sigma', data=n_pixels_sigma)
-        f.create_dataset('flux_sigma_targets', data=flux_sigma_targets)
-        f.create_dataset('flux_centroid_theta', data=flux_centroid_theta)
-        f.create_dataset('flux_centroid_phi', data=flux_centroid_phi)
-        f.create_dataset('n_pixels_eff', data=n_pixels_eff)
-        f.create_dataset('gini_flux', data=gini_flux)
-        f.create_dataset('group_indices', data=indices)
-        f.create_dataset('group_indptr', data=indptr)
+        metadata = f.create_group('metadata')
+        segmentation_group = f.create_group('segmentation')
+        regions = f.create_group('regions')
+        region_metrics_group = regions.create_group('metrics')
+        boundaries = regions.create_group('boundaries')
+        full_sky = f.create_group('full_sky')
+        full_sky_metrics_group = full_sky.create_group('metrics')
+
+        flux_targets_dataset = metadata.create_dataset(
+            'flux_sigma_targets', data=flux_sigma_targets)
+        flux_targets_dataset.attrs['description'] = (
+            'Top-flux fractions corresponding to the central 1, 2, and 3 '
+            'sigma Gaussian probability ranges.')
+        concentration_targets_dataset = metadata.create_dataset(
+            'flux_fraction_targets', data=flux_fraction_targets)
+        concentration_targets_dataset.attrs['description'] = (
+            'Top-flux fractions used by n_pixels_flux_targets; includes the '
+            '50 percent core and the 1, 2, and 3 sigma ranges.')
+        value_percentiles_dataset = metadata.create_dataset(
+            'flux_value_percentile_levels', data=FLUX_VALUE_PERCENTILES)
+        value_percentiles_dataset.attrs['units'] = 'percent'
+        value_percentiles_dataset.attrs['description'] = (
+            'Percentile levels used by flux_value_percentiles.')
+        angular_targets_dataset = metadata.create_dataset(
+            'flux_angular_radius_targets',
+            data=FLUX_ANGULAR_RADIUS_TARGETS)
+        angular_targets_dataset.attrs['description'] = (
+            'Enclosed flux fractions used by flux_angular_radius_quantiles.')
+        metadata.create_dataset(
+            'pixel_solid_angle_sr', data=4. * np.pi / group.size)
+
+        labels_dataset = segmentation_group.create_dataset(
+            'labels', data=group)
+        labels_dataset.attrs['description'] = (
+            'Flux-sorted region label for every HEALPix pixel.')
+        segmentation_group.attrs['ordering'] = 'RING'
+        segmentation_group.attrs['region_label_order'] = 'descending_flux'
+        segmentation_group.attrs['method'] = 'watershed_maxima'
+
+        indices_dataset = regions.create_dataset('indices', data=indices)
+        indptr_dataset = regions.create_dataset('indptr', data=indptr)
+        indices_dataset.attrs['description'] = (
+            'Concatenated region member pixel indices in CSR-style storage.')
+        indptr_dataset.attrs['description'] = (
+            'Offsets into regions/indices; length is n_groups+1.')
+        regions.attrs['index_storage'] = 'csr_indices_indptr'
+        write_metric_group(region_metrics_group, region_metrics)
+        write_metric_group(full_sky_metrics_group, full_sky_metrics)
+        region_metrics_group.attrs['scope'] = (
+            'one row per flux-sorted segmented region')
+        full_sky_metrics_group.attrs['scope'] = (
+            'one segmentation-independent summary of the complete map')
+        full_sky.attrs['segmentation_independent'] = True
+
         if boundary_indptr is not None:
-            f.create_dataset('group_inner_indices', data=boundary_inner)
-            f.create_dataset('group_outer_indices', data=boundary_outer)
-            f.create_dataset('group_boundary_indptr', data=boundary_indptr)
-            f.create_dataset('group_vertices', data=boundary_vertices)
-            f.create_dataset('group_vertex_indptr', data=vertex_indptr)
-        f.attrs['nside'] = np.int32(nside)
-        f.attrs['npix'] = np.int32(group.size)
-        f.attrs['n_groups'] = np.int32(n_pixels.size)
-        # f.attrs['format'] = b'group indices stored as CSR-style indices/indptr'
-        # f.attrs['n_pixels_sigma_note'] = (
-        #     b'fractional brightest-pixel counts for flux_sigma_targets')
-        # f.attrs['flux_sigma_targets_note'] = (
-        #     b'top 1, 2, and 3 sigma percentile ranges')
-        # f.attrs['flux_centroid_coord'] = b'theta_phi_radians'
-        # f.attrs['n_pixels_eff_note'] = (
-        #     b'flux participation ratio, (sum flux)^2 / sum(flux^2)')
-        # f.attrs['gini_flux_note'] = (
-        #     b'Gini coefficient of per-pixel group flux values')
-        # if boundary_indptr is not None:
-        #     f.attrs['boundary_format'] = (
-        #         b'group boundary inner/outer indices stored as CSR-style arrays')
-        #     f.attrs['boundary_order'] = (
-        #         b'clockwise face walk in neib_n,neib_e,neib_s,neib_w order')
-        #     f.attrs['group_vertices_coord'] = b'theta_phi_radians'
-        #     f.attrs['group_vertices_note'] = (
-        #         b'closed boundary polylines; NaN rows separate multiple loops')
+            boundaries.create_dataset('inner_indices', data=boundary_inner)
+            boundaries.create_dataset('outer_indices', data=boundary_outer)
+            boundaries.create_dataset('indptr', data=boundary_indptr)
+            boundaries.create_dataset('vertices', data=boundary_vertices)
+            boundaries.create_dataset('vertex_indptr', data=vertex_indptr)
+            boundaries.attrs['segment_order'] = (
+                'clockwise face walk in neib_n,neib_e,neib_s,neib_w order')
+            boundaries.attrs['vertex_coordinates'] = 'theta_phi_radians'
+            boundaries.attrs['vertex_loops'] = (
+                'closed polylines; NaN rows separate multiple loops')
+        boundaries.attrs['available'] = boundary_indptr is not None
+        boundaries.attrs['has_segments'] = (
+            boundary_indptr is not None and boundary_inner.size > 0)
+
+        f.attrs['schema_name'] = 'healpix_flux_segmentation'
+        f.attrs['schema_version'] = np.int32(2)
+        metadata.attrs['nside'] = np.int32(nside)
+        metadata.attrs['npix'] = np.int32(group.size)
+        metadata.attrs['map_value_name'] = 'f_esc'
+        metadata.attrs['map_value_units'] = 'fraction'
+        segmentation_group.attrs['n_groups'] = np.int32(n_pixels.size)
 
     if VERBOSE:
         print(f'Segmented groups saved to {seg_file}')
@@ -739,66 +817,54 @@ def write_segmented_groups(seg_file=seg_file_default, nside=10,
 
 def read_segmented_groups(seg_file=seg_file_default, read_boundaries=False,
                           read_sigma=False, read_summary=False):
-    """Read watershed segmented groups from HDF5."""
+    """Read watershed groups from the canonical grouped HDF5 schema."""
     with h5py.File(seg_file, 'r') as f:
-        group = f['group'][:].astype(np.int32)
-        n_pixels = f['n_pixels'][:].astype(np.int32)
-        flux = f['flux'][:].astype(np.float64)
-        if 'max_flux' in f:
-            max_flux = f['max_flux'][:].astype(np.float64)
-        else:
-            max_flux = np.full(flux.size, np.nan, dtype=np.float64)
-        indices = f['group_indices'][:].astype(np.int32)
-        indptr = f['group_indptr'][:].astype(np.int32)
+        metrics = f['regions/metrics']
+        group = f['segmentation/labels'][:].astype(np.int32)
+        n_pixels = metrics['n_pixels'][:].astype(np.int32)
+        flux = metrics['flux'][:].astype(np.float64)
+        max_flux = metrics['max_flux'][:].astype(np.float64)
+        indices = f['regions/indices'][:].astype(np.int32)
+        indptr = f['regions/indptr'][:].astype(np.int32)
 
         group_indices = np.empty(indptr.size-1, dtype=object)
         for group_id in range(group_indices.size):
             start, stop = indptr[group_id], indptr[group_id+1]
             group_indices[group_id] = indices[start:stop].astype(np.int32, copy=True)
 
-        assert f.attrs['npix'] == group.size
-        assert f.attrs['n_groups'] == group_indices.size
+        assert f['metadata'].attrs['npix'] == group.size
+        assert f['segmentation'].attrs['n_groups'] == group_indices.size
         assert max_flux.size == group_indices.size
 
         if read_sigma:
-            if 'n_pixels_sigma' in f:
-                n_pixels_sigma = f['n_pixels_sigma'][:].astype(np.float64)
-                flux_sigma_targets = f['flux_sigma_targets'][:].astype(
-                    np.float64)
-            else:
-                n_pixels_sigma = np.empty((group_indices.size, 0),
-                                          dtype=np.float64)
-                flux_sigma_targets = np.array([], dtype=np.float64)
+            n_pixels_sigma = metrics['n_pixels_sigma'][:].astype(np.float64)
+            flux_sigma_targets = f[
+                'metadata/flux_sigma_targets'][:].astype(np.float64)
 
         if read_summary:
-            if 'flux_centroid_theta' in f:
-                flux_centroid_theta = f['flux_centroid_theta'][:].astype(
-                    np.float64)
-                flux_centroid_phi = f['flux_centroid_phi'][:].astype(
-                    np.float64)
-                n_pixels_eff = f['n_pixels_eff'][:].astype(np.float64)
-                gini_flux = f['gini_flux'][:].astype(np.float64)
-            else:
-                flux_centroid_theta = np.full(group_indices.size, np.nan,
-                                              dtype=np.float64)
-                flux_centroid_phi = np.full(group_indices.size, np.nan,
-                                            dtype=np.float64)
-                n_pixels_eff = np.full(group_indices.size, np.nan,
-                                       dtype=np.float64)
-                gini_flux = np.full(group_indices.size, np.nan,
-                                    dtype=np.float64)
+            flux_centroid_theta = metrics[
+                'flux_centroid_theta'][:].astype(np.float64)
+            flux_centroid_phi = metrics[
+                'flux_centroid_phi'][:].astype(np.float64)
+            n_pixels_eff = metrics['n_pixels_eff'][:].astype(np.float64)
+            gini_flux = metrics['gini_flux'][:].astype(np.float64)
 
         if read_boundaries:
             group_inner_indices = np.empty(group_indices.size, dtype=object)
             group_outer_indices = np.empty(group_indices.size, dtype=object)
             group_vertices = np.empty(group_indices.size, dtype=object)
-            if 'group_inner_indices' in f:
-                boundary_inner = f['group_inner_indices'][:].astype(np.int32)
-                boundary_outer = f['group_outer_indices'][:].astype(np.int32)
-                boundary_indptr = f['group_boundary_indptr'][:].astype(np.int32)
-                if 'group_vertices' in f:
-                    boundary_vertices = f['group_vertices'][:].astype(np.float64)
-                    vertex_indptr = f['group_vertex_indptr'][:].astype(np.int32)
+            if 'regions/boundaries/inner_indices' in f:
+                boundaries = f['regions/boundaries']
+                boundary_inner = boundaries[
+                    'inner_indices'][:].astype(np.int32)
+                boundary_outer = boundaries[
+                    'outer_indices'][:].astype(np.int32)
+                boundary_indptr = boundaries['indptr'][:].astype(np.int32)
+                if 'vertices' in boundaries:
+                    boundary_vertices = boundaries[
+                        'vertices'][:].astype(np.float64)
+                    vertex_indptr = boundaries[
+                        'vertex_indptr'][:].astype(np.int32)
                 else:
                     boundary_vertices = None
                     vertex_indptr = None
@@ -869,38 +935,429 @@ def gini_coefficient(values):
     weights = 2. * np.arange(1, n_values+1) - n_values - 1.
     return np.sum(weights * sorted_values) / (n_values * total)
 
+def bimodality_coefficient(values, min_samples=4):
+    """Return the moment bimodality coefficient or NaN when undefined.
+
+    This is ``(skewness**2 + 1) / kurtosis`` using population central
+    moments, equivalent to the form in the adaptive-test notes with
+    ``kurtosis = excess_kurtosis + 3``. The usual 5/9 reference is heuristic:
+    skewed unimodal distributions can exceed it, especially for small or
+    correlated samples.
+    """
+    values = np.asarray(values, dtype=np.float64).ravel()
+    values = values[np.isfinite(values)]
+    if values.size < min_samples:
+        return np.nan
+    sigma = np.std(values)
+    if sigma <= 0.:
+        return np.nan
+    z = (values - np.mean(values)) / sigma
+    skewness = np.mean(z**3)
+    kurtosis = np.mean(z**4)
+    if kurtosis <= 0.:
+        return np.nan
+    return float((skewness**2 + 1.) / kurtosis)
+
+
+def otsu_threshold(values, n_bins=256):
+    """Return a histogram Otsu split for diagnostics, or NaN if degenerate."""
+    values = np.asarray(values, dtype=np.float64).ravel()
+    values = values[np.isfinite(values)]
+    if values.size < 2 or np.max(values) <= np.min(values):
+        return np.nan
+
+    n_bins = min(int(n_bins), max(2, values.size))
+    hist, edges = np.histogram(values, bins=n_bins)
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    probability = hist.astype(np.float64) / np.sum(hist)
+    weight_low = np.cumsum(probability)
+    mean_low = np.cumsum(probability * centers)
+    denominator = weight_low * (1. - weight_low)
+    between_variance = np.full(denominator.size, -np.inf, dtype=np.float64)
+    valid = denominator > 0.
+    between_variance[valid] = (
+        (mean_low[-1] * weight_low[valid] - mean_low[valid])**2 /
+        denominator[valid])
+    if not np.any(np.isfinite(between_variance)):
+        return np.nan
+    return float(centers[int(np.argmax(between_variance))])
+
+
+def otsu_threshold_is_valley(values, threshold, n_bins=64,
+                             valley_fraction=0.6):
+    """Return whether an Otsu split lies below both flanking histogram modes."""
+    values = np.asarray(values, dtype=np.float64).ravel()
+    values = values[np.isfinite(values)]
+    if values.size < 10 or not np.isfinite(threshold):
+        return False
+    n_bins = min(int(n_bins), max(2, values.size))
+    hist, edges = np.histogram(values, bins=n_bins)
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    low = centers <= threshold
+    high = centers > threshold
+    if not np.any(low) or not np.any(high):
+        return False
+    low_mode = np.max(hist[low])
+    high_mode = np.max(hist[high])
+    if low_mode <= 0 or high_mode <= 0:
+        return False
+    i_threshold = int(np.clip(
+        np.searchsorted(edges, threshold) - 1, 0, n_bins - 1))
+    return bool(hist[i_threshold] <
+                valley_fraction * min(low_mode, high_mode))
+
+
+def flux_distribution_metrics(values):
+    """Return descriptive concentration and shape metrics for nonnegative flux."""
+    values = np.asarray(values, dtype=np.float64).ravel()
+    if values.size == 0 or np.any(~np.isfinite(values)):
+        raise ValueError('Flux metric values must be nonempty and finite.')
+    if np.any(values < 0.):
+        raise ValueError('Flux metric values must be nonnegative.')
+
+    n_values = values.size
+    total = float(np.sum(values))
+    flux2 = float(np.sum(values * values))
+    mean = float(np.mean(values))
+    std = float(np.std(values))
+    value_percentiles = np.percentile(values, FLUX_VALUE_PERCENTILES)
+    q25, median, q75 = value_percentiles[2:5]
+
+    skewness = np.nan
+    excess_kurtosis = np.nan
+    if n_values >= 4 and std > 0.:
+        z = (values - mean) / std
+        skewness = float(np.mean(z**3))
+        excess_kurtosis = float(np.mean(z**4) - 3.)
+
+    if total > 0.:
+        positive_weights = values[values > 0.] / total
+        shannon_entropy = float(-np.sum(
+            positive_weights * np.log(positive_weights)))
+        n_pixels_entropy_eff = float(np.exp(shannon_entropy))
+        n_pixels_eff = total * total / flux2
+        peak_flux_fraction = float(np.max(values) / total)
+    else:
+        shannon_entropy = 0.
+        n_pixels_entropy_eff = 0.
+        n_pixels_eff = 0.
+        peak_flux_fraction = 0.
+
+    entropy_normalization = np.log(n_values) if n_values > 1 else 0.
+    shannon_entropy_normalized = (
+        shannon_entropy / entropy_normalization
+        if entropy_normalization > 0. else 0.)
+    quartile_sum = q75 + q25
+
+    return {
+        'n_pixels': np.int32(n_values),
+        'n_pixels_nonzero': np.int32(np.count_nonzero(values)),
+        'flux': total,
+        'flux2': flux2,
+        'min_flux': float(np.min(values)),
+        'max_flux': float(np.max(values)),
+        'mean_flux': mean,
+        'median_flux': float(median),
+        'std_flux': std,
+        'rms_flux': float(np.sqrt(np.mean(values * values))),
+        'mad_flux': float(np.median(np.abs(values - median))),
+        'interquartile_range_flux': float(q75 - q25),
+        'coefficient_of_variation_flux': std / mean if mean > 0. else np.nan,
+        'quartile_coefficient_dispersion_flux': (
+            float((q75 - q25) / quartile_sum)
+            if quartile_sum > 0. else np.nan),
+        'skewness_flux': skewness,
+        'excess_kurtosis_flux': excess_kurtosis,
+        'bimodality_coefficient_flux': bimodality_coefficient(values),
+        'gini_flux': gini_coefficient(values),
+        'shannon_entropy_flux': shannon_entropy,
+        'shannon_entropy_normalized_flux': shannon_entropy_normalized,
+        'n_pixels_eff': n_pixels_eff,
+        'n_pixels_entropy_eff': n_pixels_entropy_eff,
+        'peak_flux_fraction': peak_flux_fraction,
+        'flux_value_percentiles': value_percentiles,
+    }
+
+
+def weighted_quantiles(values, weights, targets):
+    """Return linearly interpolated weighted quantiles for sorted support."""
+    values = np.asarray(values, dtype=np.float64).ravel()
+    weights = np.asarray(weights, dtype=np.float64).ravel()
+    targets = np.asarray(targets, dtype=np.float64).ravel()
+    if values.size != weights.size or values.size == 0:
+        raise ValueError('Weighted quantiles require equal nonempty arrays.')
+    total = np.sum(weights)
+    if total <= 0.:
+        return np.full(targets.size, np.nan, dtype=np.float64)
+    order = np.argsort(values, kind='stable')
+    values = values[order]
+    cumulative = np.cumsum(weights[order]) / total
+    return np.interp(targets, cumulative, values,
+                     left=values[0], right=values[-1])
+
+
+def flux_spatial_metrics(indices, values, nside):
+    """Return spherical flux-centroid and angular concentration metrics."""
+    indices = group_values_array(indices)
+    values = np.asarray(values, dtype=np.float64).ravel()
+    total = np.sum(values)
+    empty_radii = np.full(
+        FLUX_ANGULAR_RADIUS_TARGETS.size, np.nan, dtype=np.float64)
+    if total <= 0.:
+        return {
+            'flux_centroid_theta': np.nan,
+            'flux_centroid_phi': np.nan,
+            'flux_centroid_resultant': 0.,
+            'flux_angular_radius_mean': np.nan,
+            'flux_angular_radius_rms': np.nan,
+            'flux_angular_radius_quantiles': empty_radii,
+        }
+
+    vectors = np.asarray(hp.pix2vec(nside, indices)).T
+    vector_sum = np.sum(vectors * values[:, None], axis=0)
+    vector_norm = np.linalg.norm(vector_sum)
+    resultant = float(vector_norm / total)
+    if not np.isfinite(vector_norm) or vector_norm <= 1.e-15 * total:
+        return {
+            'flux_centroid_theta': np.nan,
+            'flux_centroid_phi': np.nan,
+            'flux_centroid_resultant': resultant,
+            'flux_angular_radius_mean': np.nan,
+            'flux_angular_radius_rms': np.nan,
+            'flux_angular_radius_quantiles': empty_radii,
+        }
+
+    center = vector_sum / vector_norm
+    theta, phi = hp.vec2ang(center)
+    angular_distance = np.arccos(np.clip(vectors @ center, -1., 1.))
+    return {
+        'flux_centroid_theta': float(theta),
+        'flux_centroid_phi': float(phi),
+        'flux_centroid_resultant': resultant,
+        'flux_angular_radius_mean': float(
+            np.sum(values * angular_distance) / total),
+        'flux_angular_radius_rms': float(np.sqrt(
+            np.sum(values * angular_distance**2) / total)),
+        'flux_angular_radius_quantiles': weighted_quantiles(
+            angular_distance, values, FLUX_ANGULAR_RADIUS_TARGETS),
+    }
+
+
+def flux_metrics_for_indices(indices, map, nside, full_flux=None):
+    """Return all physical flux metrics for one pixel collection."""
+    indices = group_values_array(indices)
+    values = np.asarray(map[indices], dtype=np.float64)
+    npix = map.size
+    pixel_area_sr = 4. * np.pi / npix
+    metrics = flux_distribution_metrics(values)
+    metrics.update(flux_spatial_metrics(indices, values, nside))
+    metrics['nonzero_fraction'] = (
+        float(metrics['n_pixels_nonzero']) / metrics['n_pixels'])
+    metrics['solid_angle_sr'] = float(metrics['n_pixels'] * pixel_area_sr)
+    metrics['sky_fraction'] = float(metrics['n_pixels'] / npix)
+    metrics['integrated_flux_sr'] = float(metrics['flux'] * pixel_area_sr)
+    metrics['integrated_flux2_sr'] = float(metrics['flux2'] * pixel_area_sr)
+    metrics['effective_solid_angle_sr'] = float(
+        metrics['n_pixels_eff'] * pixel_area_sr)
+    metrics['effective_sky_fraction'] = float(metrics['n_pixels_eff'] / npix)
+    metrics['effective_fill_fraction'] = float(
+        metrics['n_pixels_eff'] / metrics['n_pixels'])
+    if full_flux is None:
+        full_flux = np.sum(map)
+    metrics['flux_fraction'] = (
+        float(metrics['flux'] / full_flux) if full_flux > 0. else 0.)
+    return metrics
+
+
+def get_group_flux_metrics(group_indices, map, nside):
+    """Return arrays of physical metrics for every segmented region."""
+    full_flux = np.sum(map)
+    summaries = [
+        flux_metrics_for_indices(indices, map, nside, full_flux=full_flux)
+        for indices in group_indices
+    ]
+    return {
+        key: np.asarray([summary[key] for summary in summaries])
+        for key in summaries[0]
+    }
+
+
+def get_full_sky_flux_metrics(map, nside):
+    """Return segmentation-independent metrics for the complete HEALPix map."""
+    indices = np.arange(map.size, dtype=np.int32)
+    return flux_metrics_for_indices(
+        indices, map, nside, full_flux=np.sum(map))
+
+
+def boundary_polyline_metrics(vertices):
+    """Return loop count and great-circle length of stored boundary vertices."""
+    vertices = np.asarray(vertices, dtype=np.float64)
+    if vertices.size == 0:
+        return 0, 0.
+    valid = np.all(np.isfinite(vertices), axis=1)
+    n_loops = int(np.count_nonzero(
+        valid & ~np.concatenate([[False], valid[:-1]])))
+    length = 0.
+    start = 0
+    while start < vertices.shape[0]:
+        while start < vertices.shape[0] and not valid[start]:
+            start += 1
+        stop = start
+        while stop < vertices.shape[0] and valid[stop]:
+            stop += 1
+        if stop - start >= 2:
+            loop = vertices[start:stop]
+            vectors = np.asarray(hp.ang2vec(loop[:, 0], loop[:, 1]))
+            dots = np.sum(vectors[:-1] * vectors[1:], axis=1)
+            length += np.sum(np.arccos(np.clip(dots, -1., 1.)))
+        start = stop + 1
+    return n_loops, float(length)
+
+
+def get_group_boundary_metrics(group_inner_indices, group_vertices,
+                               solid_angle_sr):
+    """Return per-region boundary length, loop count, and compactness."""
+    n_groups = len(group_inner_indices)
+    n_boundary_faces = np.zeros(n_groups, dtype=np.int32)
+    n_boundary_loops = np.zeros(n_groups, dtype=np.int32)
+    boundary_length = np.zeros(n_groups, dtype=np.float64)
+    compactness = np.full(n_groups, np.nan, dtype=np.float64)
+    for group_id in range(n_groups):
+        n_boundary_faces[group_id] = len(group_inner_indices[group_id])
+        loops, length = boundary_polyline_metrics(group_vertices[group_id])
+        n_boundary_loops[group_id] = loops
+        boundary_length[group_id] = length
+        area = solid_angle_sr[group_id]
+        if length > 0.:
+            compactness[group_id] = area * (4. * np.pi - area) / length**2
+    return {
+        'n_boundary_faces': n_boundary_faces,
+        'n_boundary_loops': n_boundary_loops,
+        'boundary_length_rad': boundary_length,
+        'spherical_compactness': compactness,
+    }
+
+
 def get_group_flux_summary(group_indices, map, nside):
-    """
-    Return flux-weighted spherical centroids, effective pixel counts, and Gini.
-    n_pixels_eff is the participation-ratio count, (sum f)^2 / sum(f^2).
-    """
-    n_groups = len(group_indices)
-    centroid_theta = np.full(n_groups, np.nan, dtype=np.float64)
-    centroid_phi = np.full(n_groups, np.nan, dtype=np.float64)
-    n_pixels_eff = np.zeros(n_groups, dtype=np.float64)
-    gini_flux = np.zeros(n_groups, dtype=np.float64)
+    """Return the four legacy summary arrays from the complete metric set."""
+    metrics = get_group_flux_metrics(group_indices, map, nside)
+    return (metrics['flux_centroid_theta'], metrics['flux_centroid_phi'],
+            metrics['n_pixels_eff'], metrics['gini_flux'])
 
-    for group_id, indices in enumerate(group_indices):
-        indices = group_values_array(indices)
-        values = np.asarray(map[indices], dtype=np.float64)
-        total = np.sum(values)
-        flux2 = np.sum(values * values)
-        if flux2 > 0.:
-            n_pixels_eff[group_id] = total * total / flux2
-        gini_flux[group_id] = gini_coefficient(values)
 
-        vec = np.array(hp.pix2vec(nside, indices)).T
-        if total > 0.:
-            centroid_vec = np.sum(vec * values[:, None], axis=0) / total
-        else:
-            centroid_vec = np.mean(vec, axis=0)
-        norm = np.linalg.norm(centroid_vec)
-        if norm > 0. and np.isfinite(norm):
-            theta, phi = hp.vec2ang(centroid_vec / norm)
-            centroid_theta[group_id] = theta
-            centroid_phi[group_id] = phi
+METRIC_DESCRIPTIONS = {
+    'n_pixels': 'Number of equal-area HEALPix cells.',
+    'n_pixels_nonzero': 'Number of cells with strictly positive flux.',
+    'nonzero_fraction': 'Fraction of cells with strictly positive flux.',
+    'flux': 'Sum of per-pixel escape fractions.',
+    'flux2': 'Sum of squared per-pixel escape fractions.',
+    'flux_fraction': 'Fraction of the full-sky summed flux.',
+    'min_flux': 'Minimum per-pixel escape fraction.',
+    'max_flux': 'Maximum per-pixel escape fraction.',
+    'mean_flux': 'Population mean per-pixel escape fraction.',
+    'median_flux': 'Median per-pixel escape fraction.',
+    'std_flux': 'Population standard deviation of pixel escape fractions.',
+    'rms_flux': 'Root-mean-square pixel escape fraction.',
+    'mad_flux': 'Median absolute deviation from the pixel-flux median.',
+    'interquartile_range_flux': '75th minus 25th pixel-flux percentile.',
+    'coefficient_of_variation_flux': 'Population standard deviation divided by mean.',
+    'quartile_coefficient_dispersion_flux': '(q75-q25)/(q75+q25).',
+    'skewness_flux': 'Population standardized third central moment.',
+    'excess_kurtosis_flux': 'Population standardized fourth central moment minus 3.',
+    'bimodality_coefficient_flux': '(skewness^2+1)/(excess kurtosis+3); diagnostic only.',
+    'gini_flux': 'Gini coefficient of the nonnegative pixel fluxes.',
+    'shannon_entropy_flux': 'Shannon entropy of flux-normalized pixel weights.',
+    'shannon_entropy_normalized_flux': 'Shannon entropy divided by log(n_pixels).',
+    'n_pixels_eff': 'Inverse-Simpson participation count, flux^2/flux2.',
+    'n_pixels_entropy_eff': 'Shannon effective pixel count, exp(entropy).',
+    'peak_flux_fraction': 'Brightest-pixel flux divided by total flux.',
+    'solid_angle_sr': 'Geometric equal-area solid angle.',
+    'sky_fraction': 'Geometric solid angle divided by 4 pi.',
+    'integrated_flux_sr': 'Equal-area spherical integral of f_esc.',
+    'integrated_flux2_sr': 'Equal-area spherical integral of f_esc squared.',
+    'effective_solid_angle_sr': 'n_pixels_eff times one-pixel solid angle.',
+    'effective_sky_fraction': 'n_pixels_eff divided by full-sky pixel count.',
+    'effective_fill_fraction': 'n_pixels_eff divided by geometric n_pixels.',
+    'flux_value_percentiles': 'Pixel-flux percentiles at metadata/flux_value_percentile_levels.',
+    'flux_centroid_theta': 'Colatitude of the flux-weighted spherical centroid.',
+    'flux_centroid_phi': 'Longitude of the flux-weighted spherical centroid.',
+    'flux_centroid_resultant': 'Norm of flux-weighted mean direction, in [0,1].',
+    'flux_angular_radius_mean': 'Flux-weighted mean angle from the spherical centroid.',
+    'flux_angular_radius_rms': 'Flux-weighted RMS angle from the spherical centroid.',
+    'flux_angular_radius_quantiles': 'Flux-weighted containment radii at metadata targets.',
+    'n_pixels_sigma': 'Fractional brightest-pixel counts for the configured flux targets.',
+    'n_pixels_flux_targets': 'Fractional brightest-pixel counts at metadata/flux_fraction_targets.',
+    'n_boundary_faces': 'Number of outward HEALPix face segments on the region boundary.',
+    'n_boundary_loops': 'Number of disjoint closed boundary polylines.',
+    'boundary_length_rad': 'Great-circle polyline approximation to boundary length.',
+    'spherical_compactness': 'A(4pi-A)/L^2; one for a spherical cap.',
+}
 
-    return centroid_theta, centroid_phi, n_pixels_eff, gini_flux
+METRIC_UNITS = {
+    'solid_angle_sr': 'sr',
+    'integrated_flux_sr': 'sr',
+    'integrated_flux2_sr': 'sr',
+    'effective_solid_angle_sr': 'sr',
+    'flux_centroid_theta': 'radian',
+    'flux_centroid_phi': 'radian',
+    'flux_angular_radius_mean': 'radian',
+    'flux_angular_radius_rms': 'radian',
+    'flux_angular_radius_quantiles': 'radian',
+    'boundary_length_rad': 'radian',
+}
+
+
+def write_metric_group(hdf_group, metrics):
+    """Write metric datasets with self-describing HDF5 attributes."""
+    datasets = {}
+    for name, values in metrics.items():
+        dataset = hdf_group.create_dataset(name, data=values)
+        if name in METRIC_DESCRIPTIONS:
+            dataset.attrs['description'] = METRIC_DESCRIPTIONS[name]
+        if name in METRIC_UNITS:
+            dataset.attrs['units'] = METRIC_UNITS[name]
+        datasets[name] = dataset
+    return datasets
+
+
+def read_hdf_datasets(hdf_group):
+    """Read immediate datasets from an HDF5 group into a dictionary."""
+    result = {}
+    for name, item in hdf_group.items():
+        if isinstance(item, h5py.Dataset):
+            result[name] = item[()] if item.shape == () else item[:]
+    return result
+
+
+def read_segmented_metrics(seg_file=seg_file_default):
+    """Read organized metric namespaces and shared metadata."""
+    with h5py.File(seg_file, 'r') as f:
+        if 'regions/metrics' not in f or 'full_sky/metrics' not in f:
+            raise ValueError(
+                f'{seg_file} predates the organized metrics schema.')
+        metadata = read_hdf_datasets(f['metadata'])
+        region_metrics = read_hdf_datasets(f['regions/metrics'])
+        full_sky_metrics = read_hdf_datasets(f['full_sky/metrics'])
+        persistence_metrics = {}
+        if 'diagnostics/persistence/metrics' in f:
+            persistence_metrics = read_hdf_datasets(
+                f['diagnostics/persistence/metrics'])
+        file_attrs = dict(f.attrs)
+        metadata_attrs = dict(f['metadata'].attrs)
+        segmentation_attrs = dict(f['segmentation'].attrs)
+        persistence_attrs = (
+            dict(f['diagnostics/persistence'].attrs)
+            if 'diagnostics/persistence' in f else {})
+    return {
+        'file_attrs': file_attrs,
+        'metadata': metadata,
+        'metadata_attrs': metadata_attrs,
+        'regions': region_metrics,
+        'full_sky': full_sky_metrics,
+        'persistence': persistence_metrics,
+        'persistence_attrs': persistence_attrs,
+        'segmentation_attrs': segmentation_attrs,
+    }
 
 def top_sigma_flux_targets():
     """Return top-tail fractions of the 1, 2, and 3 sigma percentile ranges."""
@@ -1115,8 +1572,8 @@ def merge_group_map_by_persistence(
     current_group = compact_group_labels(group)
     n_groups_initial = int(np.max(current_group)) + 1
     merge_records = []
-    initial_persistence_values = None
-    initial_threshold_values = None
+    initial_boundary_data = None
+    final_boundary_data = None
     initial_boundary_counts = None
 
     def better_group(group_a, group_b, n_pixels, flux, max_flux):
@@ -1126,25 +1583,53 @@ def merge_group_map_by_persistence(
                  flux[group_b], -group_b)
         return group_a if key_a >= key_b else group_b
 
+    def boundary_snapshot(max_boundary_flux, boundary_counts, max_flux):
+        pairs = np.asarray(sorted(max_boundary_flux), dtype=np.int32)
+        if pairs.size == 0:
+            pairs = np.empty((0, 2), dtype=np.int32)
+        else:
+            pairs = pairs.reshape(-1, 2)
+        saddles = np.asarray([
+            max_boundary_flux[tuple(pair)] for pair in pairs
+        ], dtype=np.float64)
+        min_peaks = np.asarray([
+            min(max_flux[pair[0]], max_flux[pair[1]]) for pair in pairs
+        ], dtype=np.float64)
+        persistence = min_peaks - saddles
+        relative_persistence = np.full(
+            persistence.size, np.nan, dtype=np.float64)
+        np.divide(persistence, min_peaks, out=relative_persistence,
+                  where=min_peaks > 0.)
+        thresholds = np.asarray([
+            persistence_merge_threshold(
+                min_peak, persistence_min, rel_persistence_min)
+            for min_peak in min_peaks
+        ], dtype=np.float64)
+        face_counts = np.asarray([
+            boundary_counts[tuple(pair)] for pair in pairs
+        ], dtype=np.int32)
+        return {
+            'pairs': pairs,
+            'saddle_values': saddles,
+            'min_peak_values': min_peaks,
+            'persistence_values': persistence,
+            'relative_persistence_values': relative_persistence,
+            'threshold_values': thresholds,
+            'boundary_face_counts': face_counts,
+        }
+
     while True:
         (current_group_indices, current_n_pixels, current_flux,
          current_max_flux) = get_group_arrays(current_group, map)
         max_boundary_flux, boundary_counts = get_group_boundary_fluxes(
             current_group, map, neighbors)
 
-        persistence_values = []
-        threshold_values = []
-        for (group_i, group_j), boundary_flux in max_boundary_flux.items():
-            min_peak = min(current_max_flux[group_i],
-                           current_max_flux[group_j])
-            persistence_values.append(min_peak - boundary_flux)
-            threshold_values.append(persistence_merge_threshold(
-                min_peak, persistence_min, rel_persistence_min))
-        persistence_values = np.asarray(persistence_values, dtype=np.float64)
-        threshold_values = np.asarray(threshold_values, dtype=np.float64)
-        if initial_persistence_values is None:
-            initial_persistence_values = persistence_values
-            initial_threshold_values = threshold_values
+        boundary_data = boundary_snapshot(
+            max_boundary_flux, boundary_counts, current_max_flux)
+        if initial_boundary_data is None:
+            initial_boundary_data = {
+                key: values.copy() for key, values in boundary_data.items()
+            }
             initial_boundary_counts = boundary_counts.copy()
 
         merge = None
@@ -1171,6 +1656,7 @@ def merge_group_map_by_persistence(
 
         if merge is None:
             final_boundary_counts = boundary_counts
+            final_boundary_data = boundary_data
             break
 
         low_group, high_group = merge[:2]
@@ -1203,8 +1689,11 @@ def merge_group_map_by_persistence(
         'n_persistence_merges': (
             int(records.shape[0] - np.sum(records[:, 6]))
             if records.size else 0),
-        'initial_persistence_values': initial_persistence_values,
-        'initial_threshold_values': initial_threshold_values,
+        'initial_boundary_data': initial_boundary_data,
+        'final_boundary_data': final_boundary_data,
+        'initial_persistence_values': (
+            initial_boundary_data['persistence_values']),
+        'initial_threshold_values': initial_boundary_data['threshold_values'],
         'initial_boundary_counts': initial_boundary_counts,
         'final_boundary_counts': final_boundary_counts,
     }
@@ -1218,6 +1707,8 @@ def merge_group_map_by_persistence(
             print(f'rel_persistence_min={rel_persistence_min:g}; '
                   f'merge when saddle > '
                   f'{100.*(1.-rel_persistence_min):g}% of lower peak')
+        initial_persistence_values = initial_boundary_data[
+            'persistence_values']
         if initial_persistence_values.size > 0:
             p10, p50, p90 = np.percentile(
                 initial_persistence_values, [10., 50., 90.])
@@ -1267,6 +1758,174 @@ def merge_groups_by_persistence(
         rel_persistence_min=rel_persistence_min, peak_min=peak_min,
         return_diagnostics=return_diagnostics)
 
+
+def distribution_shape_metrics(values, percentile_levels):
+    """Return descriptive moment and quantile metrics for a finite sample."""
+    values = np.asarray(values, dtype=np.float64).ravel()
+    values = values[np.isfinite(values)]
+    percentile_levels = np.asarray(percentile_levels, dtype=np.float64)
+    metrics = {
+        'n_values': np.int32(values.size),
+        'minimum': np.nan,
+        'maximum': np.nan,
+        'mean': np.nan,
+        'median': np.nan,
+        'std': np.nan,
+        'skewness': np.nan,
+        'excess_kurtosis': np.nan,
+        'bimodality_coefficient': np.nan,
+        'value_percentiles': np.full(
+            percentile_levels.size, np.nan, dtype=np.float64),
+    }
+    if values.size == 0:
+        return metrics
+
+    mean = np.mean(values)
+    std = np.std(values)
+    metrics.update({
+        'minimum': float(np.min(values)),
+        'maximum': float(np.max(values)),
+        'mean': float(mean),
+        'median': float(np.median(values)),
+        'std': float(std),
+        'value_percentiles': np.percentile(values, percentile_levels),
+    })
+    if values.size >= 4 and std > 0.:
+        z = (values - mean) / std
+        metrics['skewness'] = float(np.mean(z**3))
+        metrics['excess_kurtosis'] = float(np.mean(z**4) - 3.)
+        metrics['bimodality_coefficient'] = bimodality_coefficient(values)
+    return metrics
+
+
+def remap_boundary_data_labels(boundary_data, old_to_new):
+    """Return boundary diagnostics relabeled and sorted by persistent labels."""
+    result = {key: values.copy() for key, values in boundary_data.items()}
+    pairs = old_to_new[result['pairs']]
+    pairs.sort(axis=1)
+    order = np.lexsort((pairs[:, 1], pairs[:, 0]))
+    result['pairs'] = pairs[order]
+    for name in result:
+        if name != 'pairs':
+            result[name] = result[name][order]
+    return result
+
+
+def write_persistence_diagnostics(hdf_file, diagnostics,
+                                  persistence_min,
+                                  rel_persistence_min, peak_min):
+    """Write raw persistence topology and diagnostic distribution metrics."""
+    diagnostics_group = hdf_file.require_group('diagnostics')
+    persistence_group = diagnostics_group.create_group('persistence')
+    metrics_group = persistence_group.create_group('metrics')
+
+    records_dataset = persistence_group.create_dataset(
+        'merge_records', data=diagnostics['merge_records'])
+    records_dataset.attrs['columns'] = diagnostics['merge_record_columns']
+
+    for stage in ('initial', 'final'):
+        stage_group = persistence_group.create_group(stage)
+        stage_data = diagnostics[f'{stage}_boundary_data']
+        for name, values in stage_data.items():
+            dataset = stage_group.create_dataset(name, data=values)
+            if name == 'pairs':
+                dataset.attrs['description'] = (
+                    'Neighboring region-label pairs aligned row-by-row with '
+                    'the other stage datasets.')
+            elif name == 'saddle_values':
+                dataset.attrs['description'] = (
+                    'Maximum mean endpoint flux over each shared boundary.')
+            elif name == 'min_peak_values':
+                dataset.attrs['description'] = (
+                    'Lower region peak for each neighboring pair.')
+            elif name == 'persistence_values':
+                dataset.attrs['description'] = 'min_peak_values-saddle_values.'
+            elif name == 'relative_persistence_values':
+                dataset.attrs['description'] = (
+                    'persistence_values/min_peak_values.')
+            elif name == 'threshold_values':
+                dataset.attrs['description'] = (
+                    'Combined absolute-relative merge threshold for each pair.')
+            elif name == 'boundary_face_counts':
+                dataset.attrs['description'] = (
+                    'Number of shared HEALPix face segments for each pair.')
+
+        persistence_values = stage_data['persistence_values']
+        positive = persistence_values[persistence_values > 0.]
+        relative = stage_data['relative_persistence_values']
+        relative_positive = relative[
+            (persistence_values > 0.) & np.isfinite(relative)]
+        for prefix, values in (
+                (f'{stage}_positive', positive),
+                (f'{stage}_relative_positive', relative_positive)):
+            shape_metrics = distribution_shape_metrics(
+                values, PERSISTENCE_VALUE_PERCENTILES)
+            for name, value in shape_metrics.items():
+                metrics_group.create_dataset(f'{prefix}_{name}', data=value)
+
+        metrics_group.create_dataset(
+            f'{stage}_n_nonpositive',
+            data=np.int32(np.count_nonzero(persistence_values <= 0.)))
+        if persistence_values.size > 0:
+            metrics_group.create_dataset(
+                f'{stage}_fraction_below_absolute_threshold',
+                data=np.mean(persistence_values < persistence_min))
+            metrics_group.create_dataset(
+                f'{stage}_fraction_below_combined_threshold',
+                data=np.mean(
+                    persistence_values < stage_data['threshold_values']))
+        else:
+            metrics_group.create_dataset(
+                f'{stage}_fraction_below_absolute_threshold', data=np.nan)
+            metrics_group.create_dataset(
+                f'{stage}_fraction_below_combined_threshold', data=np.nan)
+
+        otsu = otsu_threshold(positive)
+        metrics_group.create_dataset(f'{stage}_positive_otsu_threshold',
+                                     data=otsu)
+        metrics_group.create_dataset(
+            f'{stage}_positive_otsu_valley_valid',
+            data=otsu_threshold_is_valley(positive, otsu))
+
+    metric_percentiles = metrics_group.create_dataset(
+        'value_percentile_levels', data=PERSISTENCE_VALUE_PERCENTILES)
+    metric_percentiles.attrs['units'] = 'percent'
+    metrics_group.create_dataset(
+        'bimodality_uniform_reference', data=5./9.)
+    persistence_group.attrs['diagnostic_only'] = True
+    persistence_group.attrs['bimodality_note'] = (
+        'The 5/9 reference is heuristic; correlated or skewed unimodal '
+        'samples can exceed it.')
+    persistence_group.attrs['otsu_note'] = (
+        'Otsu and valley values are recorded for comparison and do not '
+        'control the segmentation.')
+    persistence_group.attrs['persistence_definition'] = (
+        'min_peak - maximum shared-boundary mean face flux')
+    persistence_group.attrs['relative_persistence_definition'] = (
+        'persistence / min_peak')
+    persistence_group.attrs['persistence_min'] = np.float64(persistence_min)
+    persistence_group.attrs['rel_persistence_min'] = np.float64(
+        0. if rel_persistence_min is None else rel_persistence_min)
+    persistence_group.attrs['peak_min'] = np.float64(peak_min)
+    persistence_group.attrs['initial_pair_label_scope'] = (
+        'source pre-merge segmentation labels')
+    persistence_group.attrs['final_pair_label_scope'] = (
+        'final regions labels, sorted by descending flux')
+    persistence_group.attrs['merge_record_label_scope'] = (
+        'transient compact labels at each iterative merge pass')
+    persistence_group.attrs['n_groups_initial'] = np.int32(
+        diagnostics['n_groups_initial'])
+    persistence_group.attrs['n_groups_final'] = np.int32(
+        diagnostics['n_groups_final'])
+    persistence_group.attrs['n_noise_merges'] = np.int32(
+        diagnostics['n_noise_merges'])
+    persistence_group.attrs['n_persistence_merges'] = np.int32(
+        diagnostics['n_persistence_merges'])
+    metrics_group.attrs['shape_sample'] = (
+        'strictly positive persistence values; relative metrics use the '
+        'same pairs divided by min_peak')
+
+
 def write_persistent_segmented_groups(
         seg_file=seg_file_default,
         persistence_min=PERSISTENCE_MIN_DEFAULT, nside=10,
@@ -1282,29 +1941,36 @@ def write_persistent_segmented_groups(
         seg_file=source_seg_file,
         rel_persistence_min=rel_persistence_min,
         peak_min=peak_min, return_diagnostics=True)
+    final_order = np.lexsort((np.arange(flux.size), -flux))
+    old_to_new = np.empty(flux.size, dtype=np.int32)
+    old_to_new[final_order] = np.arange(flux.size, dtype=np.int32)
+    diagnostics['final_boundary_data'] = remap_boundary_data_labels(
+        diagnostics['final_boundary_data'], old_to_new)
     result = write_segmented_groups(
         seg_file=seg_file, nside=nside, segment_file=segment_file,
         map_file=map_file, group=group, group_indices=group_indices,
         n_pixels=n_pixels, flux=flux, max_flux=max_flux,
         write_boundaries=write_boundaries)
     with h5py.File(seg_file, 'a') as f:
-        records = diagnostics['merge_records']
-        f.create_dataset('persistence_merge_records', data=records)
-        f.attrs['segmentation_method'] = 'watershed_persistence'
-        f.attrs['peak_min'] = np.float64(peak_min)
-        f.attrs['persistence_min'] = np.float64(persistence_min)
-        f.attrs['rel_persistence_min'] = np.float64(
+        write_persistence_diagnostics(
+            f, diagnostics, persistence_min,
+            rel_persistence_min, peak_min)
+        segmentation_group = f['segmentation']
+        segmentation_group.attrs['method'] = 'watershed_persistence'
+        segmentation_group.attrs['peak_min'] = np.float64(peak_min)
+        segmentation_group.attrs['persistence_min'] = np.float64(
+            persistence_min)
+        segmentation_group.attrs['rel_persistence_min'] = np.float64(
             0. if rel_persistence_min is None else rel_persistence_min)
-        f.attrs['maximum_distinct_saddle_fraction'] = np.float64(
+        segmentation_group.attrs['maximum_distinct_saddle_fraction'] = np.float64(
             1. if rel_persistence_min is None
             else 1. - rel_persistence_min)
-        f.attrs['persistence_threshold_mode'] = 'max_absolute_relative'
-        f.attrs['n_noise_merges'] = np.int32(
+        segmentation_group.attrs['persistence_threshold_mode'] = (
+            'max_absolute_relative')
+        segmentation_group.attrs['n_noise_merges'] = np.int32(
             diagnostics['n_noise_merges'])
-        f.attrs['n_persistence_merges'] = np.int32(
+        segmentation_group.attrs['n_persistence_merges'] = np.int32(
             diagnostics['n_persistence_merges'])
-        f.attrs['persistence_merge_record_columns'] = (
-            diagnostics['merge_record_columns'])
     return result
 
 def default_unmerged_seg_file(seg_file):
@@ -1655,10 +2321,45 @@ def plot_groups(nside=10, segment_file=None,
         return fesc, delta_fesc, group_unmerged, group
     return fesc, delta_fesc, group
 
+
+def build_segmentation_catalog(
+        nside=10, segment_file=None, map_file=map_file_default,
+        seg_file=seg_file_default, unmerged_seg_file=None,
+        plot_file=None, make_plot=True, write_boundaries=True,
+        persistence_min=PERSISTENCE_MIN_DEFAULT,
+        rel_persistence_min=REL_PERSISTENCE_MIN_DEFAULT,
+        peak_min=PEAK_MIN_DEFAULT):
+    """Build pre-merge/final catalogs and the standard diagnostic plot."""
+    seg_file = Path(seg_file)
+    if unmerged_seg_file is None:
+        unmerged_seg_file = default_unmerged_seg_file(seg_file)
+    unmerged_seg_file = Path(unmerged_seg_file)
+
+    write_segmented_groups(
+        seg_file=unmerged_seg_file, nside=nside,
+        segment_file=segment_file, map_file=map_file,
+        write_boundaries=write_boundaries)
+    write_persistent_segmented_groups(
+        seg_file=seg_file, source_seg_file=unmerged_seg_file,
+        nside=nside, segment_file=segment_file, map_file=map_file,
+        write_boundaries=write_boundaries,
+        persistence_min=persistence_min,
+        rel_persistence_min=rel_persistence_min,
+        peak_min=peak_min)
+    if make_plot:
+        plot_groups(
+            nside=nside, segment_file=segment_file, map_file=map_file,
+            save_file=plot_file, seg_file=seg_file,
+            unmerged_seg_file=unmerged_seg_file)
+    return {
+        'seg_file': seg_file,
+        'unmerged_seg_file': unmerged_seg_file,
+        'plot_file': ((base_dir / 'delta_fesc_segments.pdf'
+                       if plot_file is None else Path(plot_file))
+                      if make_plot else None),
+    }
+
+
 if __name__ == '__main__':
     # create_pixel_segments()
-    unmerged_seg_file = default_unmerged_seg_file(seg_file_default)
-    write_segmented_groups(seg_file=unmerged_seg_file,
-                           write_boundaries=True)
-    write_persistent_segmented_groups(source_seg_file=unmerged_seg_file)
-    plot_groups(seg_file=seg_file_default, unmerged_seg_file=unmerged_seg_file)
+    build_segmentation_catalog()
