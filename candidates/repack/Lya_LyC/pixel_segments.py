@@ -11,6 +11,11 @@ seg_file_default = base_dir / 'ion-eq_seg_g5760_z8_168.hdf5'
 
 VERBOSE = False
 
+PERSISTENCE_MIN_DEFAULT = 0.05
+REL_PERSISTENCE_MIN_DEFAULT = 0.30
+PEAK_MIN_DEFAULT = 0.01
+FESC_PLOT_MAX_MIN_PERCENT = 1.
+
 sigma_68 = erf(1./np.sqrt(2.))
 sigma_95 = erf(2./np.sqrt(2.))
 sigma_99 = erf(3./np.sqrt(2.))
@@ -1060,161 +1065,247 @@ def get_group_boundary_fluxes(group, map, neighbors):
 
     return max_boundary_flux, boundary_counts
 
-def merge_groups_by_persistence(persistence_min=0.05, nside=10,
-                                segment_file=None, map_file=map_file_default,
-                                seg_file=seg_file_default,
-                                rel_persistence_min=0.15):
+def persistence_merge_threshold(
+        min_peak, persistence_min=PERSISTENCE_MIN_DEFAULT,
+        rel_persistence_min=REL_PERSISTENCE_MIN_DEFAULT):
+    """Return the absolute-or-relative prominence threshold for a peak."""
+    threshold = float(persistence_min)
+    if rel_persistence_min is not None and rel_persistence_min > 0.:
+        threshold = max(threshold, rel_persistence_min * float(min_peak))
+    return threshold
+
+
+def merge_group_map_by_persistence(
+        group, map, neighbors,
+        persistence_min=PERSISTENCE_MIN_DEFAULT,
+        rel_persistence_min=REL_PERSISTENCE_MIN_DEFAULT,
+        peak_min=PEAK_MIN_DEFAULT, return_diagnostics=False):
     """
-    Merge neighboring watershed groups by topological persistence.
-    persistence_min is in raw f_esc units, so 0.01 is one percentage point.
-    After each merge, all current group boundaries are recomputed and
-    reconsidered. The merge threshold for a neighboring pair is
-    max(persistence_min, rel_persistence_min * min_peak), where min_peak is the
-    smaller of the two group maxima. Group pairs are considered in descending
-    max boundary flux, matching a superlevel-set filtration. This is
-    deterministic and peak-centered rather than ordered by basin area or
-    summed flux.
+    Simplify a watershed partition using deterministic 0D persistence.
+
+    Candidate boundaries are considered from the highest saddle downward.
+    After every accepted merge all group statistics and boundaries are rebuilt,
+    so the next pass starts from the current topology. The higher peak survives
+    (the elder rule), with size, flux, and label used only as deterministic tie
+    breakers.
+
+    A lower peak below ``peak_min`` is always absorbed at its highest available
+    saddle. Significant peaks merge when their prominence
+    ``min_peak - saddle`` is smaller than
+    ``max(persistence_min, rel_persistence_min * min_peak)``. Thus the
+    absolute threshold controls the low-amplitude regime while the relative
+    threshold prevents shallow shoulders on bright peaks from becoming
+    separate regions.
     """
-    group, group_indices, n_pixels, flux, max_flux = read_segmented_groups(seg_file)
-    neib_n, neib_e, neib_s, neib_w = load_pixel_segments(nside, segment_file)
-    neighbors = np.vstack([neib_n, neib_e, neib_s, neib_w]).T
-
-    with h5py.File(map_file, 'r') as f:
-        map = f['map'][:]
-
-    assert group.size == map.size == hp.nside2npix(nside)
-    n_groups = len(group_indices)
-
-    if np.any(~np.isfinite(max_flux)):
-        max_flux = np.array([np.max(map[indices]) for indices in group_indices],
-                            dtype=np.float64)
-    if rel_persistence_min is not None and rel_persistence_min < 0.:
-        raise ValueError('rel_persistence_min must be non-negative or None.')
+    group = np.asarray(group, dtype=np.int32)
+    map = np.asarray(map, dtype=np.float64)
+    neighbors = np.asarray(neighbors, dtype=np.int32)
+    if group.ndim != 1 or map.shape != group.shape:
+        raise ValueError('group and map must be one-dimensional and equal-sized.')
+    if neighbors.ndim != 2 or neighbors.shape[0] != group.size:
+        raise ValueError('neighbors must have shape (npix, n_neighbors).')
+    if persistence_min < 0.:
+        raise ValueError('persistence_min must be non-negative.')
+    if peak_min < 0.:
+        raise ValueError('peak_min must be non-negative.')
+    if (rel_persistence_min is not None and
+            not 0. <= rel_persistence_min <= 1.):
+        raise ValueError('rel_persistence_min must be in [0, 1] or None.')
 
     current_group = compact_group_labels(group)
+    n_groups_initial = int(np.max(current_group)) + 1
     merge_records = []
     initial_persistence_values = None
     initial_threshold_values = None
     initial_boundary_counts = None
-    final_boundary_counts = None
 
-    def better_group(group_a, group_b, group_n_pixels, group_flux,
-                     group_max_flux):
-        key_a = (group_max_flux[group_a], group_n_pixels[group_a],
-                 group_flux[group_a], -group_a)
-        key_b = (group_max_flux[group_b], group_n_pixels[group_b],
-                 group_flux[group_b], -group_b)
+    def better_group(group_a, group_b, n_pixels, flux, max_flux):
+        key_a = (max_flux[group_a], n_pixels[group_a],
+                 flux[group_a], -group_a)
+        key_b = (max_flux[group_b], n_pixels[group_b],
+                 flux[group_b], -group_b)
         return group_a if key_a >= key_b else group_b
-
-    def merge_threshold(min_peak):
-        threshold = persistence_min
-        if rel_persistence_min is not None and rel_persistence_min > 0.:
-            threshold = max(threshold, rel_persistence_min * min_peak)
-        return threshold
 
     while True:
         (current_group_indices, current_n_pixels, current_flux,
          current_max_flux) = get_group_arrays(current_group, map)
         max_boundary_flux, boundary_counts = get_group_boundary_fluxes(
             current_group, map, neighbors)
+
         persistence_values = []
         threshold_values = []
-        for (i, j), boundary_flux in max_boundary_flux.items():
-            min_peak = min(current_max_flux[i], current_max_flux[j])
+        for (group_i, group_j), boundary_flux in max_boundary_flux.items():
+            min_peak = min(current_max_flux[group_i],
+                           current_max_flux[group_j])
             persistence_values.append(min_peak - boundary_flux)
-            threshold_values.append(merge_threshold(min_peak))
-        persistence_values = np.array(persistence_values)
-        threshold_values = np.array(threshold_values)
+            threshold_values.append(persistence_merge_threshold(
+                min_peak, persistence_min, rel_persistence_min))
+        persistence_values = np.asarray(persistence_values, dtype=np.float64)
+        threshold_values = np.asarray(threshold_values, dtype=np.float64)
         if initial_persistence_values is None:
             initial_persistence_values = persistence_values
             initial_threshold_values = threshold_values
-            initial_boundary_counts = boundary_counts
+            initial_boundary_counts = boundary_counts.copy()
 
         merge = None
         for (group_i, group_j), boundary_flux in sorted(
-                max_boundary_flux.items(), key=lambda item: (-item[1], item[0])):
-            min_peak = min(current_max_flux[group_i], current_max_flux[group_j])
+                max_boundary_flux.items(),
+                key=lambda item: (-item[1], item[0])):
+            min_peak = min(current_max_flux[group_i],
+                           current_max_flux[group_j])
             persistence = min_peak - boundary_flux
-            threshold = merge_threshold(min_peak)
-            if persistence < threshold:
-                high_group = better_group(group_i, group_j, current_n_pixels,
-                                          current_flux, current_max_flux)
-                low_group = group_j if high_group == group_i else group_i
-                merge = (low_group, high_group, boundary_flux, persistence,
-                         threshold, len(current_group_indices))
-                break
+            threshold = persistence_merge_threshold(
+                min_peak, persistence_min, rel_persistence_min)
+            noise_peak = min_peak < peak_min
+            if not noise_peak and persistence >= threshold:
+                continue
+
+            high_group = better_group(
+                group_i, group_j, current_n_pixels,
+                current_flux, current_max_flux)
+            low_group = group_j if high_group == group_i else group_i
+            merge = (low_group, high_group, boundary_flux, persistence,
+                     threshold, min_peak, int(noise_peak),
+                     len(current_group_indices))
+            break
 
         if merge is None:
             final_boundary_counts = boundary_counts
             break
 
-        (low_group, high_group, boundary_flux, persistence, threshold,
-         n_groups_before) = merge
+        low_group, high_group = merge[:2]
         current_group[current_group == low_group] = high_group
         current_group = compact_group_labels(current_group)
-        merge_records.append((low_group, high_group, boundary_flux,
-                              persistence, threshold, n_groups_before))
+        merge_records.append(merge)
 
-    merged_group = current_group
-    merged_group_indices, merged_n_pixels, merged_flux, merged_max_flux = (
-        get_group_arrays(merged_group, map))
+    (merged_group_indices, merged_n_pixels, merged_flux,
+     merged_max_flux) = get_group_arrays(current_group, map)
+    if (merged_max_flux.size > 1 and
+            np.any(merged_max_flux < peak_min)):
+        raise RuntimeError('A sub-threshold peak survived persistence merging.')
+    if np.sum(merged_n_pixels) != group.size:
+        raise RuntimeError('Persistence merge lost pixels.')
+    if not np.isclose(np.sum(merged_flux), np.sum(map),
+                      rtol=1.e-12, atol=1.e-14):
+        raise RuntimeError('Persistence merge changed the total flux.')
+
+    records = np.asarray(merge_records, dtype=np.float64)
+    if records.size == 0:
+        records = np.empty((0, 8), dtype=np.float64)
+    diagnostics = {
+        'merge_records': records,
+        'merge_record_columns': (
+            'absorbed_group surviving_group saddle_flux persistence '
+            'threshold min_peak noise_peak n_groups_before'),
+        'n_groups_initial': n_groups_initial,
+        'n_groups_final': len(merged_group_indices),
+        'n_noise_merges': int(np.sum(records[:, 6])) if records.size else 0,
+        'n_persistence_merges': (
+            int(records.shape[0] - np.sum(records[:, 6]))
+            if records.size else 0),
+        'initial_persistence_values': initial_persistence_values,
+        'initial_threshold_values': initial_threshold_values,
+        'initial_boundary_counts': initial_boundary_counts,
+        'final_boundary_counts': final_boundary_counts,
+    }
 
     if VERBOSE:
         print('Persistence merge:')
+        print(f'peak_min={peak_min:g} ({100.*peak_min:g}% peak floor)')
         print(f'persistence_min={persistence_min:g} '
               f'({100.*persistence_min:g} percentage points)')
         if rel_persistence_min is not None and rel_persistence_min > 0.:
-            print(f'rel_persistence_min={rel_persistence_min:g} '
-                  f'({100.*rel_persistence_min:g}% of smaller peak)')
+            print(f'rel_persistence_min={rel_persistence_min:g}; '
+                  f'merge when saddle > '
+                  f'{100.*(1.-rel_persistence_min):g}% of lower peak')
         if initial_persistence_values.size > 0:
             p10, p50, p90 = np.percentile(
                 initial_persistence_values, [10., 50., 90.])
-            t10, t50, t90 = np.percentile(
-                initial_threshold_values, [10., 50., 90.])
-            counts = np.array(list(initial_boundary_counts.values()),
-                              dtype=np.int32)
+            counts = np.asarray(list(initial_boundary_counts.values()),
+                                dtype=np.int32)
             print(f'initial boundary pairs={len(initial_boundary_counts)}, '
-                  f'boundary pixels min/max={np.min(counts)}/{np.max(counts)}')
+                  f'boundary faces min/max={np.min(counts)}/{np.max(counts)}')
             print(f'initial persistence min/p10/median/p90/max = '
                   f'{np.min(initial_persistence_values):g} / {p10:g} / '
                   f'{p50:g} / {p90:g} / '
                   f'{np.max(initial_persistence_values):g}')
-            print(f'initial threshold min/p10/median/p90/max = '
-                  f'{np.min(initial_threshold_values):g} / {t10:g} / '
-                  f'{t50:g} / {t90:g} / '
-                  f'{np.max(initial_threshold_values):g}')
-        if final_boundary_counts is not None:
-            print(f'final boundary pairs={len(final_boundary_counts)}')
-        print(f'persistence merges={len(merge_records)}, '
-              f'merge passes={len(merge_records)+1}, groups={n_groups} -> '
-              f'{len(merged_group_indices)}')
+        print(f'noise merges={diagnostics["n_noise_merges"]}, '
+              f'persistence merges={diagnostics["n_persistence_merges"]}, '
+              f'merge passes={records.shape[0]+1}, '
+              f'groups={n_groups_initial} -> {len(merged_group_indices)}')
+        print(f'final boundary pairs={len(final_boundary_counts)}')
         print(f'merged group size min/max/mean/median: '
               f'{np.min(merged_n_pixels)} / {np.max(merged_n_pixels)} / '
               f'{np.mean(merged_n_pixels):g} / {np.median(merged_n_pixels):g}')
         print(f'merged max_flux min/max: {np.min(merged_max_flux):g} / '
               f'{np.max(merged_max_flux):g}')
 
-    return merged_group, merged_group_indices, merged_n_pixels, merged_flux, merged_max_flux
+    result = (current_group, merged_group_indices, merged_n_pixels,
+              merged_flux, merged_max_flux)
+    if return_diagnostics:
+        return result + (diagnostics,)
+    return result
 
-def write_persistent_segmented_groups(seg_file=seg_file_default,
-                                      persistence_min=0.05, nside=10,
-                                      segment_file=None,
-                                      map_file=map_file_default,
-                                      source_seg_file=seg_file_default,
-                                      write_boundaries=True,
-                                      rel_persistence_min=0.15):
-    """Merge watershed groups and write the result to HDF5."""
-    group, group_indices, n_pixels, flux, max_flux = merge_groups_by_persistence(
+
+def merge_groups_by_persistence(
+        persistence_min=PERSISTENCE_MIN_DEFAULT, nside=10,
+        segment_file=None, map_file=map_file_default,
+        seg_file=seg_file_default,
+        rel_persistence_min=REL_PERSISTENCE_MIN_DEFAULT,
+        peak_min=PEAK_MIN_DEFAULT, return_diagnostics=False):
+    """Load watershed groups and simplify them by noise-aware persistence."""
+    group, group_indices, n_pixels, flux, max_flux = read_segmented_groups(
+        seg_file)
+    neib_n, neib_e, neib_s, neib_w = load_pixel_segments(
+        nside, segment_file)
+    neighbors = np.vstack([neib_n, neib_e, neib_s, neib_w]).T
+    with h5py.File(map_file, 'r') as f:
+        map = f['map'][:]
+    assert group.size == map.size == hp.nside2npix(nside)
+    return merge_group_map_by_persistence(
+        group, map, neighbors, persistence_min=persistence_min,
+        rel_persistence_min=rel_persistence_min, peak_min=peak_min,
+        return_diagnostics=return_diagnostics)
+
+def write_persistent_segmented_groups(
+        seg_file=seg_file_default,
+        persistence_min=PERSISTENCE_MIN_DEFAULT, nside=10,
+        segment_file=None, map_file=map_file_default,
+        source_seg_file=seg_file_default, write_boundaries=True,
+        rel_persistence_min=REL_PERSISTENCE_MIN_DEFAULT,
+        peak_min=PEAK_MIN_DEFAULT):
+    """Merge watershed groups and write results plus criteria to HDF5."""
+    (group, group_indices, n_pixels, flux, max_flux,
+     diagnostics) = merge_groups_by_persistence(
         persistence_min=persistence_min, nside=nside,
         segment_file=segment_file, map_file=map_file,
-        seg_file=source_seg_file, rel_persistence_min=rel_persistence_min)
-    return write_segmented_groups(seg_file=seg_file, nside=nside,
-                                  segment_file=segment_file,
-                                  map_file=map_file, group=group,
-                                  group_indices=group_indices,
-                                  n_pixels=n_pixels, flux=flux,
-                                  max_flux=max_flux,
-                                  write_boundaries=write_boundaries)
+        seg_file=source_seg_file,
+        rel_persistence_min=rel_persistence_min,
+        peak_min=peak_min, return_diagnostics=True)
+    result = write_segmented_groups(
+        seg_file=seg_file, nside=nside, segment_file=segment_file,
+        map_file=map_file, group=group, group_indices=group_indices,
+        n_pixels=n_pixels, flux=flux, max_flux=max_flux,
+        write_boundaries=write_boundaries)
+    with h5py.File(seg_file, 'a') as f:
+        records = diagnostics['merge_records']
+        f.create_dataset('persistence_merge_records', data=records)
+        f.attrs['segmentation_method'] = 'watershed_persistence'
+        f.attrs['peak_min'] = np.float64(peak_min)
+        f.attrs['persistence_min'] = np.float64(persistence_min)
+        f.attrs['rel_persistence_min'] = np.float64(
+            0. if rel_persistence_min is None else rel_persistence_min)
+        f.attrs['maximum_distinct_saddle_fraction'] = np.float64(
+            1. if rel_persistence_min is None
+            else 1. - rel_persistence_min)
+        f.attrs['persistence_threshold_mode'] = 'max_absolute_relative'
+        f.attrs['n_noise_merges'] = np.int32(
+            diagnostics['n_noise_merges'])
+        f.attrs['n_persistence_merges'] = np.int32(
+            diagnostics['n_persistence_merges'])
+        f.attrs['persistence_merge_record_columns'] = (
+            diagnostics['merge_record_columns'])
+    return result
 
 def default_unmerged_seg_file(seg_file):
     """Return the default companion filename for pre-merge groups."""
@@ -1439,7 +1530,7 @@ def plot_groups(nside=10, segment_file=None,
 
     fesc = map / 0.01
     delta_fesc = diff_map / 0.01
-    fesc_lims = [0., np.max(fesc)]
+    fesc_lims = [0., max(FESC_PLOT_MAX_MIN_PERCENT, np.max(fesc))]
     delta_lims = [0., np.max(delta_fesc)]
 
     if VERBOSE:
@@ -1459,6 +1550,7 @@ def plot_groups(nside=10, segment_file=None,
     flux_sigma_targets = None
     group_unmerged = None
     group_indices_unmerged = None
+    group_vertices_unmerged = None
     n_pixels_sigma_unmerged = None
     flux_sigma_targets_unmerged = None
     if seg_file is not None:
@@ -1488,14 +1580,20 @@ def plot_groups(nside=10, segment_file=None,
         if write_unmerged:
             write_segmented_groups(seg_file=unmerged_seg_file, nside=nside,
                                    segment_file=segment_file,
-                                   map_file=map_file)
+                                   map_file=map_file,
+                                   write_boundaries=True)
         if Path(unmerged_seg_file).exists():
             (group_unmerged, group_indices_unmerged, n_pixels_unmerged,
-             flux_unmerged, max_flux_unmerged, n_pixels_sigma_unmerged,
+             flux_unmerged, max_flux_unmerged,
+             group_inner_indices_unmerged, group_outer_indices_unmerged,
+             group_vertices_unmerged, n_pixels_sigma_unmerged,
              flux_sigma_targets_unmerged) = read_segmented_groups(
-                unmerged_seg_file, read_sigma=True)
+                unmerged_seg_file, read_boundaries=True, read_sigma=True)
             assert group_unmerged.size == map.size, (
                 f'unmerged group size {group_unmerged.size} does not match map size {map.size}')
+            if np.sum([len(vertices)
+                       for vertices in group_vertices_unmerged]) == 0:
+                group_vertices_unmerged = None
             if n_pixels_sigma_unmerged.size == 0:
                 n_pixels_sigma_unmerged = None
                 flux_sigma_targets_unmerged = None
@@ -1524,7 +1622,7 @@ def plot_groups(nside=10, segment_file=None,
                 len(group_indices_unmerged), group_indices_unmerged, map,
                 u_str=r'$%d\ {\rm Groups}\ ({\rm pre\!-\!merge})$'
                 % len(group_indices_unmerged),
-                group_vertices=group_vertices,
+                group_vertices=group_vertices_unmerged,
                 n_pixels_sigma=n_pixels_sigma_unmerged,
                 flux_sigma_targets=flux_sigma_targets_unmerged,
                 rot=rot)
@@ -1560,6 +1658,7 @@ def plot_groups(nside=10, segment_file=None,
 if __name__ == '__main__':
     # create_pixel_segments()
     unmerged_seg_file = default_unmerged_seg_file(seg_file_default)
-    write_segmented_groups(seg_file=unmerged_seg_file)
+    write_segmented_groups(seg_file=unmerged_seg_file,
+                           write_boundaries=True)
     write_persistent_segmented_groups(source_seg_file=unmerged_seg_file)
     plot_groups(seg_file=seg_file_default, unmerged_seg_file=unmerged_seg_file)
