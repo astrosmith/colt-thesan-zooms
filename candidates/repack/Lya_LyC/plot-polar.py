@@ -6,6 +6,7 @@ from matplotlib.colors import LogNorm, Normalize
 from matplotlib import patheffects
 import cmasher as cmr
 import cmocean
+from functools import lru_cache
 
 from scipy.ndimage import convolve1d
 from scipy.ndimage import gaussian_filter1d
@@ -281,6 +282,141 @@ def _wrap_angle(theta):
     """Wrap angle(s) to [-pi, pi)."""
     return (theta + np.pi) % (2 * np.pi) - np.pi
 
+@lru_cache(maxsize=8)
+def _abs_cos_basis(n_directions):
+    """Return the reusable angular grid and |cos| alignment kernel."""
+    direction_edges = np.linspace(0., np.pi, n_directions + 1)
+    direction_grid = 0.5 * (direction_edges[:-1] + direction_edges[1:])
+    abs_cos_kernel = np.abs(np.cos(direction_grid[:, None] - direction_grid[None, :]))
+    return direction_edges, direction_grid, abs_cos_kernel
+
+def centroided_axial_directionality(x, y, weights, n_directions=360, radial_power=0.):
+    """Measure line-like directionality about the weighted spatial centroid.
+
+    Unlike a spatial shape tensor, the axial moment below uses only the angle of
+    each pixel about the centroid. A bright pixel therefore does not gain extra
+    leverage merely because it lies farther from the centroid.
+
+    Parameters
+    ----------
+    x, y, weights : array_like
+        Pixel coordinates and non-negative pixel weights. All inputs must have
+        the same shape.
+    n_directions : int, optional
+        Number of trial axes in [0, pi) used for the |cos| statistic.
+    radial_power : float, optional
+        Extra radial weighting about the centroid. The default 0 is purely
+        angular, 1 gives linear leverage to radius, and 2 recovers the usual
+        second-moment shape-tensor direction and ellipticity.
+
+    Returns
+    -------
+    result : dict
+        ``theta_axis`` is the usual second-circular-moment direction, modulo pi,
+        and ``axial_strength`` is |<exp(2 i theta)>| in [0, 1].
+        ``theta_abs_cos`` maximizes <|cos(theta-alpha)|>; its normalized strength
+        is zero for an isotropic angular distribution and one for a perfect line.
+        ``fore_aft_asymmetry`` is zero for equal opposite lobes and one for a
+        completely one-sided feature along the selected |cos| axis.
+    """
+    x = np.asarray(x, dtype=float).ravel()
+    y = np.asarray(y, dtype=float).ravel()
+    weights = np.asarray(weights, dtype=float).ravel()
+    if x.shape != y.shape or x.shape != weights.shape:
+        raise ValueError("x, y, and weights must have the same shape")
+    if int(n_directions) != n_directions or n_directions < 4:
+        raise ValueError("n_directions must be an integer >= 4")
+    if not np.isfinite(radial_power) or radial_power < 0.:
+        raise ValueError("radial_power must be finite and non-negative")
+
+    finite = np.isfinite(x) & np.isfinite(y) & np.isfinite(weights)
+    if np.any(weights[finite] < 0.):
+        raise ValueError("weights must be non-negative")
+    x, y, weights = x[finite], y[finite], weights[finite]
+    total_weight = np.sum(weights)
+    empty = dict(
+        centroid_x=np.nan,
+        centroid_y=np.nan,
+        theta_axis=np.nan,
+        axial_strength=np.nan,
+        theta_abs_cos=np.nan,
+        abs_cos_strength=np.nan,
+        fore_aft_asymmetry=np.nan,
+    )
+    if not np.isfinite(total_weight) or total_weight <= 0.:
+        return empty
+
+    centroid_x = np.sum(weights * x) / total_weight
+    centroid_y = np.sum(weights * y) / total_weight
+    dx, dy = x - centroid_x, y - centroid_y
+    radius = np.hypot(dx, dy)
+    radius_scale = np.max(radius)
+    if not np.isfinite(radius_scale) or radius_scale <= 0.:
+        empty['centroid_x'], empty['centroid_y'] = centroid_x, centroid_y
+        return empty
+
+    # A point exactly at the centroid has no defined direction. The tolerance
+    # removes only floating-point zero-radius points, not a finite central cutout.
+    directional = radius > 32. * np.finfo(float).eps * radius_scale
+    theta = np.arctan2(dy[directional], dx[directional])
+    angular_weights = weights[directional] * (
+        radius[directional] / radius_scale
+    )**radial_power
+    angular_weight = np.sum(angular_weights)
+    if angular_weight <= 0.:
+        empty['centroid_x'], empty['centroid_y'] = centroid_x, centroid_y
+        return empty
+
+    # Circular statistics for axial data use doubled angles. This gives a
+    # 180-degree direction rather than a one-sided 360-degree dipole direction.
+    c2 = np.sum(angular_weights * np.cos(2. * theta)) / angular_weight
+    s2 = np.sum(angular_weights * np.sin(2. * theta)) / angular_weight
+    theta_axis = np.mod(0.5 * np.arctan2(s2, c2), np.pi)
+    axial_strength = np.clip(np.hypot(c2, s2), 0., 1.)
+
+    # Evaluate the proposed <|cos(theta-alpha)|> objective on a fine axial grid.
+    # Binning first avoids constructing an N_pixel x N_direction array.
+    n_directions = int(n_directions)
+    direction_edges, direction_grid, abs_cos_kernel = _abs_cos_basis(n_directions)
+    angular_hist, _ = np.histogram(
+        np.mod(theta, np.pi), bins=direction_edges, weights=angular_weights
+    )
+    alignment = angular_hist @ abs_cos_kernel / angular_weight
+    i_max = int(np.argmax(alignment))
+
+    # Periodic parabolic interpolation makes the reported direction less
+    # sensitive to n_directions. Recompute the final score from unbinned angles.
+    y_minus = alignment[(i_max - 1) % n_directions]
+    y_peak = alignment[i_max]
+    y_plus = alignment[(i_max + 1) % n_directions]
+    curvature = y_minus - 2. * y_peak + y_plus
+    offset = 0. if curvature == 0. else 0.5 * (y_minus - y_plus) / curvature
+    offset = np.clip(offset, -0.5, 0.5)
+    theta_abs_cos = np.mod(
+        direction_grid[i_max] + offset * np.pi / n_directions, np.pi
+    )
+    projected = np.cos(theta - theta_abs_cos)
+    mean_abs_cos = np.sum(angular_weights * np.abs(projected)) / angular_weight
+    isotropic_abs_cos = 2. / np.pi
+    abs_cos_strength = np.clip(
+        (mean_abs_cos - isotropic_abs_cos) / (1. - isotropic_abs_cos), 0., 1.
+    )
+    projected_weight = np.sum(angular_weights * np.abs(projected))
+    fore_aft_asymmetry = (
+        np.abs(np.sum(angular_weights * projected)) / projected_weight
+        if projected_weight > 0. else np.nan
+    )
+
+    return dict(
+        centroid_x=centroid_x,
+        centroid_y=centroid_y,
+        theta_axis=theta_axis,
+        axial_strength=axial_strength,
+        theta_abs_cos=theta_abs_cos,
+        abs_cos_strength=abs_cos_strength,
+        fore_aft_asymmetry=fore_aft_asymmetry,
+    )
+
 def _zscore(x):
     x = np.asarray(x, dtype=float)
     finite = np.isfinite(x)
@@ -383,9 +519,7 @@ def max_circular_xcorr_rho(theta, x, y, *, use_fft=True, mask=None):
     dtheta_star = _wrap_angle(k_star * dtheta)
     return rho_max, dtheta_star, rho_by_lag
 
-def partial_corr_and_incremental_R2(
-    lyc, o32, logOIII, logOII, *, allow_nan=False
-):
+def partial_corr_and_incremental_R2(lyc, o32, logOIII, logOII, *, allow_nan=False):
     """
     Compute:
       - partial correlation corr(resid(LyC|controls), resid(O32|controls))
@@ -598,6 +732,13 @@ def zip_data(sim='g10304', run='z8', snaps=range(189), n_cameras=8, n_bins=181, 
     theta_O3 = np.zeros([n_snaps, n_cameras])
     theta_O2 = np.zeros([n_snaps, n_cameras])
     theta_Hb = np.zeros([n_snaps, n_cameras])
+    centroid_x_O3 = np.full([n_snaps, n_cameras], np.nan)
+    centroid_y_O3 = np.full([n_snaps, n_cameras], np.nan)
+    theta_axis_O3 = np.full([n_snaps, n_cameras], np.nan)
+    axial_strength_O3 = np.full([n_snaps, n_cameras], np.nan)
+    theta_abs_cos_O3 = np.full([n_snaps, n_cameras], np.nan)
+    abs_cos_strength_O3 = np.full([n_snaps, n_cameras], np.nan)
+    fore_aft_asymmetry_O3 = np.full([n_snaps, n_cameras], np.nan)
     radius_O3 = np.zeros([n_snaps, n_cameras])
     radius_O2 = np.zeros([n_snaps, n_cameras])
     radius_Hb = np.zeros([n_snaps, n_cameras])
@@ -778,27 +919,35 @@ def zip_data(sim='g10304', run='z8', snaps=range(189), n_cameras=8, n_bins=181, 
                 X = X.reshape(-1)[mask]
                 Y = Y.reshape(-1)[mask]
                 T = T.reshape(-1)[mask]
-                X /= R  # Normalize by radius to get unit vectors
-                Y /= R
+                U = X / R  # Unit vectors about the escaped-light center
+                V = Y / R
                 image_O3 = images_O3[i_cam].reshape(-1)[mask]
                 image_O2 = images_O2[i_cam].reshape(-1)[mask]
                 image_Hb = images_Hb[i_cam].reshape(-1)[mask]
                 # Calculate the OIII directional moment
                 f_O3 = np.sum(image_O3)
-                x_O3 = np.sum(image_O3 * X) / f_O3
-                y_O3 = np.sum(image_O3 * Y) / f_O3
+                x_O3 = np.sum(image_O3 * U) / f_O3
+                y_O3 = np.sum(image_O3 * V) / f_O3
                 radius_O3[i,i_cam] = np.sqrt(x_O3**2 + y_O3**2)
                 theta_O3[i,i_cam] = np.arctan2(y_O3, x_O3)
+                axial_O3 = centroided_axial_directionality(X, Y, image_O3)
+                centroid_x_O3[i,i_cam] = axial_O3['centroid_x']
+                centroid_y_O3[i,i_cam] = axial_O3['centroid_y']
+                theta_axis_O3[i,i_cam] = axial_O3['theta_axis']
+                axial_strength_O3[i,i_cam] = axial_O3['axial_strength']
+                theta_abs_cos_O3[i,i_cam] = axial_O3['theta_abs_cos']
+                abs_cos_strength_O3[i,i_cam] = axial_O3['abs_cos_strength']
+                fore_aft_asymmetry_O3[i,i_cam] = axial_O3['fore_aft_asymmetry']
                 # Calculate the OII directional moment
                 f_O2 = np.sum(image_O2)
-                x_O2 = np.sum(image_O2 * X) / f_O2
-                y_O2 = np.sum(image_O2 * Y) / f_O2
+                x_O2 = np.sum(image_O2 * U) / f_O2
+                y_O2 = np.sum(image_O2 * V) / f_O2
                 radius_O2[i,i_cam] = np.sqrt(x_O2**2 + y_O2**2)
                 theta_O2[i,i_cam] = np.arctan2(y_O2, x_O2)
                 # Calculate the H-beta directional moment
                 f_Hb = np.sum(image_Hb)
-                x_Hb = np.sum(image_Hb * X) / f_Hb
-                y_Hb = np.sum(image_Hb * Y) / f_Hb
+                x_Hb = np.sum(image_Hb * U) / f_Hb
+                y_Hb = np.sum(image_Hb * V) / f_Hb
                 radius_Hb[i,i_cam] = np.sqrt(x_Hb**2 + y_Hb**2)
                 theta_Hb[i,i_cam] = np.arctan2(y_Hb, x_Hb)
                 # Calculate histograms
@@ -863,6 +1012,7 @@ def zip_data(sim='g10304', run='z8', snaps=range(189), n_cameras=8, n_bins=181, 
                     # print(f'min/max T = {np.min(T):g}, {np.max(T):g} = {np.min(T)/np.pi:g} pi, {np.max(T)/np.pi:g} pi')
                     # print(f'n_bins = {n_bins}, n_mask = {n_mask}, n_mask/n_bins = {float(n_mask)/float(n_bins):g}')
                     print(f'radius [O3, O2, Hb] = [{radius_O3[i,i_cam]:g}, {radius_O2[i,i_cam]:g}, {radius_Hb[i,i_cam]:g}]')
+                    print(f'O3 axial direction = {np.degrees(theta_axis_O3[i,i_cam]):g} deg (strength {axial_strength_O3[i,i_cam]:g}); |cos| direction = {np.degrees(theta_abs_cos_O3[i,i_cam]):g} deg (strength {abs_cos_strength_O3[i,i_cam]:g}, fore/aft {fore_aft_asymmetry_O3[i,i_cam]:g})')
                     print(f'theta [O3, O2, Hb, O32, R3, LyC] = [{np.degrees(theta_O3[i,i_cam]):g}, {np.degrees(theta_O2[i,i_cam]):g}, {np.degrees(theta_Hb[i,i_cam]):g}, {np.degrees(theta_O32[i,i_cam]):g}, {np.degrees(theta_R3[i,i_cam]):g}, {np.degrees(theta_LyC[i,i_cam]):g}] deg')
                     print(f'i [O3, O2, Hb, O32, R3, LyC] = [{i_O3}, {i_O2}, {i_Hb}, {i_O32}, {i_R3}, {i_LyC}]')
                 # Recenter using fat curve peak and calculate FWHM
@@ -1071,6 +1221,13 @@ def zip_data(sim='g10304', run='z8', snaps=range(189), n_cameras=8, n_bins=181, 
     theta_O3 = theta_O3[valid_snaps]
     theta_O2 = theta_O2[valid_snaps]
     theta_Hb = theta_Hb[valid_snaps]
+    centroid_x_O3 = centroid_x_O3[valid_snaps]
+    centroid_y_O3 = centroid_y_O3[valid_snaps]
+    theta_axis_O3 = theta_axis_O3[valid_snaps]
+    axial_strength_O3 = axial_strength_O3[valid_snaps]
+    theta_abs_cos_O3 = theta_abs_cos_O3[valid_snaps]
+    abs_cos_strength_O3 = abs_cos_strength_O3[valid_snaps]
+    fore_aft_asymmetry_O3 = fore_aft_asymmetry_O3[valid_snaps]
     radius_O3 = radius_O3[valid_snaps]
     radius_O2 = radius_O2[valid_snaps]
     radius_Hb = radius_Hb[valid_snaps]
@@ -1128,6 +1285,13 @@ def zip_data(sim='g10304', run='z8', snaps=range(189), n_cameras=8, n_bins=181, 
         f.create_dataset('theta_O3', data=theta_O3)
         f.create_dataset('theta_O2', data=theta_O2)
         f.create_dataset('theta_Hb', data=theta_Hb)
+        f.create_dataset('centroid_x_O3', data=centroid_x_O3)
+        f.create_dataset('centroid_y_O3', data=centroid_y_O3)
+        f.create_dataset('theta_axis_O3', data=theta_axis_O3)
+        f.create_dataset('axial_strength_O3', data=axial_strength_O3)
+        f.create_dataset('theta_abs_cos_O3', data=theta_abs_cos_O3)
+        f.create_dataset('abs_cos_strength_O3', data=abs_cos_strength_O3)
+        f.create_dataset('fore_aft_asymmetry_O3', data=fore_aft_asymmetry_O3)
         f.create_dataset('radius_O3', data=radius_O3)
         f.create_dataset('radius_O2', data=radius_O2)
         f.create_dataset('radius_Hb', data=radius_Hb)
