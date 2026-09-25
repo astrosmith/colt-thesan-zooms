@@ -631,7 +631,7 @@ def repack_mass(snaps, sim='g500531/z16', out_dir='.'):
                 if 'r_star' in f.keys():
                     pos_star = f['r_star'][:]
                     vir_mask = (np.linalg.norm(pos_star, axis=1) < r_virs)
-                    m_star = f['m_init_star'][:]  # Msun
+                    m_star = f['m_star'][:]  # Msun
                     m_star_mask = m_star[vir_mask]
                     m_star_arr[i] = np.sum(m_star_mask)
                 else:
@@ -778,15 +778,15 @@ def repack_SFR(snaps, sim='g500531/z16', out_dir='.'):
                 if 'r_star' in f.keys():
                     pos = f['r_star'][:]
                     vir_mask = (np.linalg.norm(pos, axis=1) < r_virs)
-                    m_star = f['m_init_star'][:]  # Msun
+                    m_init_star = f['m_init_star'][:]  # Msun
                     age_star = f['age_star'][:]*1e3  ## in Myr
-                    sfr_5 = m_star[(age_star < 5) & vir_mask]
-                    sfr_10 = m_star[(age_star < 10) & vir_mask]
-                    sfr_20 = m_star[(age_star < 20) & vir_mask]
-                    sfr_30 = m_star[(age_star < 30) & vir_mask]
-                    sfr_50 = m_star[(age_star < 50) & vir_mask]
-                    sfr_75 = m_star[(age_star < 75) & vir_mask]
-                    sfr_100 = m_star[(age_star < 100) & vir_mask]
+                    sfr_5 = m_init_star[(age_star < 5) & vir_mask]
+                    sfr_10 = m_init_star[(age_star < 10) & vir_mask]
+                    sfr_20 = m_init_star[(age_star < 20) & vir_mask]
+                    sfr_30 = m_init_star[(age_star < 30) & vir_mask]
+                    sfr_50 = m_init_star[(age_star < 50) & vir_mask]
+                    sfr_75 = m_init_star[(age_star < 75) & vir_mask]
+                    sfr_100 = m_init_star[(age_star < 100) & vir_mask]
                     # calculating in Msun/yr
                     sfr_5_arr[i] = np.sum(sfr_5) / (5e6)
                     sfr_10_arr[i] = np.sum(sfr_10) / (10e6)
