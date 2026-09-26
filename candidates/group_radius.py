@@ -190,7 +190,7 @@ for i in progressbar(range(n_snaps)):
         if 'r_star' in f:
             StarPos = (f['r_star'][:] + r_HRs[i]) / length_to_cgs - SmoothPos[i]  # Star position [ckpc/h] [centered on SmoothPos]
             n_stars = f.attrs['n_stars']
-            starmass = f['m_init_star'][:]  # Star mass [Msun]
+            starmass = f['m_star'][:]  # Star mass [Msun]
             StarMass = starmass / mass_to_msun  # Star mass [CodeUnits]
         else:
             n_stars = 0.

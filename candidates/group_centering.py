@@ -136,7 +136,7 @@ for i in progressbar(range(n_snaps)):
             star_mask = (np.linalg.norm(r_star, axis=1) < r_box) # Sphere cut
             n_stars = np.int32(np.count_nonzero(star_mask)) # Number of star particles
             n_cells = np.int32(np.count_nonzero(star_mask)) # Number of cells
-            m_star = f['m_init_star'][star_mask]  # Star mass [Msun]
+            m_star = f['m_star'][star_mask]  # Star mass [Msun]
             r_star = r_star[star_mask]
         else:
             star_flag = False
